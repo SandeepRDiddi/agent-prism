@@ -76,6 +76,41 @@ Good target buyers:
 - finance / ops teams managing AI budgets
 - product teams deploying many workflow agents
 
+## Executive flow
+
+This is the simplest way to explain Agent Prism to leaders, buyers, and sales teams:
+
+```mermaid
+flowchart LR
+    A["Agent Platforms<br/>Copilot, Claude, Custom Agents"] --> B["Agent Prism Ingestion Layer<br/>Hooks, SDK adapters, webhooks, MCP-aware collectors"]
+    B --> C["Normalization Engine<br/>One common schema for runs, cost, latency, retries, guardrails"]
+    C --> D["Agent Prism Control Layer<br/>Control Score, Cost Leak Radar, Replay Breadcrumbs"]
+    D --> E["Operational Dashboards<br/>Engineering, AI Platform, Security, Finance"]
+    D --> F["Business Decisions<br/>Vendor selection, budget control, rollout confidence"]
+    D --> G["Actions<br/>Alerts, policy updates, budget thresholds, workflow tuning"]
+```
+
+### What leaders should understand
+
+- agents continue to run in their native tools
+- Agent Prism becomes the shared governance and visibility layer above them
+- the output is not just telemetry, it is decision-ready insight
+
+## Sales narrative
+
+This is the commercial story in one diagram:
+
+```mermaid
+flowchart TD
+    A["Client has multiple AI agents"] --> B["No common view of cost, quality, or reliability"]
+    B --> C["Agent Prism plugs into existing agent tools"]
+    C --> D["Normalizes telemetry across providers"]
+    D --> E["Surfaces Control Score and Cost Leak Radar"]
+    E --> F["Reduces wasted spend"]
+    E --> G["Improves rollout confidence"]
+    E --> H["Creates governance for enterprise adoption"]
+```
+
 ## What is implemented
 
 This repository now includes a runnable SaaS foundation with:
