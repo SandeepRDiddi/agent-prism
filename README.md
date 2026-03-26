@@ -1,6 +1,6 @@
-# Agent Control Plane
+# Agent Prism
 
-Agent Control Plane is a plug-and-play product starter for teams running multiple AI agents across tools like GitHub Copilot, Claude, and custom agent frameworks. It gives you one place to understand:
+Agent Prism is a plug-and-play product starter for teams running multiple AI agents across tools like GitHub Copilot, Claude, and custom agent frameworks. It gives you one place to understand:
 
 - How well agents are performing
 - How much they are costing
@@ -66,7 +66,7 @@ That creates a clean path toward premium features later:
 
 If you want a crisp positioning statement:
 
-> Agent Control Plane helps enterprises govern AI agents across providers by combining normalized telemetry, performance benchmarking, and cost leak detection in one control layer.
+> Agent Prism helps enterprises govern AI agents across providers by combining normalized telemetry, performance benchmarking, and cost leak detection in one control layer.
 
 Good target buyers:
 
@@ -531,7 +531,7 @@ This is the practical operating model:
 
 1. Build or configure the agent in the native platform.
 2. Emit telemetry for each run, step, retry, tool call, and final outcome.
-3. Normalize that telemetry into the Agent Control Plane schema.
+3. Normalize that telemetry into the Agent Prism schema.
 4. Ingest it through `/api/ingest` or, in production, through a message bus / collector API.
 
 The control plane should not try to replace Claude or Copilot. It should sit above them as the shared governance and monitoring layer.

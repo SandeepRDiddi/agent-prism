@@ -1,5 +1,5 @@
 {
-  "name": "agent-control-plane",
+  "name": "agent-prism",
   "version": "1.0.0",
   "description": "Plug-and-play control plane for monitoring agent performance, cost, and reliability across providers.",
   "type": "module",

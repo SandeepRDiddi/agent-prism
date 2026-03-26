@@ -128,7 +128,7 @@ const server = createServer(async (req, res) => {
       const bootstrap = await getBootstrapStatus();
       return sendJson(res, 200, {
         ok: true,
-        service: "agent-control-plane",
+        service: "agent-prism",
         mode: "saas-foundation",
         storageBackend,
         bootstrapped: bootstrap.bootstrapped
@@ -236,5 +236,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`Agent Control Plane listening on http://${host}:${port}`);
+  console.log(`Agent Prism listening on http://${host}:${port}`);
 });
