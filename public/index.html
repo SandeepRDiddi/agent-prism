@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Control Plane</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">A</div>
+          <div>
+            <div class="title-row">
+              <h1>Agent Control Plane</h1>
+              <span class="live-pill">Live</span>
+            </div>
+            <p class="subtitle">
+              Plug-and-play orchestration visibility across Copilot, Claude, and custom agents.
+            </p>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="status-pill">
+            <span class="status-dot"></span>
+            <span id="active-agents">No tenant connected</span>
+          </div>
+          <button id="save-api-key" class="ghost">Set API key</button>
+          <button id="reset-data" class="ghost">Reset tenant data</button>
+        </div>
+      </header>
+
+      <main class="workspace" id="workspace">
+        <aside class="sidebar panel">
+          <div class="panel-title">
+            <p class="eyebrow">Agents</p>
+            <h2>Connected fleet</h2>
+          </div>
+          <div id="agent-list" class="agent-list"></div>
+        </aside>
+
+        <section class="main-column">
+          <section class="metrics-grid" id="metrics-grid"></section>
+
+          <section class="control-grid">
+            <article class="panel detail-panel" id="selected-agent-panel"></article>
+
+            <article class="panel feed-panel">
+              <div class="panel-title">
+                <p class="eyebrow">Live Activity Feed</p>
+                <h2>Cross-agent execution trail</h2>
+              </div>
+              <div id="activity-feed" class="activity-feed"></div>
+            </article>
+          </section>
+
+          <section class="bottom-grid">
+            <article class="panel">
+              <div class="panel-title">
+                <p class="eyebrow">Provider Comparison</p>
+                <h2>Who is performing under control?</h2>
+              </div>
+              <div id="provider-table"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-title">
+                <p class="eyebrow">Cost Leak Radar</p>
+                <h2>Where spend is being wasted</h2>
+              </div>
+              <div id="leak-list" class="stack"></div>
+            </article>
+          </section>
+
+          <section class="bottom-grid">
+            <article class="panel">
+              <div class="panel-title">
+                <p class="eyebrow">Workflow Insights</p>
+                <h2>Budget and reliability by workflow</h2>
+              </div>
+              <div id="workflow-cards" class="stack"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-title">
+                <p class="eyebrow">USP</p>
+                <h2 id="usp-name">Control Score + Cost Leak Radar</h2>
+              </div>
+              <p class="usp-summary" id="usp-summary"></p>
+              <div class="pillars" id="usp-pillars"></div>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
