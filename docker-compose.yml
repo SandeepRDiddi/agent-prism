@@ -1,6 +1,23 @@
 version: "3.9"
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-prism-app
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      STORAGE_BACKEND: file
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
   postgres:
     image: postgres:16
     container_name: agent-control-plane-postgres
@@ -13,6 +30,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  app_data:

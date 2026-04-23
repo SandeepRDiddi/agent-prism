@@ -11,7 +11,8 @@ const emptyState = {
   users: [],
   apiKeys: [],
   connectors: [],
-  runs: []
+  runs: [],
+  sessions: []
 };
 
 function now() {
@@ -185,4 +186,95 @@ export async function resetTenantRuns(tenantId) {
   const state = await readState();
   state.runs = state.runs.filter((item) => item.tenantId !== tenantId);
   await writeState(state);
+}
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+
+function ensureSessions(state) {
+  if (!state.sessions) state.sessions = [];
+}
+
+export async function createSession(tenantId, { sessionId, platform, startTime }) {
+  const state = await readState();
+  ensureSessions(state);
+
+  const session = {
+    id: sessionId || createId("sess"),
+    tenantId,
+    platform: platform || "generic",
+    status: "running",
+    startTime: startTime || now(),
+    lastSeen: startTime || now(),
+    endTime: null,
+    costUsd: 0
+  };
+  state.sessions.push(session);
+  await writeState(state);
+  return session;
+}
+
+export async function updateSession(sessionId, { status, lastSeen, endTime, costDelta }) {
+  const state = await readState();
+  ensureSessions(state);
+
+  const session = state.sessions.find((s) => s.id === sessionId);
+  if (!session) return null;
+
+  if (status) session.status = status;
+  if (lastSeen) session.lastSeen = lastSeen;
+  if (endTime) session.endTime = endTime;
+  if (typeof costDelta === "number") session.costUsd = (session.costUsd || 0) + costDelta;
+
+  await writeState(state);
+  return session;
+}
+
+export async function applySessionTimeout(timeoutMs) {
+  const state = await readState();
+  ensureSessions(state);
+
+  const threshold = new Date(Date.now() - timeoutMs).toISOString();
+  let changed = false;
+
+  for (const session of state.sessions) {
+    if (
+      (session.status === "running" || session.status === "idle") &&
+      session.lastSeen < threshold
+    ) {
+      session.status = "timed_out";
+      changed = true;
+    }
+  }
+
+  if (changed) await writeState(state);
+  return state.sessions;
+}
+
+export async function listSessions(tenantId, { windowStart } = {}) {
+  const state = await readState();
+  ensureSessions(state);
+
+  let sessions = state.sessions.filter((s) => s.tenantId === tenantId);
+  if (windowStart) {
+    sessions = sessions.filter(
+      (s) => s.startTime >= windowStart || s.lastSeen >= windowStart
+    );
+  }
+  return sessions;
+}
+
+export async function getActiveSessionCounts(tenantId) {
+  const state = await readState();
+  ensureSessions(state);
+
+  const active = state.sessions.filter(
+    (s) => s.tenantId === tenantId && (s.status === "running" || s.status === "idle")
+  );
+
+  const byPlatform = active.reduce((acc, s) => {
+    acc[s.platform] = (acc[s.platform] || 0) + 1;
+    return acc;
+  }, {});
+
+  return { total: active.length, byPlatform };
 }

@@ -1,0 +1,109 @@
+{
+  "tenants": [
+    {
+      "id": "tenant_aeb4f8a6d40e",
+      "name": "Acme AI Labs",
+      "slug": "acme-ai-labs",
+      "plan": "enterprise-trial",
+      "status": "active",
+      "createdAt": "2026-04-21T09:56:43.067Z"
+    }
+  ],
+  "users": [
+    {
+      "id": "user_35d2dcacaa2e",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "email": "demo@acme.example",
+      "name": "Demo User",
+      "role": "owner",
+      "createdAt": "2026-04-21T09:56:43.067Z"
+    }
+  ],
+  "apiKeys": [
+    {
+      "id": "key_5dbfb8cab0b4",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "name": "Default ingest key",
+      "prefix": "acp_7fbd4a63",
+      "hash": "dd2a7a6aa87f794bae3ccd6519eb6d48182502ce510bfa03e0cc64c5f9a36072",
+      "status": "active",
+      "createdAt": "2026-04-21T09:56:43.067Z",
+      "lastUsedAt": "2026-04-21T10:02:09.361Z"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "connector_dd03fa8e6b50",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "provider": "github-copilot",
+      "name": "GitHub Copilot",
+      "status": "ready",
+      "mode": "webhook",
+      "createdAt": "2026-04-21T09:56:43.067Z"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "demo-claude-1",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "platform": "claude",
+      "status": "completed",
+      "startTime": "2026-04-21T09:56:43.279Z",
+      "lastSeen": "2026-04-21T09:56:43.356Z",
+      "endTime": "2026-04-21T09:56:43.356Z",
+      "costUsd": 0.054000000000000006
+    },
+    {
+      "id": "sess_689278bbf1a3",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "platform": "claude",
+      "status": "completed",
+      "startTime": "2026-04-21T09:56:43.391Z",
+      "lastSeen": "2026-04-21T09:56:43.461Z",
+      "endTime": "2026-04-21T09:56:43.461Z",
+      "costUsd": 0.07500000000000001
+    },
+    {
+      "id": "sess_4a39437a7cd3",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "platform": "claude",
+      "status": "running",
+      "startTime": "2026-04-21T09:56:43.491Z",
+      "lastSeen": "2026-04-21T09:56:43.543Z",
+      "endTime": null,
+      "costUsd": 0.024
+    },
+    {
+      "id": "sess_04a716451236",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "platform": "copilot",
+      "status": "completed",
+      "startTime": "2026-04-21T09:56:43.576Z",
+      "lastSeen": "2026-04-21T09:56:43.654Z",
+      "endTime": "2026-04-21T09:56:43.654Z",
+      "costUsd": 0.216
+    },
+    {
+      "id": "sess_2935145e125a",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "platform": "copilot",
+      "status": "completed",
+      "startTime": "2026-04-21T09:56:43.685Z",
+      "lastSeen": "2026-04-21T09:56:43.758Z",
+      "endTime": "2026-04-21T09:56:43.758Z",
+      "costUsd": 0.108
+    },
+    {
+      "id": "sess_b250a1e64e8a",
+      "tenantId": "tenant_aeb4f8a6d40e",
+      "platform": "generic",
+      "status": "completed",
+      "startTime": "2026-04-21T09:56:43.791Z",
+      "lastSeen": "2026-04-21T09:56:43.881Z",
+      "endTime": "2026-04-21T09:56:43.881Z",
+      "costUsd": 0.45
+    }
+  ],
+  "events": [],
+  "webhooks": []
+}

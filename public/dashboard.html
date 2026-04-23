@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Prism · ROI Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <style>
+      .roi-shell {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .roi-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 28px;
+        height: 60px;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-strong);
+      }
+
+      .roi-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-decoration: none;
+        color: var(--text);
+      }
+
+      .roi-brand .brand-mark {
+        width: 32px;
+        height: 32px;
+        background: var(--blue);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 15px;
+      }
+
+      .roi-brand strong {
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .roi-brand span {
+        font-size: 12px;
+        color: var(--muted);
+        display: block;
+      }
+
+      .topbar-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .live-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .live-dot {
+        width: 7px;
+        height: 7px;
+        background: var(--green);
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+
+      .warning-banner {
+        background: rgba(246, 168, 33, 0.12);
+        border-bottom: 1px solid rgba(246, 168, 33, 0.3);
+        padding: 8px 28px;
+        font-size: 13px;
+        color: var(--amber);
+        display: none;
+      }
+
+      .warning-banner.visible {
+        display: block;
+      }
+
+      .roi-main {
+        flex: 1;
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        max-width: 1400px;
+        margin: 0 auto;
+        width: 100%;
+      }
+
+      .page-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+      }
+
+      .page-header h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      .page-header p {
+        margin: 4px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .window-tabs {
+        display: flex;
+        gap: 6px;
+      }
+
+      .window-tab {
+        padding: 6px 14px;
+        border-radius: 6px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .window-tab.active {
+        background: var(--blue);
+        border-color: var(--blue);
+        color: #fff;
+      }
+
+      .metrics-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 16px;
+      }
+
+      .metric-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 20px;
+      }
+
+      .metric-card .eyebrow {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 0 0 8px;
+      }
+
+      .metric-card .value {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .metric-card .sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 6px 0 0;
+      }
+
+      .value.positive { color: var(--green); }
+      .value.negative { color: var(--red); }
+      .value.neutral  { color: var(--text); }
+      .value.accent   { color: var(--blue); }
+
+      .bottom-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+
+      @media (max-width: 900px) {
+        .bottom-grid { grid-template-columns: 1fr; }
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 20px;
+      }
+
+      .panel-title {
+        margin: 0 0 16px;
+      }
+
+      .panel-title .eyebrow {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 0 0 4px;
+      }
+
+      .panel-title h2 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .platform-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .platform-row:last-child {
+        border-bottom: none;
+      }
+
+      .platform-name {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+
+      .status-dot.connected    { background: var(--green); }
+      .status-dot.disconnected { background: var(--red); }
+      .status-dot.running      { background: var(--green); animation: pulse 1.5s infinite; }
+
+      .platform-cost {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        color: var(--text);
+      }
+
+      .assumption-note {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 12px 0 0;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .error-state {
+        color: var(--red);
+        font-size: 13px;
+        padding: 16px;
+        text-align: center;
+      }
+
+      a.nav-link {
+        font-size: 13px;
+        color: var(--muted);
+        text-decoration: none;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        transition: color 0.15s, border-color 0.15s;
+      }
+
+      a.nav-link:hover {
+        color: var(--text);
+        border-color: var(--blue);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="roi-shell">
+      <header class="roi-topbar">
+        <a class="roi-brand" href="/">
+          <div class="brand-mark">A</div>
+          <div>
+            <strong>Agent Prism</strong>
+            <span>ROI &amp; Cost Dashboard</span>
+          </div>
+        </a>
+        <div class="topbar-right">
+          <div class="live-indicator">
+            <span class="live-dot"></span>
+            <span id="last-updated">Loading…</span>
+          </div>
+          <a href="/" class="nav-link">Main Dashboard</a>
+        </div>
+      </header>
+
+      <div class="warning-banner" id="pricing-warning">
+        Pricing config may be out of date (last verified: <span id="pricing-date"></span>).
+        Update <code>config/pricing.json</code> and set a new <code>last_verified</code> date.
+      </div>
+
+      <main class="roi-main">
+        <div class="page-header">
+          <div>
+            <h1>Agent ROI &amp; Cost Tracker</h1>
+            <p>Real-time visibility into agent cost, FTE savings, and return on AI investment.</p>
+          </div>
+          <div class="window-tabs">
+            <button class="window-tab active" data-window="day">Today</button>
+            <button class="window-tab" data-window="30d">30 Days</button>
+          </div>
+        </div>
+
+        <!-- Active Agents -->
+        <div class="metrics-row" id="agent-count-row">
+          <div class="metric-card">
+            <p class="eyebrow">Active Agents</p>
+            <p class="value accent" id="active-total">—</p>
+            <p class="sub" id="active-breakdown">Loading…</p>
+          </div>
+          <div class="metric-card">
+            <p class="eyebrow">Agent Cost</p>
+            <p class="value neutral" id="cost-total">—</p>
+            <p class="sub" id="cost-window-label">for selected period</p>
+          </div>
+          <div class="metric-card">
+            <p class="eyebrow">FTE Hours Saved</p>
+            <p class="value accent" id="fte-hours">—</p>
+            <p class="sub">completed sessions × avg task hours</p>
+          </div>
+          <div class="metric-card">
+            <p class="eyebrow">Net Savings</p>
+            <p class="value" id="net-savings">—</p>
+            <p class="sub">FTE equivalent cost minus agent cost</p>
+          </div>
+          <div class="metric-card">
+            <p class="eyebrow">ROI Multiplier</p>
+            <p class="value" id="roi-multiplier">—</p>
+            <p class="sub">FTE cost ÷ agent cost</p>
+          </div>
+        </div>
+
+        <!-- Bottom grid: platform breakdown + assumptions -->
+        <div class="bottom-grid">
+          <div class="panel">
+            <div class="panel-title">
+              <p class="eyebrow">Cost by Platform</p>
+              <h2>Spend breakdown</h2>
+            </div>
+            <div id="platform-cost-list"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">
+              <p class="eyebrow">ROI Details</p>
+              <h2>Savings vs. human FTE</h2>
+            </div>
+            <div id="roi-detail"></div>
+          </div>
+        </div>
+
+        <div class="bottom-grid">
+          <div class="panel">
+            <div class="panel-title">
+              <p class="eyebrow">Platform Status</p>
+              <h2>Connected integrations</h2>
+            </div>
+            <div id="platform-status-list"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">
+              <p class="eyebrow">Model Assumptions</p>
+              <h2>FTE cost inputs</h2>
+            </div>
+            <div id="assumptions-panel">
+              <p class="sub">Loading…</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const apiKey = localStorage.getItem("acp_api_key");
+      let currentWindow = "day";
+
+      // ── Fetch helpers ────────────────────────────────────────────────────────
+
+      async function fetchSummary() {
+        if (!apiKey) return null;
+        const res = await fetch("/api/metrics/summary", {
+          headers: { "x-api-key": apiKey }
+        });
+        if (!res.ok) return null;
+        return res.json();
+      }
+
+      // ── Formatters ───────────────────────────────────────────────────────────
+
+      function fmtUsd(val) {
+        if (val == null || isNaN(val)) return "—";
+        return new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          minimumFractionDigits: val < 1 ? 4 : 2,
+          maximumFractionDigits: val < 1 ? 4 : 2
+        }).format(val);
+      }
+
+      function fmtNum(val, decimals = 2) {
+        if (val == null || isNaN(val)) return "—";
+        return Number(val).toFixed(decimals);
+      }
+
+      function capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+      }
+
+      // ── Render ───────────────────────────────────────────────────────────────
+
+      function render(data) {
+        if (!data) {
+          document.getElementById("last-updated").textContent = "No data (check API key)";
+          return;
+        }
+
+        // Pricing staleness
+        const warning = document.getElementById("pricing-warning");
+        if (data.meta.pricingStale) {
+          warning.classList.add("visible");
+          document.getElementById("pricing-date").textContent = data.meta.pricingLastVerified || "unknown";
+        } else {
+          warning.classList.remove("visible");
+        }
+
+        // Active agents
+        const agents = data.activeAgents;
+        document.getElementById("active-total").textContent = agents.total;
+        const breakdown = Object.entries(agents.byPlatform)
+          .map(([p, n]) => `${capitalize(p)}: ${n}`)
+          .join(" · ") || "None active";
+        document.getElementById("active-breakdown").textContent = breakdown;
+
+        // Cost & ROI for selected window
+        const costData = data.cost[currentWindow === "day" ? "day" : "month"];
+        const roiData = data.roi[currentWindow === "day" ? "day" : "month"];
+
+        document.getElementById("cost-total").textContent = fmtUsd(costData.totalUsd);
+        document.getElementById("cost-window-label").textContent =
+          currentWindow === "day" ? "today (UTC)" : "last 30 days";
+
+        document.getElementById("fte-hours").textContent =
+          fmtNum(roiData.fteHoursSaved) + " hrs";
+
+        const netEl = document.getElementById("net-savings");
+        netEl.textContent = fmtUsd(roiData.netSavingsUsd);
+        netEl.className = "value " + (roiData.netSavingsUsd >= 0 ? "positive" : "negative");
+
+        const roiEl = document.getElementById("roi-multiplier");
+        if (roiData.roiMultiplier == null) {
+          roiEl.textContent = "N/A";
+          roiEl.className = "value neutral";
+        } else {
+          roiEl.textContent = fmtNum(roiData.roiMultiplier) + "×";
+          roiEl.className = "value " + (roiData.roiMultiplier >= 1 ? "positive" : "negative");
+        }
+
+        // Platform cost breakdown
+        const costList = document.getElementById("platform-cost-list");
+        costList.innerHTML = Object.entries(costData.byPlatform).length === 0
+          ? '<p class="sub">No sessions recorded yet.</p>'
+          : Object.entries(costData.byPlatform).map(([platform, cost]) => `
+              <div class="platform-row">
+                <div class="platform-name">
+                  <span class="status-dot connected"></span>
+                  ${capitalize(platform)}
+                </div>
+                <span class="platform-cost">${fmtUsd(cost)}</span>
+              </div>
+            `).join("");
+
+        // ROI detail
+        const roiDetail = document.getElementById("roi-detail");
+        roiDetail.innerHTML = `
+          <div class="platform-row">
+            <span class="platform-name">Completed sessions</span>
+            <span class="platform-cost">${roiData.completedSessions}</span>
+          </div>
+          <div class="platform-row">
+            <span class="platform-name">FTE hours saved</span>
+            <span class="platform-cost">${fmtNum(roiData.fteHoursSaved)} hrs</span>
+          </div>
+          <div class="platform-row">
+            <span class="platform-name">FTE cost equivalent</span>
+            <span class="platform-cost">${fmtUsd(roiData.fteCostEquivalentUsd)}</span>
+          </div>
+          <div class="platform-row">
+            <span class="platform-name">Agent cost</span>
+            <span class="platform-cost">${fmtUsd(roiData.agentCostUsd)}</span>
+          </div>
+          <div class="platform-row">
+            <span class="platform-name" style="font-weight:700">Net savings</span>
+            <span class="platform-cost" style="color:${roiData.netSavingsUsd >= 0 ? "var(--green)" : "var(--red)"}">${fmtUsd(roiData.netSavingsUsd)}</span>
+          </div>
+        `;
+
+        // Platform status
+        const statusList = document.getElementById("platform-status-list");
+        const statusMap = data.meta.platformStatus || {};
+        const platforms = Object.entries(statusMap).length > 0 ? statusMap : { claude: false, copilot: false, generic: true };
+        statusList.innerHTML = Object.entries(platforms).map(([name, connected]) => `
+          <div class="platform-row">
+            <div class="platform-name">
+              <span class="status-dot ${connected ? "connected" : "disconnected"}"></span>
+              ${capitalize(name)}
+            </div>
+            <span style="font-size:12px;color:${connected ? "var(--green)" : "var(--red)"}">
+              ${connected ? "Connected" : "Not configured"}
+            </span>
+          </div>
+        `).join("");
+
+        // Assumptions
+        const assumptions = roiData.assumptions || {};
+        const assumptionsEl = document.getElementById("assumptions-panel");
+        assumptionsEl.innerHTML = `
+          <div class="platform-row">
+            <span class="platform-name">Avg human hours / task</span>
+            <span class="platform-cost">${fmtNum(assumptions.avg_human_hours_per_task, 1)} hrs</span>
+          </div>
+          <div class="platform-row">
+            <span class="platform-name">Loaded FTE rate</span>
+            <span class="platform-cost">${fmtUsd(assumptions.loaded_hourly_rate_usd)} / hr</span>
+          </div>
+          <p class="assumption-note">
+            To adjust: edit <strong>config/pricing.json</strong> → fte section and restart the server.
+          </p>
+        `;
+
+        document.getElementById("last-updated").textContent =
+          "Updated " + new Date().toLocaleTimeString();
+      }
+
+      // ── API key prompt ───────────────────────────────────────────────────────
+
+      function promptApiKey() {
+        const key = prompt("Enter your Agent Prism API key:");
+        if (key) {
+          localStorage.setItem("acp_api_key", key);
+          location.reload();
+        }
+      }
+
+      if (!apiKey) {
+        // Show prompt after short delay to let page render
+        setTimeout(promptApiKey, 300);
+      }
+
+      // ── Window tabs ──────────────────────────────────────────────────────────
+
+      document.querySelectorAll(".window-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".window-tab").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentWindow = btn.dataset.window;
+          fetchSummary().then(render);
+        });
+      });
+
+      // ── Poll loop (every 5 seconds) ──────────────────────────────────────────
+
+      async function poll() {
+        const data = await fetchSummary();
+        render(data);
+      }
+
+      poll();
+      setInterval(poll, 5000);
+    </script>
+  </body>
+</html>

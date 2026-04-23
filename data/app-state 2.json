@@ -1,0 +1,69 @@
+{
+  "tenants": [
+    {
+      "id": "tenant_eacee60e77bd",
+      "name": "Smoke Test Co",
+      "slug": "smoke-test-co",
+      "plan": "enterprise-trial",
+      "status": "active",
+      "createdAt": "2026-04-21T06:34:35.087Z"
+    }
+  ],
+  "users": [
+    {
+      "id": "user_a1508fedd6ae",
+      "tenantId": "tenant_eacee60e77bd",
+      "email": "test@example.com",
+      "name": "Tester",
+      "role": "owner",
+      "createdAt": "2026-04-21T06:34:35.088Z"
+    }
+  ],
+  "apiKeys": [
+    {
+      "id": "key_04808cc135ba",
+      "tenantId": "tenant_eacee60e77bd",
+      "name": "Default ingest key",
+      "prefix": "acp_ca1bb50e",
+      "hash": "62c1caeaa203061cb8d607261ef3c1224c00149bf56cc3b75e085e6b66ac8d01",
+      "status": "active",
+      "createdAt": "2026-04-21T06:34:35.088Z",
+      "lastUsedAt": "2026-04-21T06:34:35.117Z"
+    }
+  ],
+  "connectors": [
+    {
+      "id": "connector_898c6d9f01c6",
+      "tenantId": "tenant_eacee60e77bd",
+      "provider": "github-copilot",
+      "name": "GitHub Copilot",
+      "status": "ready",
+      "mode": "webhook",
+      "createdAt": "2026-04-21T06:34:35.088Z"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "sess_9b28e39e3e37",
+      "tenantId": "tenant_eacee60e77bd",
+      "platform": "claude",
+      "status": "completed",
+      "startTime": "2026-04-21T06:34:35.094Z",
+      "lastSeen": "2026-04-21T06:34:35.102Z",
+      "endTime": "2026-04-21T06:34:35.102Z",
+      "costUsd": 0.0105
+    },
+    {
+      "id": "sess_584f17f13f32",
+      "tenantId": "tenant_eacee60e77bd",
+      "platform": "copilot",
+      "status": "completed",
+      "startTime": "2026-04-21T06:34:35.106Z",
+      "lastSeen": "2026-04-21T06:34:35.114Z",
+      "endTime": "2026-04-21T06:34:35.114Z",
+      "costUsd": 0.108
+    }
+  ],
+  "events": [],
+  "webhooks": []
+}

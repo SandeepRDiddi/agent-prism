@@ -1,0 +1,14 @@
+node_modules/
+data/
+.env
+.env.*
+!.env.example
+openspec/
+test/
+.claude/
+db/
+docs/
+*.md
+!README.md
+.git/
+.gitignore

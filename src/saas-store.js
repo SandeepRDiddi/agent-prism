@@ -57,3 +57,28 @@ export async function resetTenantRuns(tenantId) {
   const backend = await getBackend();
   return backend.resetTenantRuns(tenantId);
 }
+
+export async function createSession(tenantId, data) {
+  const backend = await getBackend();
+  return backend.createSession(tenantId, data);
+}
+
+export async function updateSession(sessionId, data) {
+  const backend = await getBackend();
+  return backend.updateSession(sessionId, data);
+}
+
+export async function applySessionTimeout(timeoutMs) {
+  const backend = await getBackend();
+  return backend.applySessionTimeout(timeoutMs);
+}
+
+export async function listSessions(tenantId, opts) {
+  const backend = await getBackend();
+  return backend.listSessions(tenantId, opts);
+}
+
+export async function getActiveSessionCounts(tenantId) {
+  const backend = await getBackend();
+  return backend.getActiveSessionCounts(tenantId);
+}

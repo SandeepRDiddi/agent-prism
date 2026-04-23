@@ -1,0 +1,24 @@
+{
+  "_comment": "Update rates when vendors change pricing. Set last_verified to today's date.",
+  "last_verified": "2026-04-19",
+  "platforms": {
+    "claude": {
+      "input_price_per_token": 0.000003,
+      "output_price_per_token": 0.000015,
+      "model_notes": "Defaults match claude-sonnet-4-x pricing. Adjust per model."
+    },
+    "copilot": {
+      "hourly_seat_rate": 0.054,
+      "model_notes": "GitHub Copilot Enterprise ~$39/user/month ÷ 720h"
+    },
+    "generic": {
+      "model_notes": "Generic platform uses pre-computed cost_usd from ingest payload."
+    }
+  },
+  "fte": {
+    "avg_human_hours_per_task": 2.0,
+    "loaded_hourly_rate_usd": 85.0,
+    "model_notes": "Loaded rate includes salary + benefits + overhead. Adjust to your org."
+  },
+  "session_timeout_minutes": 30
+}
