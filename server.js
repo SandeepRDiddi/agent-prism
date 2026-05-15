@@ -4,6 +4,7 @@ import { dirname, extname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDashboardSnapshot, detectCostLeaks } from "./src/store.js";
 import { config } from "./src/config.js";
+import { createId } from "./src/auth.js";
 import {
   normalizeClaudeRun,
   normalizeCopilotRun,
