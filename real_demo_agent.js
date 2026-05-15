@@ -9,7 +9,7 @@ const prism = new AgentPrism();
 // We pass the Agent Prism token as the API key, so the Proxy knows who you are.
 const anthropic = new Anthropic({
   apiKey: prism.clientSecret,
-  baseURL: `${prism.endpoint}/v1`
+  baseURL: prism.endpoint
 });
 
 // A dummy vulnerable code snippet for the AI to review
