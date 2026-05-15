@@ -96,37 +96,55 @@ async function runDemo() {
       }
     });
 
-    // 4. Send telemetry to Agent Prism
-    console.log("📡 Pushing telemetry to Agent Prism...");
-    const req = http.request({
-      hostname: '127.0.0.1',
-      port: 3000,
-      path: '/api/ingest',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': acpKey,
-        'Content-Length': Buffer.byteLength(prismPayload)
-      }
-    }, (res) => {
-      let data = '';
-      res.on('data', chunk => { data += chunk; });
-      res.on('end', () => {
-        if (res.statusCode === 200 || res.statusCode === 201) {
-          console.log(`✅ Success! Agent run logged. Cost: $${costUsd.toFixed(5)}`);
-          console.log("👉 Check your Agent Prism dashboard to see the real data!");
-        } else {
-          console.error(`❌ Failed to push telemetry (Status ${res.statusCode}):`, data);
-        }
+    // 4. Send telemetry to Agent Prism using OAuth 2.0
+    console.log("📡 Authenticating with Agent Prism via OAuth 2.0...");
+    
+    const prismUrl = process.env.AGENT_PRISM_URL || 'http://127.0.0.1:3000';
+    // For this demo, we treat the tenant ID as Client ID, and the API Key as Client Secret
+    // In production, the dashboard would explicitly label them this way.
+    const clientId = process.env.CLIENT_ID || "tenant_8f7cfd4a2cbd"; // Default to your local tenant for demo
+    const clientSecret = acpKey; 
+
+    try {
+      // Step A: Request a Short-Lived Token
+      const tokenRes = await fetch(`${prismUrl}/api/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          grant_type: 'client_credentials'
+        })
       });
-    });
 
-    req.on('error', (error) => {
-      console.error("❌ Agent Prism Network Error:", error.message);
-    });
+      if (!tokenRes.ok) {
+        throw new Error(`OAuth failed: ${await tokenRes.text()}`);
+      }
 
-    req.write(prismPayload);
-    req.end();
+      const { access_token } = await tokenRes.json();
+      console.log("🔐 Successfully acquired short-lived JWT token!");
+
+      // Step B: Send telemetry using the JWT
+      console.log("📡 Pushing telemetry...");
+      const res = await fetch(`${prismUrl}/api/ingest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${access_token}`
+        },
+        body: prismPayload
+      });
+      
+      if (res.ok) {
+        console.log(`✅ Success! Agent run logged. Cost: $${costUsd.toFixed(5)}`);
+        console.log(`👉 Check your dashboard at ${prismUrl} to see the real data!`);
+      } else {
+        const errorText = await res.text();
+        console.error(`❌ Failed to push telemetry (Status ${res.status}):`, errorText);
+      }
+    } catch (err) {
+      console.error(`❌ Network error while pushing to ${prismUrl}:`, err.message);
+    }
 
   } catch (err) {
     console.error("❌ Error running agent:", err);

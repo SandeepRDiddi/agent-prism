@@ -38,6 +38,7 @@ import { tenantLimiter, bootstrapLimiter } from "./src/middleware/rate-limiter.j
 import { validate, SCHEMAS } from "./src/validation.js";
 import { logRequest, logError } from "./src/middleware/logger.js";
 import { setupGracefulShutdown } from "./src/shutdown.js";
+import jwt from "jsonwebtoken";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -140,8 +141,26 @@ function getApiKey(req) {
 }
 
 async function requireTenant(req, res, setTenantId) {
-  const apiKey = getApiKey(req);
-  const auth = await authenticateTenantApiKey(apiKey);
+  const token = getApiKey(req);
+  let auth = null;
+
+  if (token && token.split('.').length === 3) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || adminSecret);
+      if (decoded.type === "access_token") {
+        const context = await listTenantContext(decoded.tenantId);
+        if (context?.tenant) {
+          auth = { tenant: context.tenant, apiKey: { prefix: "JWT Auth" } };
+        }
+      }
+    } catch (e) {
+      // Invalid JWT falls through
+    }
+  }
+
+  if (!auth) {
+    auth = await authenticateTenantApiKey(token);
+  }
 
   if (!auth?.tenant) {
     sendJson(res, 401, {
@@ -333,6 +352,62 @@ const server = createServer(async (req, res) => {
       });
       
       return sendJson(res, 201, result);
+    }
+
+    if (req.method === "POST" && req.url === "/api/connectors") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const { provider, name, apiKey } = body;
+      if (!provider || !name) return sendJson(res, 400, { error: "bad_request", message: "Missing provider or name" });
+
+      const result = await createConnector(auth.tenant.id, { provider, name, apiKey });
+      
+      await logAuditEvent(auth.tenant.id, {
+        actor: auth.apiKey.prefix,
+        action: "Connector Created",
+        resource: provider,
+        ip: req.socket?.remoteAddress || "127.0.0.1"
+      });
+
+      return sendJson(res, 201, { message: "Connector created", connector: result.connector });
+    }
+
+    if (req.method === "POST" && req.url === "/api/oauth/token") {
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      
+      const { client_id, client_secret, grant_type } = body;
+
+      if (grant_type !== "client_credentials") {
+        return sendJson(res, 400, { error: "unsupported_grant_type", message: "Only client_credentials is supported" });
+      }
+
+      const auth = await authenticateTenantApiKey(client_secret);
+      if (!auth) {
+        return sendJson(res, 401, { error: "invalid_client", message: "Invalid client secret" });
+      }
+
+      const token = jwt.sign({
+        tenantId: auth.tenant.id,
+        type: "access_token",
+        scopes: auth.apiKey.scopes || ["*"]
+      }, process.env.JWT_SECRET || adminSecret, { expiresIn: '1h' });
+
+      await logAuditEvent(auth.tenant.id, {
+        actor: auth.apiKey.prefix,
+        action: "OAuth Token Issued",
+        resource: "JWT Token (1h)",
+        ip: req.socket?.remoteAddress || "127.0.0.1"
+      });
+
+      return sendJson(res, 200, {
+        access_token: token,
+        token_type: "Bearer",
+        expires_in: 3600
+      });
     }
 
     if (req.method === "GET" && req.url === "/api/dashboard") {
