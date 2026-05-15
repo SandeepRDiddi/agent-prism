@@ -34,7 +34,7 @@ async function main() {
     // This request hits Agent Prism, NOT Anthropic.
     // Agent Prism forwards it and handles all telemetry for you!
     const response = await anthropic.messages.create({
-      model: "claude-3-haiku-20240307",
+      model: "claude-sonnet-4-6",
       max_tokens: 1000,
       temperature: 0,
       system: "You are an expert security engineer reviewing a pull request. Identify vulnerabilities and provide a fix. Output exactly what the developer should do.",
