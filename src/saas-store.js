@@ -82,3 +82,19 @@ export async function getActiveSessionCounts(tenantId) {
   const backend = await getBackend();
   return backend.getActiveSessionCounts(tenantId);
 }
+
+export async function logAuditEvent(tenantId, data) {
+  const backend = await getBackend();
+  if (backend.logAuditEvent) {
+    return backend.logAuditEvent(tenantId, data);
+  }
+}
+
+export async function listAuditLogs(tenantId) {
+  const backend = await getBackend();
+  if (backend.listAuditLogs) {
+    return backend.listAuditLogs(tenantId);
+  }
+  return [];
+}
+

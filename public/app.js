@@ -13,7 +13,7 @@ const workspaceShell = `
   <section class="main-column">
     <section class="metrics-grid" id="metrics-grid"></section>
 
-    <section class="control-grid">
+    <section class="three-col-grid">
       <article class="panel detail-panel" id="selected-agent-panel"></article>
 
       <article class="panel feed-panel">
@@ -23,9 +23,30 @@ const workspaceShell = `
         </div>
         <div id="activity-feed" class="activity-feed"></div>
       </article>
+
+      <article class="panel">
+        <div class="panel-title">
+          <p class="eyebrow">Enterprise Security</p>
+          <h2>Immutable Audit Trail</h2>
+        </div>
+        <div class="audit-table-container" style="overflow-y: auto; max-height: 260px;">
+          <table class="audit-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--line); color: var(--muted);">
+                <th style="padding: 8px 4px;">Time</th>
+                <th style="padding: 8px 4px;">Actor</th>
+                <th style="padding: 8px 4px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="audit-logs-body">
+              <tr><td colspan="3" style="padding: 12px 4px; color: var(--muted);">Loading audit logs...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
     </section>
 
-    <section class="bottom-grid">
+    <section class="three-col-grid">
       <article class="panel">
         <div class="panel-title">
           <p class="eyebrow">Provider Comparison</p>
@@ -39,26 +60,15 @@ const workspaceShell = `
           <p class="eyebrow">Cost Leak Radar</p>
           <h2>Where spend is being wasted</h2>
         </div>
-        <div id="leak-list" class="stack"></div>
+        <div id="leak-list" class="stack" style="overflow-y: auto; max-height: 220px;"></div>
       </article>
-    </section>
 
-    <section class="bottom-grid">
       <article class="panel">
         <div class="panel-title">
           <p class="eyebrow">Workflow Insights</p>
           <h2>Budget and reliability by workflow</h2>
         </div>
-        <div id="workflow-cards" class="stack"></div>
-      </article>
-
-      <article class="panel">
-        <div class="panel-title">
-          <p class="eyebrow">USP</p>
-          <h2 id="usp-name">Control Score + Cost Leak Radar</h2>
-        </div>
-        <p class="usp-summary" id="usp-summary"></p>
-        <div class="pillars" id="usp-pillars"></div>
+        <div id="workflow-cards" class="stack" style="overflow-y: auto; max-height: 220px;"></div>
       </article>
     </section>
   </section>
@@ -410,6 +420,19 @@ function renderUsp(usp) {
     .join("");
 }
 
+function renderAuditLogs(logs) {
+  document.querySelector("#audit-logs-body").innerHTML =
+    (!logs || logs.length === 0)
+      ? `<tr><td colspan="3" style="padding: 12px 4px; color: var(--muted);">No audit logs found.</td></tr>`
+      : logs.map(log => `
+          <tr style="border-bottom: 1px solid var(--line);">
+            <td style="padding: 8px 4px; color: var(--muted);">${new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+            <td style="padding: 8px 4px; font-family: var(--font-mono);">${log.actor}</td>
+            <td style="padding: 8px 4px;">${log.action}</td>
+          </tr>
+        `).join("");
+}
+
 function renderDashboard(data) {
   dashboardState = data;
   renderMetrics(data.headlineMetrics);
@@ -419,7 +442,6 @@ function renderDashboard(data) {
   renderProviderTable(data.providerComparison);
   renderLeaks(data.costLeaks);
   renderWorkflows(data.workflowInsights);
-  renderUsp(data.usp);
 }
 
 async function loadTenantSummary() {
@@ -428,8 +450,12 @@ async function loadTenantSummary() {
 }
 
 async function loadDashboard() {
-  const data = await request("/api/dashboard");
+  const [data, auditData] = await Promise.all([
+    request("/api/dashboard"),
+    request("/api/audit").catch(() => ({ auditLogs: [] }))
+  ]);
   renderDashboard(data);
+  renderAuditLogs(auditData.auditLogs);
 }
 
 async function postAction(path) {

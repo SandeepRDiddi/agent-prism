@@ -20,7 +20,9 @@ import {
   createSession,
   updateSession,
   listSessions,
-  getActiveSessionCounts
+  getActiveSessionCounts,
+  logAuditEvent,
+  listAuditLogs
 } from "./src/saas-store.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -321,6 +323,15 @@ const server = createServer(async (req, res) => {
       const errors = validate(SCHEMAS.bootstrap, body);
       if (errors) return sendValidationError(res, errors);
       const result = await bootstrapSaas(body);
+      
+      await logAuditEvent(result.tenant.id, {
+        actor: "System Setup",
+        action: "Tenant Bootstrapped",
+        resource: "Tenant",
+        details: { companyName: body.companyName },
+        ip
+      });
+      
       return sendJson(res, 201, result);
     }
 
@@ -376,6 +387,16 @@ const server = createServer(async (req, res) => {
       const errors = validate(SCHEMAS.createConnector, body);
       if (errors) return sendValidationError(res, errors);
       const connector = await createConnector(auth.tenant.id, body);
+      
+      const ip = req.socket?.remoteAddress || "unknown";
+      await logAuditEvent(auth.tenant.id, {
+        actor: `Admin (via ${auth.apiKey.prefix})`,
+        action: "Connector Created",
+        resource: connector.provider,
+        details: { mode: body.mode },
+        ip
+      });
+
       return sendJson(res, 201, { connector });
     }
 
@@ -390,12 +411,29 @@ const server = createServer(async (req, res) => {
       if (ingestErrors) return sendValidationError(res, ingestErrors);
       const normalizedRun = normalizePayload(body);
       const updated = await upsertTenantRuns(auth.tenant.id, [normalizedRun]);
+      
+      const ip = req.socket?.remoteAddress || "unknown";
+      await logAuditEvent(auth.tenant.id, {
+        actor: `API Key (${auth.apiKey.prefix})`,
+        action: "Telemetry Ingested",
+        resource: normalizedRun.id,
+        details: { agentName: normalizedRun.agentName, costUsd: normalizedRun.costUsd },
+        ip
+      });
+
       return sendJson(res, 201, {
         status: "ingested",
         tenant: auth.tenant.slug,
         totalRuns: updated.length,
         normalizedRun
       });
+    }
+
+    if (req.method === "GET" && req.url === "/api/audit") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const logs = await listAuditLogs(auth.tenant.id);
+      return sendJson(res, 200, { auditLogs: logs });
     }
 
     if (req.method === "POST" && req.url === "/api/reset") {

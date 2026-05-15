@@ -12,7 +12,8 @@ const emptyState = {
   apiKeys: [],
   connectors: [],
   runs: [],
-  sessions: []
+  sessions: [],
+  auditLogs: []
 };
 
 function now() {
@@ -98,6 +99,7 @@ export async function bootstrapSaas({ companyName, adminEmail, adminName }) {
     prefix: apiKey.prefix,
     hash: apiKey.hash,
     status: "active",
+    scopes: ["*"],
     createdAt: now(),
     lastUsedAt: null
   });
@@ -278,3 +280,35 @@ export async function getActiveSessionCounts(tenantId) {
 
   return { total: active.length, byPlatform };
 }
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+export async function logAuditEvent(tenantId, { actor, action, resource, details, ip }) {
+  const state = await readState();
+  if (!state.auditLogs) state.auditLogs = [];
+  
+  const log = {
+    id: createId("audit"),
+    tenantId,
+    actor,
+    action,
+    resource,
+    details: details || {},
+    ip: ip || "unknown",
+    timestamp: now()
+  };
+  
+  state.auditLogs.push(log);
+  await writeState(state);
+  return log;
+}
+
+export async function listAuditLogs(tenantId) {
+  const state = await readState();
+  if (!state.auditLogs) return [];
+  
+  return state.auditLogs
+    .filter((log) => log.tenantId === tenantId)
+    .sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+}
+

@@ -388,7 +388,7 @@ button.ghost {
 }
 
 .detail-logs {
-  max-height: 320px;
+  max-height: 180px;
   overflow: auto;
 }
 
@@ -406,7 +406,7 @@ button.ghost {
 }
 
 .activity-feed {
-  max-height: 760px;
+  max-height: 260px;
   overflow: auto;
 }
 
@@ -469,6 +469,18 @@ button.ghost {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+}
+
+.three-col-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.three-col-grid .panel {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
 }
 
 .bottom-grid .panel {
