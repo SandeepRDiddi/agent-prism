@@ -442,7 +442,7 @@ const server = createServer(async (req, res) => {
     // ---------------------------------------------------------
     // THE GATEWAY PROXY
     // ---------------------------------------------------------
-    if (req.method === "POST" && req.url === "/v1/messages") {
+    if (req.method === "POST" && req.url.startsWith("/v1/messages")) {
       // 1. Authenticate the developer via the CLI token (x-api-key)
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) return;

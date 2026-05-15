@@ -8,7 +8,7 @@ const prism = new AgentPrism();
 // 2. We point the standard Anthropic SDK at our secure Gateway Proxy!
 // We pass the Agent Prism token as the API key, so the Proxy knows who you are.
 const anthropic = new Anthropic({
-  apiKey: prism.clientSecret, 
+  apiKey: prism.clientSecret,
   baseURL: `${prism.endpoint}/v1`
 });
 
@@ -27,14 +27,14 @@ const PR_DIFF = `
 
 async function main() {
   console.log("🚀 Starting 100% Keyless Claude PR Review Agent...");
-  
+
   try {
     console.log("⏳ Sending PR diff through the Agent Prism Gateway Proxy...");
 
     // This request hits Agent Prism, NOT Anthropic.
     // Agent Prism forwards it and handles all telemetry for you!
     const response = await anthropic.messages.create({
-      model: "claude-3-5-haiku-latest",
+      model: "claude-3-haiku-20240307",
       max_tokens: 1000,
       temperature: 0,
       system: "You are an expert security engineer reviewing a pull request. Identify vulnerabilities and provide a fix. Output exactly what the developer should do.",
