@@ -136,6 +136,31 @@ function normalizePayload(body) {
   return normalizeGenericRun(body.payload || body);
 }
 
+// ---------------------------------------------------------
+// ALERTING ENGINE (Mock Webhook Dispatcher)
+// ---------------------------------------------------------
+async function dispatchBudgetAlert(tenantId, run) {
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+  const message = `🚨 *Agent Budget Violation Detected!*\n*Tenant:* ${tenantId}\n*Agent:* ${run.agentName}\n*Cost:* $${run.costUsd.toFixed(4)} (Budget: $${run.budgetUsd.toFixed(4)})\n*Task:* ${run.taskType}`;
+  
+  if (webhookUrl) {
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message })
+      });
+      console.log(`[Alert Engine] Webhook dispatched to Slack for run ${run.id}`);
+    } catch (err) {
+      console.error(`[Alert Engine] Failed to dispatch webhook:`, err.message);
+    }
+  } else {
+    // If no webhook URL is set, just log it as a simulation
+    console.log(`\n[Alert Engine] SIMULATED SLACK MESSAGE:\n${message}\n`);
+  }
+}
+
+
 function getApiKey(req) {
   return req.headers["x-api-key"] || req.headers.authorization?.replace(/^Bearer\s+/i, "");
 }
@@ -495,6 +520,10 @@ const server = createServer(async (req, res) => {
         details: { agentName: normalizedRun.agentName, costUsd: normalizedRun.costUsd },
         ip
       });
+
+      if (normalizedRun.costUsd > normalizedRun.budgetUsd) {
+        await dispatchBudgetAlert(auth.tenant.id, normalizedRun);
+      }
 
       return sendJson(res, 201, {
         status: "ingested",

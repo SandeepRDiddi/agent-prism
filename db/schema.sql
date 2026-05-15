@@ -71,3 +71,16 @@ CREATE TABLE agent_runs (
 CREATE INDEX idx_agent_runs_tenant_time ON agent_runs (tenant_id, start_time DESC);
 CREATE INDEX idx_connectors_tenant ON connectors (tenant_id);
 CREATE INDEX idx_api_keys_tenant ON api_keys (tenant_id);
+
+CREATE TABLE audit_logs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  resource TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ip_address TEXT NOT NULL
+);
+
+CREATE INDEX idx_audit_logs_tenant_time ON audit_logs (tenant_id, timestamp DESC);

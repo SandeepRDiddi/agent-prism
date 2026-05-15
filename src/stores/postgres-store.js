@@ -350,3 +350,41 @@ export async function resetTenantRuns(tenantId) {
   const pool = await getPool();
   await pool.query("delete from agent_runs where tenant_id = $1", [tenantId]);
 }
+
+export async function logAuditEvent(tenantId, data) {
+  const pool = await getPool();
+  const id = createId("audit");
+  const timestamp = data.timestamp || now();
+  const actor = data.actor || "System";
+  const action = data.action || "Unknown Action";
+  const resource = data.resource || "Unknown Resource";
+  const details = data.details || {};
+  const ip = data.ip || "0.0.0.0";
+
+  await pool.query(
+    `insert into audit_logs (id, tenant_id, timestamp, actor, action, resource, details, ip_address) 
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+    [id, tenantId, timestamp, actor, action, resource, JSON.stringify(details), ip]
+  );
+  
+  return { id, tenantId, timestamp, actor, action, resource, details, ip };
+}
+
+export async function listAuditLogs(tenantId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    "select * from audit_logs where tenant_id = $1 order by timestamp desc limit 100",
+    [tenantId]
+  );
+  
+  return result.rows.map(row => ({
+    id: row.id,
+    tenantId: row.tenant_id,
+    timestamp: row.timestamp?.toISOString?.() || row.timestamp,
+    actor: row.actor,
+    action: row.action,
+    resource: row.resource,
+    details: row.details,
+    ip: row.ip_address
+  }));
+}

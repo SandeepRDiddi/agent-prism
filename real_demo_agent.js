@@ -1,5 +1,6 @@
-import 'dotenv/config';
-import Anthropic from '@anthropic-ai/sdk';
+import "dotenv/config";
+import Anthropic from "@anthropic-ai/sdk";
+import { AgentPrism } from "./src/sdk/index.js";
 import http from 'http';
 
 // Ensure API keys are present
@@ -96,54 +97,22 @@ async function runDemo() {
       }
     });
 
-    // 4. Send telemetry to Agent Prism using OAuth 2.0
-    console.log("📡 Authenticating with Agent Prism via OAuth 2.0...");
+    // 4. Send telemetry to Agent Prism using the official SDK
+    console.log("📡 Initializing Agent Prism SDK...");
     
-    const prismUrl = process.env.AGENT_PRISM_URL || 'http://127.0.0.1:3000';
-    // For this demo, we treat the tenant ID as Client ID, and the API Key as Client Secret
-    // In production, the dashboard would explicitly label them this way.
-    const clientId = process.env.CLIENT_ID || "tenant_8f7cfd4a2cbd"; // Default to your local tenant for demo
-    const clientSecret = acpKey; 
+    const prism = new AgentPrism({
+      clientId: process.env.CLIENT_ID || "tenant_8f7cfd4a2cbd",
+      clientSecret: acpKey,
+      endpoint: process.env.AGENT_PRISM_URL || 'http://127.0.0.1:3000'
+    });
 
     try {
-      // Step A: Request a Short-Lived Token
-      const tokenRes = await fetch(`${prismUrl}/api/oauth/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: clientId,
-          client_secret: clientSecret,
-          grant_type: 'client_credentials'
-        })
-      });
-
-      if (!tokenRes.ok) {
-        throw new Error(`OAuth failed: ${await tokenRes.text()}`);
-      }
-
-      const { access_token } = await tokenRes.json();
-      console.log("🔐 Successfully acquired short-lived JWT token!");
-
-      // Step B: Send telemetry using the JWT
       console.log("📡 Pushing telemetry...");
-      const res = await fetch(`${prismUrl}/api/ingest`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${access_token}`
-        },
-        body: prismPayload
-      });
-      
-      if (res.ok) {
-        console.log(`✅ Success! Agent run logged. Cost: $${costUsd.toFixed(5)}`);
-        console.log(`👉 Check your dashboard at ${prismUrl} to see the real data!`);
-      } else {
-        const errorText = await res.text();
-        console.error(`❌ Failed to push telemetry (Status ${res.status}):`, errorText);
-      }
+      await prism.logRun(JSON.parse(prismPayload));
+      console.log(`✅ Success! Agent run logged via SDK. Cost: $${costUsd.toFixed(5)}`);
+      console.log(`👉 Check your dashboard to see the real data!`);
     } catch (err) {
-      console.error(`❌ Network error while pushing to ${prismUrl}:`, err.message);
+      console.error(`❌ SDK Error:`, err.message);
     }
 
   } catch (err) {
