@@ -3,21 +3,39 @@
  * Securely authenticate and send telemetry to your Agent Prism control plane.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
 export class AgentPrism {
   /**
    * Initialize the Agent Prism SDK.
-   * @param {Object} options
-   * @param {string} options.clientId - The Tenant/Client ID
-   * @param {string} options.clientSecret - The securely stored API Secret
-   * @param {string} [options.endpoint] - The Agent Prism server URL (default: http://127.0.0.1:3000)
+   * Automatically reads from `~/.agent-prism/credentials.json` if you logged in via CLI.
    */
-  constructor({ clientId, clientSecret, endpoint = 'http://127.0.0.1:3000' }) {
-    if (!clientId || !clientSecret) {
-      throw new Error("Agent Prism SDK: clientId and clientSecret are required.");
+  constructor(options = {}) {
+    let { clientId, clientSecret, endpoint } = options;
+
+    // Fallback to CLI Credentials if no explicit options provided
+    if (!clientSecret) {
+      try {
+        const credFile = path.join(os.homedir(), '.agent-prism', 'credentials.json');
+        if (fs.existsSync(credFile)) {
+          const creds = JSON.parse(fs.readFileSync(credFile, 'utf8'));
+          clientSecret = creds.apiKey;
+          endpoint = endpoint || creds.endpoint;
+        }
+      } catch (e) {
+        // Ignore read errors
+      }
     }
-    this.clientId = clientId;
+
+    if (!clientSecret) {
+      throw new Error("Agent Prism SDK: Not authenticated. Run `npx agent-prism login` or provide clientSecret.");
+    }
+
+    this.clientId = clientId || "cli_user"; 
     this.clientSecret = clientSecret;
-    this.endpoint = endpoint.replace(/\/$/, ""); // trim trailing slash
+    this.endpoint = (endpoint || 'http://127.0.0.1:3000').replace(/\/$/, "");
     
     this.accessToken = null;
     this.tokenExpiration = null;

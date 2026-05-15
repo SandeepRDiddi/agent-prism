@@ -388,7 +388,11 @@ const server = createServer(async (req, res) => {
       const { provider, name, apiKey } = body;
       if (!provider || !name) return sendJson(res, 400, { error: "bad_request", message: "Missing provider or name" });
 
-      const result = await createConnector(auth.tenant.id, { provider, name, apiKey });
+      const result = await createConnector(auth.tenant.id, { 
+        provider, 
+        name, 
+        config: { apiKey } 
+      });
       
       await logAuditEvent(auth.tenant.id, {
         actor: auth.apiKey.prefix,
@@ -433,6 +437,91 @@ const server = createServer(async (req, res) => {
         token_type: "Bearer",
         expires_in: 3600
       });
+    }
+
+    // ---------------------------------------------------------
+    // THE GATEWAY PROXY
+    // ---------------------------------------------------------
+    if (req.method === "POST" && req.url === "/v1/messages") {
+      // 1. Authenticate the developer via the CLI token (x-api-key)
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+
+      // 2. Read the body (Anthropic payload)
+      const body = await parseBody(req, res);
+      if (body === null) return;
+
+      // 3. Find the Anthropic Connector for this tenant
+      const context = await listTenantContext(auth.tenant.id);
+      const anthropicConnector = context.connectors.find(c => c.provider === "anthropic");
+      
+      if (!anthropicConnector || !anthropicConnector.config.apiKey) {
+        return sendJson(res, 403, { 
+          error: "forbidden", 
+          message: "No Anthropic API Key configured in your Agent Prism Dashboard." 
+        });
+      }
+
+      // 4. Forward the request to Anthropic securely
+      const startTime = Date.now();
+      try {
+        const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": anthropicConnector.config.apiKey,
+            "anthropic-version": req.headers["anthropic-version"] || "2023-06-01"
+          },
+          body: JSON.stringify(body)
+        });
+
+        const anthropicData = await anthropicRes.json();
+        const endTime = Date.now();
+
+        // 5. Automatically log the telemetry if successful
+        if (anthropicRes.ok) {
+          const runId = createId("run");
+          // Calculate cost based on tokens
+          const inputTokens = anthropicData.usage?.input_tokens || 0;
+          const outputTokens = anthropicData.usage?.output_tokens || 0;
+          // Haiku pricing as a default fallback
+          const costUsd = (inputTokens * 0.25 / 1000000) + (outputTokens * 1.25 / 1000000);
+
+          const run = {
+            id: runId,
+            agentName: "Gateway Proxy Agent",
+            provider: "anthropic",
+            model: body.model || "unknown",
+            taskType: "proxy_request",
+            status: "success",
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date(endTime).toISOString(),
+            latencyMs: endTime - startTime,
+            tokensIn: inputTokens,
+            tokensOut: outputTokens,
+            costUsd,
+            budgetUsd: 0.05,
+            autonomyLevel: 0,
+            retryCount: 0,
+            toolCalls: 0,
+            policyViolations: 0,
+            userSatisfaction: null,
+            environment: "development",
+            workflow: "gateway",
+            team: "engineering"
+          };
+
+          await upsertTenantRuns(auth.tenant.id, [run]);
+        }
+
+        // 6. Return the exact response back to the SDK
+        setSecurityHeaders(res);
+        res.writeHead(anthropicRes.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(anthropicData));
+        return;
+      } catch (err) {
+        return sendJson(res, 502, { error: "bad_gateway", message: err.message });
+      }
     }
 
     if (req.method === "GET" && req.url === "/api/dashboard") {
