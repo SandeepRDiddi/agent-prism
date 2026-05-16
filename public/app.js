@@ -1,78 +1,17 @@
 let dashboardState = null;
+let dashboardAuditLogs = [];
+let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
 
 const workspaceShell = `
-  <section class="business-dashboard">
+  <section class="clean-dashboard">
+    <nav class="view-tabs" aria-label="Dashboard views">
+      <button class="view-tab active" data-view="overview" type="button">Overview</button>
+      <button class="view-tab" data-view="activity" type="button">Activity</button>
+      <button class="view-tab" data-view="governance" type="button">Governance</button>
+    </nav>
     <section class="metrics-grid cockpit-metrics" id="metrics-grid"></section>
-
-    <section class="business-grid">
-      <article class="panel fleet-panel">
-        <div class="panel-title">
-          <p class="eyebrow">Fleet</p>
-          <h2>Connected agents</h2>
-        </div>
-        <div id="agent-list" class="agent-list compact-agent-list"></div>
-      </article>
-
-      <section class="ops-column">
-        <article class="panel detail-panel cockpit-detail" id="selected-agent-panel"></article>
-
-        <article class="panel feed-panel compact-panel">
-          <div class="panel-title">
-            <p class="eyebrow">Live Activity</p>
-            <h2>Execution trail</h2>
-          </div>
-          <div id="activity-feed" class="activity-feed compact-feed"></div>
-        </article>
-      </section>
-
-      <section class="governance-column">
-        <article class="panel compact-panel">
-          <div class="panel-title">
-            <p class="eyebrow">Provider Control</p>
-            <h2>Performance by platform</h2>
-          </div>
-          <div id="provider-table"></div>
-        </article>
-
-        <article class="panel compact-panel">
-          <div class="panel-title">
-            <p class="eyebrow">Cost Risk</p>
-            <h2>Leak radar</h2>
-          </div>
-          <div id="leak-list" class="stack compact-stack"></div>
-        </article>
-
-        <article class="panel compact-panel">
-          <div class="panel-title">
-            <p class="eyebrow">Workflows</p>
-            <h2>Reliability by function</h2>
-          </div>
-          <div id="workflow-cards" class="stack compact-stack"></div>
-        </article>
-
-        <article class="panel compact-panel">
-          <div class="panel-title">
-            <p class="eyebrow">Audit</p>
-            <h2>Security trail</h2>
-          </div>
-          <div class="audit-table-container compact-audit">
-            <table class="audit-table">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Actor</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="audit-logs-body">
-                <tr><td colspan="3">Loading audit logs...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </article>
-      </section>
-    </section>
+    <section class="view-content" id="view-content"></section>
   </section>
 `;
 
@@ -253,6 +192,165 @@ function renderMetrics(metrics) {
       `
     )
     .join("");
+}
+
+function providerInitial(provider) {
+  return String(provider || "?").slice(0, 1).toUpperCase();
+}
+
+function topAgent() {
+  return dashboardState.agentProfiles[0] || null;
+}
+
+function renderOverview() {
+  const agent = topAgent();
+  const providers = dashboardState.providerComparison.slice(0, 3);
+  const latestRuns = dashboardState.recentRuns.slice(0, 3);
+  const topWorkflow = dashboardState.workflowInsights[0];
+  const leakCount = dashboardState.costLeaks.length;
+
+  document.querySelector("#view-content").innerHTML = `
+    <section class="overview-stage">
+      <article class="panel hero-agent-card">
+        <div class="hero-copy">
+          <p class="eyebrow">Primary Signal</p>
+          <h2>${agent ? agent.agentName : "No active agent runs yet"}</h2>
+          <p>${agent ? agent.currentTask : "Connect Claude, OpenAI, Copilot, or a custom agent to start comparing cost, quality, and risk."}</p>
+        </div>
+        <div class="hero-score">
+          <span>Control Score</span>
+          <strong>${dashboardState.headlineMetrics.averageControlScore}</strong>
+        </div>
+        <div class="hero-strip">
+          <div><span>Status</span><strong>${agent ? agent.status : "Waiting"}</strong></div>
+          <div><span>Workflow</span><strong>${agent ? agent.workflow : "Not started"}</strong></div>
+          <div><span>Spend</span><strong>${currency(dashboardState.headlineMetrics.totalCostUsd)}</strong></div>
+        </div>
+      </article>
+
+      <article class="panel business-card">
+        <p class="eyebrow">Provider Mix</p>
+        <div class="provider-tiles">
+          ${providers.length ? providers.map((row) => `
+            <div class="provider-tile">
+              <div class="provider-mark">${providerInitial(row.provider)}</div>
+              <div>
+                <strong>${row.provider}</strong>
+                <span>${row.runs} runs · ${row.successRate}% success</span>
+              </div>
+            </div>
+          `).join("") : `<p class="muted">Provider comparison appears after the first run.</p>`}
+        </div>
+      </article>
+
+      <article class="panel business-card">
+        <p class="eyebrow">Risk Posture</p>
+        <div class="risk-posture ${leakCount ? "watch" : "clear"}">
+          <strong>${leakCount ? `${leakCount} cost leaks` : "No active cost leaks"}</strong>
+          <span>${leakCount ? "Review governance tab before scaling this workflow." : "Spend is inside expected budget limits."}</span>
+        </div>
+        <div class="compact-fact">
+          <span>Top workflow</span>
+          <strong>${topWorkflow ? topWorkflow.workflow : "No workflow data"}</strong>
+        </div>
+      </article>
+
+      <article class="panel business-card">
+        <p class="eyebrow">Latest Signals</p>
+        <div class="signal-list">
+          ${latestRuns.length ? latestRuns.map((run) => `
+            <div class="signal-row">
+              <span>${run.agentName}</span>
+              <strong>${currency(run.costUsd)} · ${Math.round(run.latencyMs / 1000)}s</strong>
+            </div>
+          `).join("") : `<p class="muted">Telemetry will appear here after ingestion.</p>`}
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function renderActivityView() {
+  const feed = dashboardState.activityFeed.slice(0, 12);
+  document.querySelector("#view-content").innerHTML = `
+    <section class="tab-stage">
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Activity</p>
+          <h2>Latest execution trail</h2>
+        </div>
+        <div class="clean-feed">
+          ${feed.length ? feed.map((item) => `
+            <div class="clean-feed-row">
+              <span>${new Date(item.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+              <strong>${item.agentName}</strong>
+              <em class="feed-level ${levelClass(item.level)}">${item.level.toUpperCase()}</em>
+              <p>${item.message}</p>
+            </div>
+          `).join("") : `<p class="muted">No activity yet.</p>`}
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function renderGovernanceView() {
+  document.querySelector("#view-content").innerHTML = `
+    <section class="tab-stage governance-stage">
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Provider Control</p>
+          <h2>Performance by platform</h2>
+        </div>
+        <div id="provider-table"></div>
+      </article>
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Cost Risk</p>
+          <h2>Leak radar</h2>
+        </div>
+        <div id="leak-list" class="stack"></div>
+      </article>
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Audit</p>
+          <h2>Security trail</h2>
+        </div>
+        <table class="audit-table">
+          <thead>
+            <tr><th>Time</th><th>Actor</th><th>Action</th></tr>
+          </thead>
+          <tbody id="audit-logs-body"></tbody>
+        </table>
+      </article>
+    </section>
+  `;
+  renderProviderTable(dashboardState.providerComparison);
+  renderLeaks(dashboardState.costLeaks);
+  renderAuditLogs(dashboardAuditLogs);
+}
+
+function renderCurrentView() {
+  document.querySelectorAll(".view-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === currentView);
+  });
+
+  if (currentView === "activity") {
+    renderActivityView();
+  } else if (currentView === "governance") {
+    renderGovernanceView();
+  } else {
+    renderOverview();
+  }
+}
+
+function attachViewTabs() {
+  document.querySelectorAll(".view-tab").forEach((button) => {
+    button.addEventListener("click", () => {
+      currentView = button.dataset.view;
+      renderCurrentView();
+    });
+  });
 }
 
 function renderAgentList(agents) {
@@ -473,12 +571,7 @@ function renderAuditLogs(logs) {
 function renderDashboard(data) {
   dashboardState = data;
   renderMetrics(data.headlineMetrics);
-  renderAgentList(data.agentProfiles);
-  renderSelectedAgent(data.selectedAgent);
-  renderActivityFeed(data.activityFeed);
-  renderProviderTable(data.providerComparison);
-  renderLeaks(data.costLeaks);
-  renderWorkflows(data.workflowInsights);
+  renderCurrentView();
 }
 
 async function loadTenantSummary() {
@@ -491,8 +584,8 @@ async function loadDashboard() {
     request("/api/dashboard"),
     request("/api/audit").catch(() => ({ auditLogs: [] }))
   ]);
+  dashboardAuditLogs = auditData.auditLogs || [];
   renderDashboard(data);
-  renderAuditLogs(auditData.auditLogs);
 }
 
 async function postAction(path) {
@@ -516,6 +609,7 @@ async function initializeApp() {
 
     document.querySelector("#workspace").innerHTML = workspaceShell;
     document.querySelector("#workspace").classList.add("workspace-business");
+    attachViewTabs();
     await loadTenantSummary();
     await loadDashboard();
   } catch (error) {

@@ -948,44 +948,246 @@ canvas {
 /* Business cockpit overrides for the primary authenticated dashboard. */
 .workspace.workspace-business {
   display: block !important;
-  padding: 14px;
+  padding: 18px 20px;
 }
 
-.workspace-business .business-dashboard {
-  width: 100%;
-  max-width: 1560px;
-}
-
-.workspace-business .business-grid {
+.workspace-business .clean-dashboard {
   display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(440px, 1.45fr) minmax(360px, 1.05fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 16px;
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+.view-tabs {
+  display: inline-flex;
+  width: fit-content;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.view-tab {
+  min-width: 104px;
+  border-radius: 6px;
+  padding: 9px 14px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.view-tab.active {
+  background: rgba(79, 128, 255, 0.16);
+  color: var(--text);
+  border-color: rgba(122, 145, 255, 0.22);
 }
 
 .workspace-business .metric-card {
-  min-height: 96px;
-  padding: 14px 16px;
+  min-height: 88px;
+  padding: 13px 16px;
   border-radius: 8px;
   gap: 0;
+  box-shadow: none;
 }
 
 .workspace-business .metric-value {
-  margin: 0.35rem 0 0.1rem;
+  margin: 0.25rem 0 0.08rem;
   font-size: 1.8rem;
 }
 
-.workspace-business .detail-panel {
-  padding: 14px !important;
+.view-content {
+  min-height: 0;
 }
 
-.workspace-business .detail-panel h3 {
-  font-size: 1.1rem;
+.overview-stage {
+  display: grid;
+  grid-template-columns: minmax(520px, 1.45fr) minmax(280px, 0.78fr) minmax(280px, 0.78fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+}
+
+.hero-agent-card {
+  grid-row: span 2;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: 1fr auto;
+  gap: 18px;
+  padding: 24px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.hero-copy h2 {
+  margin: 0 0 10px;
+  font-size: clamp(2rem, 3vw, 3.1rem);
+  line-height: 1;
   letter-spacing: 0;
 }
 
-@media (max-width: 1120px) {
-  .workspace-business .business-grid {
-    grid-template-columns: 1fr;
-  }
+.hero-copy p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.hero-score {
+  min-width: 150px;
+  align-self: start;
+  padding: 16px;
+  border: 1px solid rgba(122, 145, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(79, 128, 255, 0.08);
+  text-align: center;
+}
+
+.hero-score span,
+.hero-strip span,
+.compact-fact span,
+.provider-tile span,
+.signal-row span,
+.risk-posture span {
+  color: var(--muted);
+}
+
+.hero-score strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 3.2rem;
+  line-height: 1;
+  color: var(--blue);
+}
+
+.hero-strip {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hero-strip div,
+.compact-fact,
+.risk-posture,
+.signal-row,
+.provider-tile {
+  border: 1px solid rgba(122, 145, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.hero-strip div {
+  padding: 12px;
+}
+
+.hero-strip strong,
+.compact-fact strong {
+  display: block;
+  margin-top: 5px;
+}
+
+.business-card {
+  padding: 18px;
+  border-radius: 10px;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.provider-tiles,
+.signal-list {
+  display: grid;
+  gap: 10px;
+}
+
+.provider-tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+
+.provider-mark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(79, 128, 255, 0.18);
+  color: #b9caff;
+  font-weight: 800;
+}
+
+.provider-tile strong,
+.provider-tile span {
+  display: block;
+}
+
+.risk-posture {
+  padding: 18px;
+  margin-bottom: 12px;
+}
+
+.risk-posture strong {
+  display: block;
+  font-size: 1.35rem;
+  color: var(--green);
+}
+
+.risk-posture.watch strong {
+  color: var(--amber);
+}
+
+.compact-fact {
+  padding: 12px;
+}
+
+.signal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+}
+
+.tab-stage {
+  display: grid;
+  gap: 16px;
+}
+
+.governance-stage {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.wide-panel {
+  padding: 18px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.clean-feed {
+  display: grid;
+  gap: 8px;
+}
+
+.clean-feed-row {
+  display: grid;
+  grid-template-columns: 90px minmax(160px, 0.5fr) 110px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(122, 145, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.clean-feed-row p {
+  margin: 0;
 }
 
 @media (min-width: 1121px) {
@@ -994,47 +1196,36 @@ canvas {
     overflow: hidden;
   }
 
-  .workspace-business .business-dashboard {
-    height: 100%;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .workspace-business .business-grid,
-  .workspace-business .ops-column,
-  .workspace-business .governance-column {
-    min-height: 0;
+  .workspace-business .clean-dashboard {
     height: 100%;
   }
+}
 
-  .workspace-business .ops-column {
-    grid-template-rows: minmax(250px, 1fr) minmax(150px, 0.72fr);
+@media (max-width: 1120px) {
+  .overview-stage,
+  .governance-stage {
+    grid-template-columns: 1fr;
+    height: auto;
   }
 
-  .workspace-business .governance-column {
-    overflow: auto;
-    padding-right: 2px;
+  .hero-agent-card {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .view-tabs,
+  .hero-strip,
+  .clean-feed-row {
+    grid-template-columns: 1fr;
+    width: 100%;
   }
 
-  .workspace-business .fleet-panel,
-  .workspace-business .cockpit-detail,
-  .workspace-business .compact-panel {
-    min-height: 0;
-    overflow: hidden;
+  .view-tabs {
+    display: grid;
   }
 
-  .workspace-business .fleet-panel {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .workspace-business .compact-agent-list {
-    flex: 1;
-    min-height: 0;
-    max-height: none;
-  }
-
-  .workspace-business .cockpit-detail,
-  .workspace-business .feed-panel {
-    overflow: auto;
+  .hero-agent-card {
+    grid-template-columns: 1fr;
   }
 }
