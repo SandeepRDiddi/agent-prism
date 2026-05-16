@@ -2,74 +2,76 @@ let dashboardState = null;
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
 
 const workspaceShell = `
-  <aside class="sidebar panel">
-    <div class="panel-title">
-      <p class="eyebrow">Agents</p>
-      <h2>Connected fleet</h2>
-    </div>
-    <div id="agent-list" class="agent-list"></div>
-  </aside>
+  <section class="business-dashboard">
+    <section class="metrics-grid cockpit-metrics" id="metrics-grid"></section>
 
-  <section class="main-column">
-    <section class="metrics-grid" id="metrics-grid"></section>
-
-    <section class="three-col-grid">
-      <article class="panel detail-panel" id="selected-agent-panel"></article>
-
-      <article class="panel feed-panel">
+    <section class="business-grid">
+      <article class="panel fleet-panel">
         <div class="panel-title">
-          <p class="eyebrow">Live Activity Feed</p>
-          <h2>Cross-agent execution trail</h2>
+          <p class="eyebrow">Fleet</p>
+          <h2>Connected agents</h2>
         </div>
-        <div id="activity-feed" class="activity-feed"></div>
+        <div id="agent-list" class="agent-list compact-agent-list"></div>
       </article>
 
-      <article class="panel">
-        <div class="panel-title">
-          <p class="eyebrow">Enterprise Security</p>
-          <h2>Immutable Audit Trail</h2>
-        </div>
-        <div class="audit-table-container" style="overflow-y: auto; max-height: 260px;">
-          <table class="audit-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
-            <thead>
-              <tr style="border-bottom: 1px solid var(--line); color: var(--muted);">
-                <th style="padding: 8px 4px;">Time</th>
-                <th style="padding: 8px 4px;">Actor</th>
-                <th style="padding: 8px 4px;">Action</th>
-              </tr>
-            </thead>
-            <tbody id="audit-logs-body">
-              <tr><td colspan="3" style="padding: 12px 4px; color: var(--muted);">Loading audit logs...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-    </section>
+      <section class="ops-column">
+        <article class="panel detail-panel cockpit-detail" id="selected-agent-panel"></article>
 
-    <section class="three-col-grid">
-      <article class="panel">
-        <div class="panel-title">
-          <p class="eyebrow">Provider Comparison</p>
-          <h2>Who is performing under control?</h2>
-        </div>
-        <div id="provider-table"></div>
-      </article>
+        <article class="panel feed-panel compact-panel">
+          <div class="panel-title">
+            <p class="eyebrow">Live Activity</p>
+            <h2>Execution trail</h2>
+          </div>
+          <div id="activity-feed" class="activity-feed compact-feed"></div>
+        </article>
+      </section>
 
-      <article class="panel">
-        <div class="panel-title">
-          <p class="eyebrow">Cost Leak Radar</p>
-          <h2>Where spend is being wasted</h2>
-        </div>
-        <div id="leak-list" class="stack" style="overflow-y: auto; max-height: 220px;"></div>
-      </article>
+      <section class="governance-column">
+        <article class="panel compact-panel">
+          <div class="panel-title">
+            <p class="eyebrow">Provider Control</p>
+            <h2>Performance by platform</h2>
+          </div>
+          <div id="provider-table"></div>
+        </article>
 
-      <article class="panel">
-        <div class="panel-title">
-          <p class="eyebrow">Workflow Insights</p>
-          <h2>Budget and reliability by workflow</h2>
-        </div>
-        <div id="workflow-cards" class="stack" style="overflow-y: auto; max-height: 220px;"></div>
-      </article>
+        <article class="panel compact-panel">
+          <div class="panel-title">
+            <p class="eyebrow">Cost Risk</p>
+            <h2>Leak radar</h2>
+          </div>
+          <div id="leak-list" class="stack compact-stack"></div>
+        </article>
+
+        <article class="panel compact-panel">
+          <div class="panel-title">
+            <p class="eyebrow">Workflows</p>
+            <h2>Reliability by function</h2>
+          </div>
+          <div id="workflow-cards" class="stack compact-stack"></div>
+        </article>
+
+        <article class="panel compact-panel">
+          <div class="panel-title">
+            <p class="eyebrow">Audit</p>
+            <h2>Security trail</h2>
+          </div>
+          <div class="audit-table-container compact-audit">
+            <table class="audit-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="audit-logs-body">
+                <tr><td colspan="3">Loading audit logs...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
     </section>
   </section>
 `;
@@ -234,10 +236,10 @@ function renderSetupScreen(type, message = "") {
 
 function renderMetrics(metrics) {
   const cards = [
-    ["Active Agents", dashboardState.agentProfiles.length, "Across the connected fleet", "green"],
-    ["Tasks Completed", dashboardState.status.success, "Successful tenant runs", "violet"],
-    ["Tokens Used", compactNumber(dashboardState.recentRuns.reduce((sum, run) => sum + run.tokensIn + run.tokensOut, 0)), "Across this tenant", "amber"],
-    ["Avg Latency", `${Math.round(metrics.averageLatencyMs / 1000)}s`, "Blended end-to-end execution", "blue"]
+    ["Active Agents", dashboardState.agentProfiles.length, "Connected fleet", "green"],
+    ["Success Rate", `${metrics.successRate}%`, `${dashboardState.status.success} completed`, "violet"],
+    ["Total Spend", currency(metrics.totalCostUsd), `${metrics.budgetUsedPercent}% of budget`, "amber"],
+    ["Control Score", metrics.averageControlScore, `${Math.round(metrics.averageLatencyMs / 1000)}s avg latency`, "blue"]
   ];
 
   document.querySelector("#metrics-grid").innerHTML = cards
@@ -261,15 +263,14 @@ function renderAgentList(agents) {
           .map((agent, index) => {
             const latest = agent.latestRun;
             return `
-              <article class="agent-card ${index === 0 ? "active" : ""}">
+              <article class="agent-card compact-agent-card ${index === 0 ? "active" : ""}">
                 <div class="agent-top">
                   <div>
                     <div class="agent-name">${agent.agentName}</div>
-                    <div class="agent-role">${latest.taskType}</div>
+                    <div class="agent-role">${latest.taskType} · ${agent.team}</div>
                   </div>
                   <span class="status-label ${statusClass(agent.status)}">${agent.status}</span>
                 </div>
-                <p>${agent.currentTask}</p>
                 <div class="progress-track">
                   <div class="progress-bar" style="width: ${agent.progressPercent}%"></div>
                 </div>
@@ -330,7 +331,7 @@ function renderSelectedAgent(agent) {
       </div>
     </div>
 
-    <div class="detail-stats">
+      <div class="detail-stats">
       <div class="detail-stat-card">
         <span class="muted">Status</span>
         <strong>${agent.status}</strong>
@@ -459,12 +460,12 @@ function renderUsp(usp) {
 function renderAuditLogs(logs) {
   document.querySelector("#audit-logs-body").innerHTML =
     (!logs || logs.length === 0)
-      ? `<tr><td colspan="3" style="padding: 12px 4px; color: var(--muted);">No audit logs found.</td></tr>`
+      ? `<tr><td colspan="3">No audit logs found.</td></tr>`
       : logs.map(log => `
-          <tr style="border-bottom: 1px solid var(--line);">
-            <td style="padding: 8px 4px; color: var(--muted);">${new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-            <td style="padding: 8px 4px; font-family: var(--font-mono);">${log.actor}</td>
-            <td style="padding: 8px 4px;">${log.action}</td>
+          <tr>
+            <td>${new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+            <td>${log.actor}</td>
+            <td>${log.action}</td>
           </tr>
         `).join("");
 }
@@ -514,6 +515,7 @@ async function initializeApp() {
     }
 
     document.querySelector("#workspace").innerHTML = workspaceShell;
+    document.querySelector("#workspace").classList.add("workspace-business");
     await loadTenantSummary();
     await loadDashboard();
   } catch (error) {

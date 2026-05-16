@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createApiKey, createId, verifyApiKey } from "../auth.js";
@@ -36,7 +36,9 @@ export async function readState() {
 }
 
 export async function writeState(state) {
-  await writeFile(appStatePath, JSON.stringify(state, null, 2), "utf8");
+  const tempPath = `${appStatePath}.${process.pid}.tmp`;
+  await writeFile(tempPath, JSON.stringify(state, null, 2), "utf8");
+  await rename(tempPath, appStatePath);
 }
 
 export async function getBootstrapStatus() {
