@@ -593,3 +593,173 @@ button.ghost {
     grid-template-columns: 1fr;
   }
 }
+
+/* Executive Dashboard Styles */
+
+/* Three column grid for executive view */
+.three-col-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+@media (max-width: 1280px) {
+  .three-col-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .three-col-grid > article:first-child {
+    grid-column: span 1;
+  }
+}
+
+/* Metric cards with labels and values */
+.metric-card {
+  background: linear-gradient(180deg, rgba(18, 29, 60, 0.88), rgba(12, 20, 43, 0.95));
+  border: 1px solid rgba(122, 145, 255, 0.14);
+  border-radius: 18px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 140px;
+}
+
+.metric-label {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.metric-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.04em;
+  margin: 0;
+  line-height: 1;
+}
+
+/* Authentication overlay and modal */
+.auth-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.auth-modal {
+  background: linear-gradient(180deg, rgba(15, 24, 48, 0.98), rgba(9, 18, 40, 0.98));
+  border: 1px solid rgba(122, 145, 255, 0.14);
+  border-radius: 22px;
+  padding: 2.5rem;
+  width: min(100%, 420px);
+  box-shadow: var(--shadow);
+}
+
+.auth-modal h2 {
+  margin: 0 0 1rem;
+  font-size: 1.75rem;
+  color: var(--text);
+}
+
+.auth-modal p {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0 0 1.5rem;
+}
+
+.auth-modal form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-modal input {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(122, 145, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.auth-modal input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.auth-modal input:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: rgba(79, 128, 255, 0.1);
+}
+
+.auth-modal button {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  background: linear-gradient(135deg, var(--blue), #6366f1);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.95rem;
+}
+
+.auth-modal button:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(79, 128, 255, 0.3);
+}
+
+.auth-error {
+  color: var(--red);
+  font-size: 0.875rem;
+  margin: 1rem 0 0;
+  text-align: center;
+  min-height: 1.2rem;
+}
+
+/* Detail panel styling enhancement */
+.detail-panel {
+  padding: 2rem !important;
+}
+
+.detail-panel h3 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: -0.04em;
+}
+
+/* Ensure grid-based layout for executive metrics */
+#executive-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Workspace adjustment for executive dashboard */
+.workspace {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Make sure charts have proper space */
+canvas {
+  max-width: 100%;
+}

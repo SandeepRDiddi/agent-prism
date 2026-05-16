@@ -98,30 +98,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Populate Top Metrics
     const metricsGrid = document.getElementById("executive-metrics");
-    metricsGrid.innerHTML = \`
+    metricsGrid.innerHTML = `
       <div class="metric-card">
         <div class="metric-label">Total AI Compute Spend</div>
-        <div class="metric-value">$\${totalSpend.toFixed(4)}</div>
+        <div class="metric-value">$${totalSpend.toFixed(4)}</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Total Automated Actions</div>
-        <div class="metric-value">\${runs.length}</div>
+        <div class="metric-value">${runs.length}</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Active Autonomous Agents</div>
-        <div class="metric-value">\${new Set(runs.map(r => r.agentName)).size}</div>
+        <div class="metric-value">${new Set(runs.map(r => r.agentName)).size}</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">Avg Cost per Action</div>
-        <div class="metric-value">$\${(runs.length > 0 ? totalSpend / runs.length : 0).toFixed(4)}</div>
+        <div class="metric-value">$${(runs.length > 0 ? totalSpend / runs.length : 0).toFixed(4)}</div>
       </div>
-    \`;
+    `;
 
     // Populate ROI Calculator
     // Assumption: 1 agent run saves 15 minutes of an engineer's time at $100/hr ($25 saved)
     const humanCostSaved = runs.length * 25.00;
-    document.getElementById("roi-ai-cost").textContent = \`$\${totalSpend.toFixed(2)}\`;
-    document.getElementById("roi-human-cost").textContent = \`$\${humanCostSaved.toFixed(2)}\`;
+    document.getElementById("roi-ai-cost").textContent = `$${totalSpend.toFixed(2)}`;
+    document.getElementById("roi-human-cost").textContent = `$${humanCostSaved.toFixed(2)}`;
     
     let multiplier = "0x";
     if (totalSpend > 0) {
@@ -134,7 +134,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Populate Risk Posture
     document.getElementById("kpi-violations").textContent = totalViolations;
     document.getElementById("kpi-guardrails").textContent = totalGuardrails;
-    document.getElementById("kpi-latency").textContent = \`\${maxLatency}ms\`;
+    document.getElementById("kpi-latency").textContent = `${maxLatency}ms`;
 
     // Render Charts
     renderSpendTrendChart(cumulativeSpendData);
@@ -206,9 +206,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderTeamChart(spendByTeam) {
-    const ctx = document.getElementById('teamChartInstance')?.getContext('2d');
-    if (!ctx) return; // Fallback handles the canvas
-
+    // FIX: Changed from 'teamChartInstance' to 'teamAllocationChart' (the actual canvas ID)
     const cCtx = document.getElementById('teamAllocationChart').getContext('2d');
     
     if (teamChartInstance) {
