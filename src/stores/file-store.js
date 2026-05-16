@@ -116,6 +116,47 @@ export async function bootstrapSaas({ companyName, adminEmail, adminName }) {
   };
 }
 
+export async function createTenantApiKey({ tenantId, name } = {}) {
+  const state = await readState();
+  const tenant = tenantId
+    ? state.tenants.find((item) => item.id === tenantId)
+    : state.tenants[0];
+
+  if (!tenant) {
+    throw new Error("No tenant is bootstrapped yet.");
+  }
+
+  const apiKey = createApiKey();
+  const record = {
+    id: createId("key"),
+    tenantId: tenant.id,
+    name: name || "Browser dashboard key",
+    prefix: apiKey.prefix,
+    hash: apiKey.hash,
+    status: "active",
+    scopes: ["*"],
+    createdAt: now(),
+    lastUsedAt: null
+  };
+
+  state.apiKeys.push(record);
+  await writeState(state);
+
+  return {
+    tenant,
+    apiKey: apiKey.plainText,
+    key: {
+      id: record.id,
+      tenantId: record.tenantId,
+      name: record.name,
+      prefix: record.prefix,
+      status: record.status,
+      createdAt: record.createdAt,
+      lastUsedAt: record.lastUsedAt
+    }
+  };
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   if (!apiKeyValue) {
     return null;

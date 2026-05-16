@@ -33,6 +33,11 @@ export async function bootstrapSaas(payload) {
   return backend.bootstrapSaas(payload);
 }
 
+export async function createTenantApiKey(payload) {
+  const backend = await getBackend();
+  return backend.createTenantApiKey(payload);
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   const backend = await getBackend();
   return backend.authenticateTenantApiKey(apiKeyValue);
@@ -97,4 +102,3 @@ export async function listAuditLogs(tenantId) {
   }
   return [];
 }
-

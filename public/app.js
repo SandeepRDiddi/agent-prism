@@ -182,6 +182,13 @@ function renderSetupScreen(type, message = "") {
             <button type="submit">Connect tenant</button>
           </div>
         </form>
+        <form id="generate-api-key-form" class="field-stack">
+          <p class="usp-summary">Lost the tenant key? Enter the admin secret to generate and save a fresh browser dashboard key.</p>
+          <input name="adminSecret" type="password" placeholder="Admin secret" required />
+          <div class="setup-actions">
+            <button type="submit">Generate key</button>
+          </div>
+        </form>
         ${message ? `<p class="usp-summary">${message}</p>` : ""}
       </article>
     </section>
@@ -193,6 +200,35 @@ function renderSetupScreen(type, message = "") {
     tenantApiKey = String(form.get("apiKey") || "");
     localStorage.setItem("acp_api_key", tenantApiKey);
     await initializeApp();
+  });
+
+  document.querySelector("#generate-api-key-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const adminSecret = String(form.get("adminSecret") || "");
+
+    try {
+      const result = await fetch("/api/admin/api-keys", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-secret": adminSecret
+        },
+        body: JSON.stringify({ name: "Browser dashboard key" })
+      });
+
+      if (!result.ok) {
+        const payload = await result.json().catch(() => ({}));
+        throw new Error(payload.message || "Could not generate tenant API key.");
+      }
+
+      const payload = await result.json();
+      tenantApiKey = payload.apiKey;
+      localStorage.setItem("acp_api_key", tenantApiKey);
+      await initializeApp();
+    } catch (error) {
+      renderSetupScreen("api-key", error.message);
+    }
   });
 }
 

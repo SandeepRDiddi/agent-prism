@@ -13,6 +13,7 @@ import {
 import {
   authenticateTenantApiKey,
   bootstrapSaas,
+  createTenantApiKey,
   createConnector,
   getBootstrapStatus,
   listTenantContext,
@@ -377,6 +378,26 @@ const server = createServer(async (req, res) => {
         ip
       });
       
+      return sendJson(res, 201, result);
+    }
+
+    if (req.method === "POST" && req.url === "/api/admin/api-keys") {
+      if (!requireAdmin(req, res)) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const result = await createTenantApiKey({
+        tenantId: body.tenantId,
+        name: body.name
+      });
+
+      await logAuditEvent(result.tenant.id, {
+        actor: "Admin",
+        action: "Tenant API Key Created",
+        resource: result.key.prefix,
+        details: { name: result.key.name },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
       return sendJson(res, 201, result);
     }
 
