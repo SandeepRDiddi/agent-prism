@@ -40,6 +40,8 @@ The current product foundation includes:
 - Multi-tenant workspace bootstrap
 - Tenant-scoped API key access
 - Browser key generation for dashboard access
+- OAuth-style token issuance for SDK and gateway flows
+- Basic Auth protection for the dashboard when configured
 - Provider connector setup for Claude and OpenAI
 - Real Claude gateway demo agent
 - Real OpenAI gateway demo agent
@@ -49,10 +51,12 @@ The current product foundation includes:
 - Provider comparison
 - Workflow reliability signals
 - Audit trail for key actions
+- Session tracking and timeout handling
+- Cost, ROI, and active-agent metrics APIs
+- Slack budget alert webhook support
 - Executive overview dashboard
 - Activity and governance drill-down views
-- File storage for demo mode
-- Postgres-ready schema for production migration
+- File and Postgres storage backends
 - Render deployment support
 
 ## Dashboard Experience
@@ -204,26 +208,27 @@ This is not another prompt tool. It is a control plane for agent operations.
 
 ## Roadmap
 
+The foundations above are already implemented in this repo. The roadmap is focused on SaaS packaging, enterprise controls, and buyer-ready workflows that build on the current product.
+
 Near-term product upgrades:
 
-- Hosted tenant onboarding
-- Dashboard login and session auth
-- Connector management UI
-- Better provider cost models
-- Team and workflow budgets
-- Slack/email alerts
-- More polished executive reporting
+- Hosted onboarding wizard for company setup, provider connection, first test run, and dashboard activation
+- Self-serve connector management UI for adding, rotating, disabling, and validating provider keys
+- Production user accounts and session UX beyond the current API-key and Basic Auth flows
+- Team and workflow budget policy builder using the existing cost and leak signals
+- Managed provider pricing configuration, including model-level OpenAI pricing controls
+- Alert rules UI with alert history, escalation targets, email, and PagerDuty destinations
+- Executive reporting exports and scheduled weekly business summaries
 
 Enterprise roadmap:
 
-- SSO / SAML / OIDC
-- RBAC
-- Dedicated tenant environments
-- Audit exports
-- Policy templates
-- Data retention controls
-- SOC 2-ready controls
-- Analytics storage for large-scale telemetry
+- SSO / SAML / OIDC for enterprise identity providers
+- Role-based access control with role-aware views and admin actions
+- Dedicated tenant environments and data residency options
+- Audit export, retention, and legal hold controls
+- Policy templates and approval workflows for agent rollout
+- SOC 2-ready control evidence and compliance reporting
+- Analytics warehouse support for high-volume telemetry
 
 ## Running Locally
 
