@@ -532,7 +532,11 @@ const server = createServer(async (req, res) => {
       }
       const context = await listTenantContext(auth.tenant.id);
       const snapshot = buildDashboardSnapshot(context.runs);
-      return sendJson(res, 200, snapshot);
+      return sendJson(res, 200, {
+        ...snapshot,
+        tenant: context.tenant,
+        runs: context.runs
+      });
     }
 
     if (req.method === "GET" && req.url === "/api/runs") {

@@ -31,7 +31,8 @@ async function ensureState() {
 export async function readState() {
   await ensureState();
   const raw = await readFile(appStatePath, "utf8");
-  return JSON.parse(raw);
+  const state = JSON.parse(raw);
+  return { ...emptyState, ...state };
 }
 
 export async function writeState(state) {
@@ -311,4 +312,3 @@ export async function listAuditLogs(tenantId) {
     .filter((log) => log.tenantId === tenantId)
     .sort((left, right) => right.timestamp.localeCompare(left.timestamp));
 }
-
