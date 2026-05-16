@@ -12,6 +12,8 @@ const anthropic = new Anthropic({
   baseURL: prism.endpoint
 });
 
+const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+
 // A dummy vulnerable code snippet for the AI to review
 const PR_DIFF = `
 @@ -45,7 +45,7 @@
@@ -34,7 +36,7 @@ async function main() {
     // This request hits Agent Prism, NOT Anthropic.
     // Agent Prism forwards it and handles all telemetry for you!
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      model,
       max_tokens: 1000,
       temperature: 0,
       system: "You are an expert security engineer reviewing a pull request. Identify vulnerabilities and provide a fix. Output exactly what the developer should do.",
@@ -55,6 +57,8 @@ async function main() {
 
   } catch (err) {
     console.error("❌ Error running agent:", err);
+    console.error("\nTip: if Anthropic returns a provider-side 500, try a different Claude model:");
+    console.error("ANTHROPIC_MODEL=claude-sonnet-4-20250514 node real_demo_agent.js");
   }
 }
 
