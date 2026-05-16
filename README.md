@@ -120,7 +120,7 @@ This repository now includes a runnable SaaS foundation with:
 - tenant-scoped API key authentication
 - normalized ingestion APIs
 - multi-tenant state for tenants, users, connectors, and runs
-- sample adapters for Copilot, Claude, and generic agents
+- sample adapters for Copilot, Claude, OpenAI, and generic agents
 - a control-room dashboard UI
 - a Postgres-ready schema for the next production step
 - a detailed README so the project is easy to extend
@@ -198,6 +198,20 @@ The project currently supports:
 - `normalizeCopilotRun(payload)`
 - `normalizeClaudeRun(payload)`
 - `normalizeGenericRun(payload)`
+
+Gateway demos are included for real provider-backed runs:
+
+```bash
+# Save an Anthropic connector, then run a proxied Claude agent.
+node setup_gateway.js
+node real_demo_agent.js
+
+# Save an OpenAI connector, then run a proxied OpenAI agent.
+node setup_openai_gateway.js
+node real_demo_openai_agent.js
+```
+
+Both demos send provider traffic through Agent Prism first, then Agent Prism records the normalized run so the dashboard can compare Claude and OpenAI side by side.
 
 To add a new provider, create a mapper from that provider’s raw payload into the normalized run format.
 

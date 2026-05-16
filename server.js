@@ -291,9 +291,16 @@ function computeCostByPlatform(sessions) {
 function getPlatformStatus() {
   return {
     claude: !!process.env.ANTHROPIC_API_KEY,
+    openai: !!process.env.OPENAI_API_KEY,
     copilot: !!process.env.GITHUB_TOKEN,
     generic: true
   };
+}
+
+function estimateOpenAiCost({ inputTokens = 0, outputTokens = 0 }) {
+  const inputPerMillion = Number(process.env.OPENAI_INPUT_USD_PER_1M_TOKENS || 0);
+  const outputPerMillion = Number(process.env.OPENAI_OUTPUT_USD_PER_1M_TOKENS || 0);
+  return (inputTokens * inputPerMillion / 1000000) + (outputTokens * outputPerMillion / 1000000);
 }
 
 const resolvedPublicDir = resolvePath(publicDir);
@@ -423,7 +430,7 @@ const server = createServer(async (req, res) => {
         ip: req.socket?.remoteAddress || "127.0.0.1"
       });
 
-      return sendJson(res, 201, { message: "Connector created", connector: result.connector });
+      return sendJson(res, 201, { message: "Connector created", connector: result });
     }
 
     if (req.method === "POST" && req.url === "/api/oauth/token") {
@@ -540,6 +547,79 @@ const server = createServer(async (req, res) => {
         setSecurityHeaders(res);
         res.writeHead(anthropicRes.status, { "Content-Type": "application/json" });
         res.end(JSON.stringify(anthropicData));
+        return;
+      } catch (err) {
+        return sendJson(res, 502, { error: "bad_gateway", message: err.message });
+      }
+    }
+
+    if (req.method === "POST" && req.url.startsWith("/v1/responses")) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+
+      const body = await parseBody(req, res);
+      if (body === null) return;
+
+      const context = await listTenantContext(auth.tenant.id);
+      const openAiConnector = context.connectors.find((c) => c.provider === "openai");
+
+      if (!openAiConnector?.config?.apiKey) {
+        return sendJson(res, 403, {
+          error: "forbidden",
+          message: "No OpenAI API key configured in your Agent Prism Dashboard."
+        });
+      }
+
+      const startTime = Date.now();
+      try {
+        const openAiRes = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openAiConnector.config.apiKey}`
+          },
+          body: JSON.stringify(body)
+        });
+
+        const openAiData = await openAiRes.json();
+        const endTime = Date.now();
+
+        if (openAiRes.ok) {
+          const inputTokens = openAiData.usage?.input_tokens || 0;
+          const outputTokens = openAiData.usage?.output_tokens || 0;
+          const run = {
+            id: createId("run"),
+            agentName: "OpenAI Reasoning Agent",
+            provider: "OpenAI",
+            model: body.model || openAiData.model || "unknown",
+            taskType: "security-review",
+            status: "success",
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date(endTime).toISOString(),
+            latencyMs: endTime - startTime,
+            tokensIn: inputTokens,
+            tokensOut: outputTokens,
+            costUsd: estimateOpenAiCost({ inputTokens, outputTokens }),
+            budgetUsd: Number(process.env.OPENAI_DEMO_BUDGET_USD || 0.05),
+            autonomyLevel: 4,
+            retryCount: 0,
+            toolCalls: Array.isArray(body.tools) ? body.tools.length : 0,
+            policyViolations: 0,
+            userSatisfaction: 4,
+            environment: "production",
+            workflow: "github-actions-ci",
+            team: "engineering",
+            tags: ["openai", "security", "review"],
+            breadcrumbs: ["received PR diff", "ran OpenAI response", "captured usage", "recorded telemetry"],
+            notes: "OpenAI PR review processed through the Agent Prism gateway."
+          };
+
+          await upsertTenantRuns(auth.tenant.id, [run]);
+        }
+
+        setSecurityHeaders(res);
+        res.writeHead(openAiRes.status, { "Content-Type": contentTypes[".json"] });
+        res.end(JSON.stringify(openAiData));
         return;
       } catch (err) {
         return sendJson(res, 502, { error: "bad_gateway", message: err.message });
