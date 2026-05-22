@@ -1366,18 +1366,20 @@ canvas {
 
 .connector-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(420px, 1fr));
+  gap: 14px;
 }
 
 .connector-card {
   display: grid;
-  gap: 10px;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 12px;
   align-content: start;
-  padding: 12px;
-  border: 1px solid rgba(122, 145, 255, 0.12);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  min-height: 310px;
+  padding: 16px;
+  border: 1px solid rgba(122, 145, 255, 0.16);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(18, 29, 60, 0.82), rgba(8, 16, 35, 0.94));
 }
 
 .connector-card-top {
@@ -1392,6 +1394,10 @@ canvas {
   display: block;
 }
 
+.connector-card strong {
+  font-size: 1.05rem;
+}
+
 .connector-card span,
 .connector-card p {
   color: var(--muted);
@@ -1399,7 +1405,8 @@ canvas {
 
 .connector-card p {
   margin: 0;
-  line-height: 1.45;
+  line-height: 1.5;
+  min-height: 44px;
 }
 
 .connector-status {
@@ -1436,19 +1443,25 @@ canvas {
   color: #b8c9ff;
 }
 
-.connector-endpoint {
-  padding: 8px;
-  border-radius: 6px;
-  background: rgba(5, 10, 24, 0.28);
-  color: #b8c9ff;
-  font-family: "JetBrains Mono", monospace;
+.connector-action-zone {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(122, 145, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(5, 10, 24, 0.22);
+}
+
+.connector-action-zone label {
+  color: #91a4d2;
   font-size: 0.78rem;
-  overflow-wrap: anywhere;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 
 .connector-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) 132px;
   gap: 8px;
 }
 
@@ -1463,9 +1476,30 @@ canvas {
 }
 
 .connect-source-button,
-.test-source-button,
 .rotate-key-button {
   width: 100%;
+}
+
+.connector-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 10px;
+  align-items: center;
+}
+
+.connector-footer span {
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(5, 10, 24, 0.28);
+  color: #b8c9ff;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.test-source-button {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .clean-feed {
@@ -1548,7 +1582,7 @@ canvas {
 
 @media (max-width: 1180px) {
   .connector-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }
 

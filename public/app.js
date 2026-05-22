@@ -467,12 +467,12 @@ function renderAdminView() {
 
       <article class="panel wide-panel connector-marketplace">
         <div class="panel-title">
-          <p class="eyebrow">Connector Marketplace</p>
-          <h2>No-code onboarding</h2>
+          <p class="eyebrow">Integration Hub</p>
+          <h2>Connect agent platforms</h2>
         </div>
         ${adminActionMessage ? `<p class="admin-message">${adminActionMessage}</p>` : ""}
         <div class="active-source-strip">
-          <span>Connected sources</span>
+          <span>Active tenant sources</span>
           <strong>${connectors.length ? connectors.map((connector) => connector.name).join(", ") : "None yet"}</strong>
         </div>
         <div class="connector-grid">
@@ -501,19 +501,30 @@ function renderAdminView() {
                     : `${item.name} is connected for this tenant. New ${item.name} agent activity can now be tracked by Agent Prism.`
                   : "Ready to add for this tenant."}
               </div>
-              ${item.requiresSecret && (!isConnected || !hasSecret) ? `
-                <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
-                  <input name="apiKey" placeholder="${item.provider === "anthropic" ? "Paste Claude key sk-ant-..." : "Paste OpenAI key sk-..."}" />
-                  <button type="submit">${isConnected ? "Save key" : "Connect"}</button>
-                </form>
-              ` : item.requiresSecret ? `
-                <button class="ghost rotate-key-button" data-provider="${item.provider}" type="button">Rotate key</button>
-              ` : `
-                <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${isConnected ? "Refresh Source" : "Add Source"}</button>
-              `}
               <p>${item.setup}</p>
-              <div class="connector-endpoint">${item.endpoint}</div>
-              <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
+              ${item.requiresSecret && (!isConnected || !hasSecret) ? `
+                <div class="connector-action-zone">
+                  <label>${item.name} API key</label>
+                  <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
+                    <input name="apiKey" placeholder="${item.provider === "anthropic" ? "Paste Claude key sk-ant-..." : "Paste OpenAI key sk-..."}" />
+                    <button type="submit">${isConnected ? "Save key" : "Connect"}</button>
+                  </form>
+                </div>
+              ` : item.requiresSecret ? `
+                <div class="connector-action-zone">
+                  <label>Credential vault</label>
+                  <button class="ghost rotate-key-button" data-provider="${item.provider}" type="button">Rotate provider key</button>
+                </div>
+              ` : `
+                <div class="connector-action-zone">
+                  <label>Source registration</label>
+                  <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${isConnected ? "Refresh Source" : "Add Source"}</button>
+                </div>
+              `}
+              <div class="connector-footer">
+                <span>${item.endpoint}</span>
+                <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
+              </div>
             </div>
           `}).join("") : `<p class="muted">Connector catalog is loading.</p>`}
         </div>
