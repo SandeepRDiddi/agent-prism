@@ -1344,6 +1344,26 @@ canvas {
   color: #65e9aa;
 }
 
+.active-source-strip {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid rgba(32, 194, 119, 0.2);
+  border-radius: 8px;
+  background: rgba(32, 194, 119, 0.07);
+}
+
+.active-source-strip span {
+  color: var(--muted);
+}
+
+.active-source-strip strong {
+  color: #8ef0bf;
+}
+
 .connector-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1443,7 +1463,8 @@ canvas {
 }
 
 .connect-source-button,
-.test-source-button {
+.test-source-button,
+.rotate-key-button {
   width: 100%;
 }
 
@@ -1504,6 +1525,7 @@ canvas {
 
   .inline-admin-form,
   .admin-row,
+  .active-source-strip,
   .connector-card-top,
   .connector-form {
     flex-direction: column;

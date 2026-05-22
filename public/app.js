@@ -471,6 +471,10 @@ function renderAdminView() {
           <h2>No-code onboarding</h2>
         </div>
         ${adminActionMessage ? `<p class="admin-message">${adminActionMessage}</p>` : ""}
+        <div class="active-source-strip">
+          <span>Connected sources</span>
+          <strong>${connectors.length ? connectors.map((connector) => connector.name).join(", ") : "None yet"}</strong>
+        </div>
         <div class="connector-grid">
           ${connectorCatalog.length ? connectorCatalog.map((item) => {
             const existing = connectors.find((connector) => connector.provider === item.provider);
@@ -494,14 +498,16 @@ function renderAdminView() {
                 ${isConnected
                   ? item.requiresSecret && !hasSecret
                     ? "Source exists. Add a provider key to enable gateway routing."
-                    : "Source is connected and tenant-scoped."
+                    : `${item.name} is connected for this tenant. New ${item.name} agent activity can now be tracked by Agent Prism.`
                   : "Ready to add for this tenant."}
               </div>
-              ${item.requiresSecret ? `
+              ${item.requiresSecret && (!isConnected || !hasSecret) ? `
                 <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
                   <input name="apiKey" placeholder="${item.provider === "anthropic" ? "Paste Claude key sk-ant-..." : "Paste OpenAI key sk-..."}" />
-                  <button type="submit">${isConnected ? "Update key" : "Connect"}</button>
+                  <button type="submit">${isConnected ? "Save key" : "Connect"}</button>
                 </form>
+              ` : item.requiresSecret ? `
+                <button class="ghost rotate-key-button" data-provider="${item.provider}" type="button">Rotate key</button>
               ` : `
                 <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${isConnected ? "Refresh Source" : "Add Source"}</button>
               `}
@@ -579,10 +585,23 @@ function renderAdminView() {
   document.querySelectorAll(".connect-source-button").forEach((button) => {
     button.addEventListener("click", () => connectCatalogSource(null, button.dataset));
   });
+  document.querySelectorAll(".rotate-key-button").forEach((button) => {
+    button.addEventListener("click", () => showRotateKeyForm(button.dataset.provider));
+  });
   document.querySelectorAll(".test-source-button").forEach((button) => {
     button.addEventListener("click", () => testCatalogSource(button.dataset.provider));
   });
   document.querySelector("#export-audit-button").addEventListener("click", exportAuditCsv);
+}
+
+function showRotateKeyForm(provider) {
+  const source = connectorCatalog.find((item) => item.provider === provider);
+  adminActionMessage = `Paste the new ${source?.name || provider} key below and click Save key.`;
+  const connector = tenantSummary?.connectors?.find((item) => item.provider === provider);
+  if (connector) {
+    connector.hasSecret = false;
+  }
+  renderCurrentView();
 }
 
 function renderCurrentView() {
@@ -918,7 +937,7 @@ async function connectCatalogSource(event, dataset = null) {
         setupMethod: "connector-marketplace"
       })
     });
-    adminActionMessage = `${source.name} connected. It now appears under Active sources. Use Send test event to see data in Overview and Token Coach.`;
+    adminActionMessage = `${source.name} is connected for this tenant. Use Send test event to confirm dashboard telemetry.`;
     await loadTenantSummary();
     await loadDashboard();
     currentView = "admin";
