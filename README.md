@@ -55,6 +55,8 @@ The current product foundation includes:
 - Audit trail for key actions
 - Tenant admin view for workspace, keys, connectors, and audit evidence
 - Tenant-scoped API key creation, listing, and revocation
+- Connector marketplace for OpenAI, Claude, Copilot, LiteLLM, LangChain/LangGraph, CrewAI, OpenAI Agents SDK, and generic webhooks
+- One-click connector test events that populate the dashboard without writing code
 - Audit CSV export for customer evidence reviews
 - Session tracking and timeout handling
 - Cost, ROI, and active-agent metrics APIs

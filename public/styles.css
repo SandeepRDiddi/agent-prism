@@ -1182,6 +1182,10 @@ canvas {
   grid-column: 1 / -1;
 }
 
+.connector-marketplace {
+  grid-column: 1 / -1;
+}
+
 .wide-panel {
   padding: 18px;
   border-radius: 10px;
@@ -1340,6 +1344,75 @@ canvas {
   color: #f6c35c;
 }
 
+.connector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.connector-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid rgba(122, 145, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.connector-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.connector-card strong,
+.connector-card span {
+  display: block;
+}
+
+.connector-card span,
+.connector-card p {
+  color: var(--muted);
+}
+
+.connector-card p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.connector-endpoint {
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(5, 10, 24, 0.28);
+  color: #b8c9ff;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.connector-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.connector-form input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  padding: 0.75rem 0.8rem;
+  font: inherit;
+}
+
+.connect-source-button,
+.test-source-button {
+  width: 100%;
+}
+
 .clean-feed {
   display: grid;
   gap: 8px;
@@ -1396,8 +1469,11 @@ canvas {
   }
 
   .inline-admin-form,
-  .admin-row {
+  .admin-row,
+  .connector-card-top,
+  .connector-form {
     flex-direction: column;
+    grid-template-columns: 1fr;
     align-items: stretch;
   }
 
@@ -1406,6 +1482,22 @@ canvas {
   }
 
   .hero-agent-card {
+    grid-template-columns: 1fr;
+  }
+
+  .connector-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1180px) {
+  .connector-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .connector-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -305,6 +305,81 @@ function estimateOpenAiCost({ inputTokens = 0, outputTokens = 0 }) {
   return (inputTokens * inputPerMillion / 1000000) + (outputTokens * outputPerMillion / 1000000);
 }
 
+const connectorCatalog = [
+  {
+    provider: "openai",
+    name: "OpenAI",
+    category: "Gateway",
+    setup: "Paste an OpenAI API key once, then route Responses API traffic through Agent Prism.",
+    mode: "gateway",
+    requiresSecret: true,
+    endpoint: "/v1/responses"
+  },
+  {
+    provider: "anthropic",
+    name: "Claude",
+    category: "Gateway",
+    setup: "Paste an Anthropic API key once, then route Messages API traffic through Agent Prism.",
+    mode: "gateway",
+    requiresSecret: true,
+    endpoint: "/v1/messages"
+  },
+  {
+    provider: "github-copilot",
+    name: "GitHub Copilot",
+    category: "Business Agent",
+    setup: "Track Copilot coding agents through demo telemetry, GitHub events, or enterprise usage sync.",
+    mode: "webhook",
+    requiresSecret: false,
+    endpoint: "/api/ingest/copilot"
+  },
+  {
+    provider: "litellm",
+    name: "LiteLLM",
+    category: "Gateway Logs",
+    setup: "Send LiteLLM spend and request logs into Agent Prism for workflow-level governance.",
+    mode: "webhook",
+    requiresSecret: false,
+    endpoint: "/api/ingest/generic"
+  },
+  {
+    provider: "langchain",
+    name: "LangChain / LangGraph",
+    category: "Framework",
+    setup: "Use a callback handler to capture chain, graph, tool, token, and retry telemetry.",
+    mode: "adapter",
+    requiresSecret: false,
+    endpoint: "/api/ingest/generic"
+  },
+  {
+    provider: "crewai",
+    name: "CrewAI",
+    category: "Framework",
+    setup: "Attach Agent Prism to crew and task lifecycle events for business workflow reporting.",
+    mode: "adapter",
+    requiresSecret: false,
+    endpoint: "/api/ingest/generic"
+  },
+  {
+    provider: "openai-agents",
+    name: "OpenAI Agents SDK",
+    category: "Framework",
+    setup: "Export agent traces into Agent Prism for run quality, token use, and governance.",
+    mode: "adapter",
+    requiresSecret: false,
+    endpoint: "/api/ingest/generic"
+  },
+  {
+    provider: "generic-webhook",
+    name: "Generic Webhook",
+    category: "Universal",
+    setup: "Use one tenant webhook for any custom agent, automation, or internal workflow.",
+    mode: "webhook",
+    requiresSecret: false,
+    endpoint: "/api/ingest"
+  }
+];
+
 function sanitizeConnector(connector) {
   return {
     id: connector.id,
@@ -316,6 +391,69 @@ function sanitizeConnector(connector) {
     createdAt: connector.createdAt,
     hasSecret: !!connector.config?.apiKey
   };
+}
+
+function sampleRunForProvider(provider) {
+  const startedAt = new Date(Date.now() - 18000).toISOString();
+  const completedAt = new Date().toISOString();
+  const normalizedProvider = String(provider || "generic-webhook").toLowerCase();
+  const display = connectorCatalog.find((item) => item.provider === normalizedProvider)?.name || "Custom Agent";
+
+  if (normalizedProvider === "github-copilot") {
+    return normalizeCopilotRun({
+      session_id: `test_copilot_${Date.now()}`,
+      agent_name: "GitHub Copilot Business Agent",
+      model_name: "copilot-gpt-4.1",
+      intent: "business-agent-build",
+      outcome: "success",
+      started_at: startedAt,
+      completed_at: completedAt,
+      duration_ms: 18000,
+      prompt_tokens: 7200,
+      completion_tokens: 1600,
+      estimated_cost_usd: 0.1056,
+      budget_usd: 0.25,
+      autonomy_level: 4,
+      retry_count: 1,
+      tool_invocations: 5,
+      policy_alerts: 0,
+      user_score: 4,
+      environment: "demo",
+      workflow: "copilot-agent-onboarding",
+      team: "business-operations",
+      labels: ["copilot", "connector-test"],
+      trace: ["connected Copilot source", "captured business agent run", "sent telemetry to Agent Prism"],
+      summary: "Copilot agent test event created from the connector marketplace."
+    });
+  }
+
+  return normalizeGenericRun({
+    id: `test_${normalizedProvider}_${Date.now()}`,
+    source: normalizedProvider,
+    agentName: `${display} Agent`,
+    provider: display,
+    model: normalizedProvider === "litellm" ? "routed-model" : "framework-adapter",
+    taskType: "connector-test",
+    status: "success",
+    startTime: startedAt,
+    endTime: completedAt,
+    latencyMs: 18000,
+    tokensIn: 4200,
+    tokensOut: 900,
+    costUsd: 0.0612,
+    budgetUsd: 0.2,
+    autonomyLevel: 3,
+    retryCount: normalizedProvider === "litellm" ? 1 : 0,
+    toolCalls: 3,
+    policyViolations: 0,
+    userSatisfaction: 4,
+    environment: "demo",
+    workflow: `${normalizedProvider}-connector-test`,
+    team: "business-operations",
+    tags: [normalizedProvider, "connector-test"],
+    breadcrumbs: ["connector selected", "sample event generated", "telemetry normalized", "dashboard updated"],
+    notes: `${display} connector test event created without custom code.`
+  });
 }
 
 function csvCell(value) {
@@ -441,19 +579,60 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 201, result);
     }
 
+    if (req.method === "GET" && req.url === "/api/connectors/catalog") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const host = req.headers.host || "localhost";
+      const proto = req.headers["x-forwarded-proto"] || (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+      return sendJson(res, 200, {
+        connectors: connectorCatalog.map((item) => ({
+          ...item,
+          webhookUrl: `${proto}://${host}${item.endpoint}`
+        }))
+      });
+    }
+
+    if (req.method === "POST" && req.url === "/api/connectors/test") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const provider = body.provider || "generic-webhook";
+      const run = sampleRunForProvider(provider);
+      const updated = await upsertTenantRuns(auth.tenant.id, [run]);
+
+      await logAuditEvent(auth.tenant.id, {
+        actor: `Admin (via ${auth.apiKey.prefix})`,
+        action: "Connector Test Event Sent",
+        resource: provider,
+        details: { runId: run.id, agentName: run.agentName },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
+      return sendJson(res, 201, {
+        status: "test_event_created",
+        totalRuns: updated.length,
+        normalizedRun: run
+      });
+    }
+
     if (req.method === "POST" && req.url === "/api/connectors") {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) return;
 
       const body = await parseBody(req, res);
       if (body === null) return;
-      const { provider, name, apiKey } = body;
+      const { provider, name, apiKey, mode } = body;
       if (!provider || !name) return sendJson(res, 400, { error: "bad_request", message: "Missing provider or name" });
 
       const result = await createConnector(auth.tenant.id, { 
         provider, 
-        name, 
-        config: { apiKey } 
+        name,
+        mode: mode || "webhook",
+        config: {
+          apiKey,
+          setupMethod: body.setupMethod || "connector-marketplace"
+        } 
       });
       
       await logAuditEvent(auth.tenant.id, {
@@ -463,7 +642,7 @@ const server = createServer(async (req, res) => {
         ip: req.socket?.remoteAddress || "127.0.0.1"
       });
 
-      return sendJson(res, 201, { message: "Connector created", connector: result });
+      return sendJson(res, 201, { message: "Connector created", connector: sanitizeConnector(result) });
     }
 
     if (req.method === "POST" && req.url === "/api/oauth/token") {

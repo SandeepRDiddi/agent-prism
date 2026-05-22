@@ -2,6 +2,7 @@ let dashboardState = null;
 let dashboardAuditLogs = [];
 let tenantSummary = null;
 let tenantApiKeys = [];
+let connectorCatalog = [];
 let adminActionMessage = "";
 let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
@@ -447,6 +448,7 @@ function renderAdminView() {
   const users = tenantSummary?.users || [];
   const connectors = tenantSummary?.connectors || [];
   const currentKeyPrefix = tenantApiKey ? tenantApiKey.slice(0, 12) : "";
+  const configuredProviders = new Set(connectors.map((connector) => connector.provider));
 
   document.querySelector("#view-content").innerHTML = `
     <section class="tab-stage admin-stage">
@@ -492,7 +494,7 @@ function renderAdminView() {
       <article class="panel wide-panel">
         <div class="panel-title">
           <p class="eyebrow">Connectors</p>
-          <h2>Provider vault</h2>
+          <h2>Active sources</h2>
         </div>
         <div class="admin-list">
           ${connectors.length ? connectors.map((connector) => `
@@ -504,6 +506,37 @@ function renderAdminView() {
               <span class="admin-pill">${connector.mode || "webhook"}</span>
             </div>
           `).join("") : `<p class="muted">No connectors configured.</p>`}
+        </div>
+      </article>
+
+      <article class="panel wide-panel connector-marketplace">
+        <div class="panel-title">
+          <p class="eyebrow">Connector Marketplace</p>
+          <h2>No-code onboarding</h2>
+        </div>
+        <div class="connector-grid">
+          ${connectorCatalog.length ? connectorCatalog.map((item) => `
+            <div class="connector-card">
+              <div class="connector-card-top">
+                <div>
+                  <strong>${item.name}</strong>
+                  <span>${item.category} · ${item.mode}</span>
+                </div>
+                <span class="admin-pill">${configuredProviders.has(item.provider) ? "connected" : "ready"}</span>
+              </div>
+              <p>${item.setup}</p>
+              <div class="connector-endpoint">${item.endpoint}</div>
+              ${item.requiresSecret ? `
+                <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
+                  <input name="apiKey" placeholder="${item.provider === "anthropic" ? "sk-ant-..." : "sk-..."}" />
+                  <button type="submit">${configuredProviders.has(item.provider) ? "Update" : "Connect"}</button>
+                </form>
+              ` : `
+                <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${configuredProviders.has(item.provider) ? "Refresh Source" : "Add Source"}</button>
+              `}
+              <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
+            </div>
+          `).join("") : `<p class="muted">Connector catalog is loading.</p>`}
         </div>
       </article>
 
@@ -523,6 +556,15 @@ function renderAdminView() {
   document.querySelector("#create-key-form").addEventListener("submit", createTenantKey);
   document.querySelectorAll(".revoke-key-button").forEach((button) => {
     button.addEventListener("click", () => revokeTenantKey(button.dataset.keyId));
+  });
+  document.querySelectorAll(".connector-form").forEach((form) => {
+    form.addEventListener("submit", connectCatalogSource);
+  });
+  document.querySelectorAll(".connect-source-button").forEach((button) => {
+    button.addEventListener("click", () => connectCatalogSource(null, button.dataset));
+  });
+  document.querySelectorAll(".test-source-button").forEach((button) => {
+    button.addEventListener("click", () => testCatalogSource(button.dataset.provider));
   });
   document.querySelector("#export-audit-button").addEventListener("click", exportAuditCsv);
 }
@@ -782,13 +824,15 @@ async function loadTenantSummary() {
 }
 
 async function loadDashboard() {
-  const [data, auditData, keysData] = await Promise.all([
+  const [data, auditData, keysData, catalogData] = await Promise.all([
     request("/api/dashboard"),
     request("/api/audit").catch(() => ({ auditLogs: [] })),
-    request("/api/tenant/api-keys").catch(() => ({ keys: [] }))
+    request("/api/tenant/api-keys").catch(() => ({ keys: [] })),
+    request("/api/connectors/catalog").catch(() => ({ connectors: [] }))
   ]);
   dashboardAuditLogs = auditData.auditLogs || [];
   tenantApiKeys = keysData.keys || [];
+  connectorCatalog = catalogData.connectors || [];
   renderDashboard(data);
 }
 
@@ -820,6 +864,55 @@ async function revokeTenantKey(keyId) {
   try {
     await request(`/api/tenant/api-keys/${encodeURIComponent(keyId)}`, { method: "DELETE" });
     adminActionMessage = "API key revoked.";
+    await loadTenantSummary();
+    await loadDashboard();
+    currentView = "admin";
+    renderCurrentView();
+  } catch (error) {
+    adminActionMessage = error.message;
+    renderCurrentView();
+  }
+}
+
+async function connectCatalogSource(event, dataset = null) {
+  if (event) event.preventDefault();
+  adminActionMessage = "";
+  const source = dataset || event.currentTarget.dataset;
+  const form = event ? new FormData(event.currentTarget) : null;
+  const apiKey = form ? String(form.get("apiKey") || "") : "";
+
+  try {
+    await request("/api/connectors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: source.provider,
+        name: source.name,
+        mode: source.mode || "webhook",
+        apiKey: apiKey || undefined,
+        setupMethod: "connector-marketplace"
+      })
+    });
+    adminActionMessage = `${source.name} connector is ready.`;
+    await loadTenantSummary();
+    await loadDashboard();
+    currentView = "admin";
+    renderCurrentView();
+  } catch (error) {
+    adminActionMessage = error.message;
+    renderCurrentView();
+  }
+}
+
+async function testCatalogSource(provider) {
+  adminActionMessage = "";
+  try {
+    const result = await request("/api/connectors/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider })
+    });
+    adminActionMessage = `${result.normalizedRun.agentName} test event sent. Check Overview and Token Coach.`;
     await loadTenantSummary();
     await loadDashboard();
     currentView = "admin";
