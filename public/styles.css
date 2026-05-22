@@ -1331,6 +1331,15 @@ canvas {
   overflow-wrap: anywhere;
 }
 
+.admin-message {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(246, 168, 33, 0.22);
+  border-radius: 8px;
+  background: rgba(246, 168, 33, 0.08);
+  color: #f6c35c;
+}
+
 .clean-feed {
   display: grid;
   gap: 8px;

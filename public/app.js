@@ -2,6 +2,7 @@ let dashboardState = null;
 let dashboardAuditLogs = [];
 let tenantSummary = null;
 let tenantApiKeys = [];
+let adminActionMessage = "";
 let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
 
@@ -445,6 +446,7 @@ function renderAdminView() {
   const tenant = tenantSummary?.tenant || {};
   const users = tenantSummary?.users || [];
   const connectors = tenantSummary?.connectors || [];
+  const currentKeyPrefix = tenantApiKey ? tenantApiKey.slice(0, 12) : "";
 
   document.querySelector("#view-content").innerHTML = `
     <section class="tab-stage admin-stage">
@@ -470,17 +472,20 @@ function renderAdminView() {
           <input name="name" placeholder="Key name" value="Demo agent key" />
           <button type="submit">Create key</button>
         </form>
+        ${adminActionMessage ? `<p class="admin-message">${adminActionMessage}</p>` : ""}
         <p id="new-key-output" class="secret-output" hidden></p>
         <div class="admin-list">
-          ${tenantApiKeys.length ? tenantApiKeys.map((key) => `
+          ${tenantApiKeys.length ? tenantApiKeys.map((key) => {
+            const isCurrentKey = key.prefix === currentKeyPrefix;
+            return `
             <div class="admin-row">
               <div>
                 <strong>${key.name}</strong>
-                <span>${key.prefix} · ${key.status} · last used ${formatDate(key.lastUsedAt)}</span>
+                <span>${key.prefix} · ${key.status}${isCurrentKey ? " · current browser key" : ""} · last used ${formatDate(key.lastUsedAt)}</span>
               </div>
-              <button class="ghost revoke-key-button" data-key-id="${key.id}" ${key.status !== "active" ? "disabled" : ""}>Revoke</button>
+              <button class="ghost revoke-key-button" data-key-id="${key.id}" ${key.status !== "active" || isCurrentKey ? "disabled" : ""}>${isCurrentKey ? "In use" : "Revoke"}</button>
             </div>
-          `).join("") : `<p class="muted">No API keys found.</p>`}
+          `}).join("") : `<p class="muted">No API keys found.</p>`}
         </div>
       </article>
 
@@ -789,27 +794,40 @@ async function loadDashboard() {
 
 async function createTenantKey(event) {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
-  const result = await request("/api/tenant/api-keys", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: form.get("name") || "Tenant API key" })
-  });
-  await loadTenantSummary();
-  await loadDashboard();
-  currentView = "admin";
-  renderCurrentView();
-  const output = document.querySelector("#new-key-output");
-  output.hidden = false;
-  output.textContent = `New key: ${result.apiKey}`;
+  adminActionMessage = "";
+  try {
+    const form = new FormData(event.currentTarget);
+    const result = await request("/api/tenant/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: form.get("name") || "Tenant API key" })
+    });
+    await loadTenantSummary();
+    await loadDashboard();
+    currentView = "admin";
+    renderCurrentView();
+    const output = document.querySelector("#new-key-output");
+    output.hidden = false;
+    output.textContent = `New key: ${result.apiKey}`;
+  } catch (error) {
+    adminActionMessage = error.message;
+    renderCurrentView();
+  }
 }
 
 async function revokeTenantKey(keyId) {
-  await request(`/api/tenant/api-keys/${encodeURIComponent(keyId)}`, { method: "DELETE" });
-  await loadTenantSummary();
-  await loadDashboard();
-  currentView = "admin";
-  renderCurrentView();
+  adminActionMessage = "";
+  try {
+    await request(`/api/tenant/api-keys/${encodeURIComponent(keyId)}`, { method: "DELETE" });
+    adminActionMessage = "API key revoked.";
+    await loadTenantSummary();
+    await loadDashboard();
+    currentView = "admin";
+    renderCurrentView();
+  } catch (error) {
+    adminActionMessage = error.message;
+    renderCurrentView();
+  }
 }
 
 async function exportAuditCsv() {
