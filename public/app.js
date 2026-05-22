@@ -497,16 +497,16 @@ function renderAdminView() {
                     : "Source is connected and tenant-scoped."
                   : "Ready to add for this tenant."}
               </div>
-              <p>${item.setup}</p>
-              <div class="connector-endpoint">${item.endpoint}</div>
               ${item.requiresSecret ? `
                 <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
-                  <input name="apiKey" placeholder="${item.provider === "anthropic" ? "sk-ant-..." : "sk-..."}" />
+                  <input name="apiKey" placeholder="${item.provider === "anthropic" ? "Paste Claude key sk-ant-..." : "Paste OpenAI key sk-..."}" />
                   <button type="submit">${isConnected ? "Update key" : "Connect"}</button>
                 </form>
               ` : `
                 <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${isConnected ? "Refresh Source" : "Add Source"}</button>
               `}
+              <p>${item.setup}</p>
+              <div class="connector-endpoint">${item.endpoint}</div>
               <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
             </div>
           `}).join("") : `<p class="muted">Connector catalog is loading.</p>`}
