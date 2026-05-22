@@ -36,7 +36,7 @@ export async function readState() {
 }
 
 export async function writeState(state) {
-  const tempPath = `${appStatePath}.${process.pid}.tmp`;
+  const tempPath = `${appStatePath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(tempPath, JSON.stringify(state, null, 2), "utf8");
   await rename(tempPath, appStatePath);
 }
@@ -156,6 +156,45 @@ export async function createTenantApiKey({ tenantId, name } = {}) {
       createdAt: record.createdAt,
       lastUsedAt: record.lastUsedAt
     }
+  };
+}
+
+export async function listTenantApiKeys(tenantId) {
+  const state = await readState();
+  return state.apiKeys
+    .filter((item) => item.tenantId === tenantId)
+    .map((item) => ({
+      id: item.id,
+      tenantId: item.tenantId,
+      name: item.name,
+      prefix: item.prefix,
+      status: item.status,
+      scopes: item.scopes || ["*"],
+      createdAt: item.createdAt,
+      lastUsedAt: item.lastUsedAt || null
+    }))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+export async function revokeTenantApiKey(tenantId, keyId) {
+  const state = await readState();
+  const key = state.apiKeys.find((item) => item.tenantId === tenantId && item.id === keyId);
+
+  if (!key) return null;
+
+  key.status = "revoked";
+  key.revokedAt = now();
+  await writeState(state);
+
+  return {
+    id: key.id,
+    tenantId: key.tenantId,
+    name: key.name,
+    prefix: key.prefix,
+    status: key.status,
+    createdAt: key.createdAt,
+    lastUsedAt: key.lastUsedAt || null,
+    revokedAt: key.revokedAt
   };
 }
 

@@ -53,6 +53,9 @@ The current product foundation includes:
 - Provider comparison
 - Workflow reliability signals
 - Audit trail for key actions
+- Tenant admin view for workspace, keys, connectors, and audit evidence
+- Tenant-scoped API key creation, listing, and revocation
+- Audit CSV export for customer evidence reviews
 - Session tracking and timeout handling
 - Cost, ROI, and active-agent metrics APIs
 - Slack budget alert webhook support

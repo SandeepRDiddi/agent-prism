@@ -207,6 +207,46 @@ export async function createTenantApiKey({ tenantId, name } = {}) {
   };
 }
 
+export async function listTenantApiKeys(tenantId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    "select id, tenant_id, name, prefix, status, created_at, last_used_at from api_keys where tenant_id = $1 order by created_at desc",
+    [tenantId]
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    tenantId: row.tenant_id,
+    name: row.name,
+    prefix: row.prefix,
+    status: row.status,
+    scopes: ["*"],
+    createdAt: row.created_at?.toISOString?.() || row.created_at,
+    lastUsedAt: row.last_used_at?.toISOString?.() || row.last_used_at || null
+  }));
+}
+
+export async function revokeTenantApiKey(tenantId, keyId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    "update api_keys set status = 'revoked' where tenant_id = $1 and id = $2 returning id, tenant_id, name, prefix, status, created_at, last_used_at",
+    [tenantId, keyId]
+  );
+  const row = result.rows[0];
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    name: row.name,
+    prefix: row.prefix,
+    status: row.status,
+    createdAt: row.created_at?.toISOString?.() || row.created_at,
+    lastUsedAt: row.last_used_at?.toISOString?.() || row.last_used_at || null
+  };
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   if (!apiKeyValue) {
     return null;

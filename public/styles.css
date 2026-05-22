@@ -1169,7 +1169,16 @@ canvas {
   align-items: start;
 }
 
+.admin-stage {
+  grid-template-columns: minmax(420px, 1.1fr) repeat(2, minmax(280px, 0.8fr));
+  align-items: start;
+}
+
 .token-hero {
+  grid-column: 1 / -1;
+}
+
+.admin-hero {
   grid-column: 1 / -1;
 }
 
@@ -1185,25 +1194,38 @@ canvas {
   gap: 12px;
 }
 
+.admin-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .token-summary div,
+.admin-summary div,
 .coach-card,
-.token-row {
+.token-row,
+.admin-row,
+.secret-output {
   border: 1px solid rgba(122, 145, 255, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.02);
 }
 
-.token-summary div {
+.token-summary div,
+.admin-summary div {
   padding: 14px;
 }
 
 .token-summary span,
-.token-row span {
+.token-row span,
+.admin-summary span,
+.admin-row span {
   display: block;
   color: var(--muted);
 }
 
-.token-summary strong {
+.token-summary strong,
+.admin-summary strong {
   display: block;
   margin-top: 6px;
   font-size: 1.6rem;
@@ -1262,6 +1284,53 @@ canvas {
   text-align: right;
 }
 
+.inline-admin-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.inline-admin-form input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+}
+
+.admin-list,
+.admin-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+}
+
+.admin-pill {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.28rem 0.58rem;
+  background: rgba(79, 128, 255, 0.14);
+  color: #b8c9ff !important;
+  font-size: 0.78rem;
+}
+
+.secret-output {
+  padding: 12px;
+  color: #5ee3a3;
+  font-family: "JetBrains Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
 .clean-feed {
   display: grid;
   gap: 8px;
@@ -1296,6 +1365,7 @@ canvas {
 @media (max-width: 1120px) {
   .overview-stage,
   .token-stage,
+  .admin-stage,
   .governance-stage {
     grid-template-columns: 1fr;
     height: auto;
@@ -1310,9 +1380,16 @@ canvas {
   .view-tabs,
   .hero-strip,
   .token-summary,
+  .admin-summary,
   .clean-feed-row {
     grid-template-columns: 1fr;
     width: 100%;
+  }
+
+  .inline-admin-form,
+  .admin-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .view-tabs {

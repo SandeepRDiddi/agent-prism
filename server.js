@@ -14,6 +14,8 @@ import {
   authenticateTenantApiKey,
   bootstrapSaas,
   createTenantApiKey,
+  listTenantApiKeys,
+  revokeTenantApiKey,
   createConnector,
   getBootstrapStatus,
   listTenantContext,
@@ -301,6 +303,37 @@ function estimateOpenAiCost({ inputTokens = 0, outputTokens = 0 }) {
   const inputPerMillion = Number(process.env.OPENAI_INPUT_USD_PER_1M_TOKENS || 0);
   const outputPerMillion = Number(process.env.OPENAI_OUTPUT_USD_PER_1M_TOKENS || 0);
   return (inputTokens * inputPerMillion / 1000000) + (outputTokens * outputPerMillion / 1000000);
+}
+
+function sanitizeConnector(connector) {
+  return {
+    id: connector.id,
+    tenantId: connector.tenantId,
+    provider: connector.provider,
+    name: connector.name,
+    mode: connector.mode || "webhook",
+    status: connector.status,
+    createdAt: connector.createdAt,
+    hasSecret: !!connector.config?.apiKey
+  };
+}
+
+function csvCell(value) {
+  const text = value === undefined || value === null
+    ? ""
+    : typeof value === "object"
+      ? JSON.stringify(value)
+      : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function sendCsv(res, filename, rows) {
+  setSecurityHeaders(res);
+  res.writeHead(200, {
+    "Content-Type": "text/csv; charset=utf-8",
+    "Content-Disposition": `attachment; filename="${filename}"`
+  });
+  res.end(rows.map((row) => row.map(csvCell).join(",")).join("\n"));
 }
 
 const resolvedPublicDir = resolvePath(publicDir);
@@ -667,9 +700,65 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, {
         tenant: context.tenant,
         users: context.users,
-        connectors: context.connectors,
+        connectors: context.connectors.map(sanitizeConnector),
         runCount: context.runs.length
       });
+    }
+
+    if (req.method === "GET" && req.url === "/api/tenant/api-keys") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const keys = await listTenantApiKeys(auth.tenant.id);
+      return sendJson(res, 200, { keys });
+    }
+
+    if (req.method === "POST" && req.url === "/api/tenant/api-keys") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const result = await createTenantApiKey({
+        tenantId: auth.tenant.id,
+        name: body.name || "Tenant API key"
+      });
+
+      await logAuditEvent(auth.tenant.id, {
+        actor: `Admin (via ${auth.apiKey.prefix})`,
+        action: "Tenant API Key Created",
+        resource: result.key.prefix,
+        details: { name: result.key.name },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
+      return sendJson(res, 201, result);
+    }
+
+    if (req.method === "DELETE" && req.url.startsWith("/api/tenant/api-keys/")) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const keyId = decodeURIComponent(req.url.slice("/api/tenant/api-keys/".length));
+
+      if (keyId === auth.apiKey.id) {
+        return sendJson(res, 400, {
+          error: "bad_request",
+          message: "You cannot revoke the API key used for this request."
+        });
+      }
+
+      const revoked = await revokeTenantApiKey(auth.tenant.id, keyId);
+      if (!revoked) {
+        return sendJson(res, 404, { error: "not_found", message: "API key not found." });
+      }
+
+      await logAuditEvent(auth.tenant.id, {
+        actor: `Admin (via ${auth.apiKey.prefix})`,
+        action: "Tenant API Key Revoked",
+        resource: revoked.prefix,
+        details: { name: revoked.name },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
+      return sendJson(res, 200, { key: revoked });
     }
 
     if (req.method === "POST" && req.url === "/api/connectors") {
@@ -733,6 +822,24 @@ const server = createServer(async (req, res) => {
       if (!auth) return;
       const logs = await listAuditLogs(auth.tenant.id);
       return sendJson(res, 200, { auditLogs: logs });
+    }
+
+    if (req.method === "GET" && req.url === "/api/audit/export") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const logs = await listAuditLogs(auth.tenant.id);
+      const rows = [
+        ["timestamp", "actor", "action", "resource", "ip", "details"],
+        ...logs.map((log) => [
+          log.timestamp,
+          log.actor,
+          log.action,
+          log.resource,
+          log.ip,
+          log.details || {}
+        ])
+      ];
+      return sendCsv(res, `agent-prism-audit-${auth.tenant.slug}.csv`, rows);
     }
 
     if (req.method === "POST" && req.url === "/api/reset") {

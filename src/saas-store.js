@@ -38,6 +38,16 @@ export async function createTenantApiKey(payload) {
   return backend.createTenantApiKey(payload);
 }
 
+export async function listTenantApiKeys(tenantId) {
+  const backend = await getBackend();
+  return backend.listTenantApiKeys ? backend.listTenantApiKeys(tenantId) : [];
+}
+
+export async function revokeTenantApiKey(tenantId, keyId) {
+  const backend = await getBackend();
+  return backend.revokeTenantApiKey ? backend.revokeTenantApiKey(tenantId, keyId) : null;
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   const backend = await getBackend();
   return backend.authenticateTenantApiKey(apiKeyValue);

@@ -1,5 +1,7 @@
 let dashboardState = null;
 let dashboardAuditLogs = [];
+let tenantSummary = null;
+let tenantApiKeys = [];
 let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
 
@@ -10,6 +12,7 @@ const workspaceShell = `
       <button class="view-tab" data-view="activity" type="button">Activity</button>
       <button class="view-tab" data-view="tokens" type="button">Token Coach</button>
       <button class="view-tab" data-view="governance" type="button">Governance</button>
+      <button class="view-tab" data-view="admin" type="button">Admin</button>
     </nav>
     <section class="metrics-grid cockpit-metrics" id="metrics-grid"></section>
     <section class="view-content" id="view-content"></section>
@@ -428,6 +431,97 @@ function renderTokenCoachView() {
   `;
 }
 
+function formatDate(value) {
+  if (!value) return "Never";
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function renderAdminView() {
+  const tenant = tenantSummary?.tenant || {};
+  const users = tenantSummary?.users || [];
+  const connectors = tenantSummary?.connectors || [];
+
+  document.querySelector("#view-content").innerHTML = `
+    <section class="tab-stage admin-stage">
+      <article class="panel wide-panel admin-hero">
+        <div class="panel-title">
+          <p class="eyebrow">Workspace Admin</p>
+          <h2>${tenant.name || "Tenant workspace"}</h2>
+        </div>
+        <div class="admin-summary">
+          <div><span>Tenant ID</span><strong>${tenant.id || "Unknown"}</strong></div>
+          <div><span>Plan</span><strong>${tenant.plan || "Trial"}</strong></div>
+          <div><span>Users</span><strong>${users.length}</strong></div>
+          <div><span>Runs</span><strong>${tenantSummary?.runCount || 0}</strong></div>
+        </div>
+      </article>
+
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">API Keys</p>
+          <h2>Tenant-scoped access</h2>
+        </div>
+        <form id="create-key-form" class="inline-admin-form">
+          <input name="name" placeholder="Key name" value="Demo agent key" />
+          <button type="submit">Create key</button>
+        </form>
+        <p id="new-key-output" class="secret-output" hidden></p>
+        <div class="admin-list">
+          ${tenantApiKeys.length ? tenantApiKeys.map((key) => `
+            <div class="admin-row">
+              <div>
+                <strong>${key.name}</strong>
+                <span>${key.prefix} · ${key.status} · last used ${formatDate(key.lastUsedAt)}</span>
+              </div>
+              <button class="ghost revoke-key-button" data-key-id="${key.id}" ${key.status !== "active" ? "disabled" : ""}>Revoke</button>
+            </div>
+          `).join("") : `<p class="muted">No API keys found.</p>`}
+        </div>
+      </article>
+
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Connectors</p>
+          <h2>Provider vault</h2>
+        </div>
+        <div class="admin-list">
+          ${connectors.length ? connectors.map((connector) => `
+            <div class="admin-row">
+              <div>
+                <strong>${connector.name}</strong>
+                <span>${connector.provider} · ${connector.status} · ${connector.hasSecret ? "secret configured" : "no secret stored"}</span>
+              </div>
+              <span class="admin-pill">${connector.mode || "webhook"}</span>
+            </div>
+          `).join("") : `<p class="muted">No connectors configured.</p>`}
+        </div>
+      </article>
+
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Audit</p>
+          <h2>Evidence controls</h2>
+        </div>
+        <div class="admin-actions">
+          <button id="export-audit-button" type="button">Export audit CSV</button>
+        </div>
+        <p class="muted">Audit exports are tenant-scoped and never include provider secrets or full API keys.</p>
+      </article>
+    </section>
+  `;
+
+  document.querySelector("#create-key-form").addEventListener("submit", createTenantKey);
+  document.querySelectorAll(".revoke-key-button").forEach((button) => {
+    button.addEventListener("click", () => revokeTenantKey(button.dataset.keyId));
+  });
+  document.querySelector("#export-audit-button").addEventListener("click", exportAuditCsv);
+}
+
 function renderCurrentView() {
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === currentView);
@@ -439,6 +533,8 @@ function renderCurrentView() {
     renderTokenCoachView();
   } else if (currentView === "governance") {
     renderGovernanceView();
+  } else if (currentView === "admin") {
+    renderAdminView();
   } else {
     renderOverview();
   }
@@ -676,16 +772,62 @@ function renderDashboard(data) {
 
 async function loadTenantSummary() {
   const data = await request("/api/tenant");
+  tenantSummary = data;
   document.querySelector("#active-agents").textContent = `${data.tenant.name} · ${data.connectors.length} connectors`;
 }
 
 async function loadDashboard() {
-  const [data, auditData] = await Promise.all([
+  const [data, auditData, keysData] = await Promise.all([
     request("/api/dashboard"),
-    request("/api/audit").catch(() => ({ auditLogs: [] }))
+    request("/api/audit").catch(() => ({ auditLogs: [] })),
+    request("/api/tenant/api-keys").catch(() => ({ keys: [] }))
   ]);
   dashboardAuditLogs = auditData.auditLogs || [];
+  tenantApiKeys = keysData.keys || [];
   renderDashboard(data);
+}
+
+async function createTenantKey(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const result = await request("/api/tenant/api-keys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: form.get("name") || "Tenant API key" })
+  });
+  await loadTenantSummary();
+  await loadDashboard();
+  currentView = "admin";
+  renderCurrentView();
+  const output = document.querySelector("#new-key-output");
+  output.hidden = false;
+  output.textContent = `New key: ${result.apiKey}`;
+}
+
+async function revokeTenantKey(keyId) {
+  await request(`/api/tenant/api-keys/${encodeURIComponent(keyId)}`, { method: "DELETE" });
+  await loadTenantSummary();
+  await loadDashboard();
+  currentView = "admin";
+  renderCurrentView();
+}
+
+async function exportAuditCsv() {
+  const response = await fetch("/api/audit/export", {
+    headers: tenantApiKey ? { "x-api-key": tenantApiKey } : {}
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not export audit data.");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "agent-prism-audit.csv";
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 async function postAction(path) {
