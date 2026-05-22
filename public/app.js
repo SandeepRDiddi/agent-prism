@@ -470,29 +470,46 @@ function renderAdminView() {
           <p class="eyebrow">Connector Marketplace</p>
           <h2>No-code onboarding</h2>
         </div>
+        ${adminActionMessage ? `<p class="admin-message">${adminActionMessage}</p>` : ""}
         <div class="connector-grid">
-          ${connectorCatalog.length ? connectorCatalog.map((item) => `
+          ${connectorCatalog.length ? connectorCatalog.map((item) => {
+            const existing = connectors.find((connector) => connector.provider === item.provider);
+            const isConnected = !!existing;
+            const hasSecret = !!existing?.hasSecret;
+            const statusLabel = isConnected
+              ? item.requiresSecret && !hasSecret
+                ? "needs key"
+                : "connected"
+              : "not connected";
+            return `
             <div class="connector-card">
               <div class="connector-card-top">
                 <div>
                   <strong>${item.name}</strong>
                   <span>${item.category} · ${item.mode}</span>
                 </div>
-                <span class="admin-pill">${configuredProviders.has(item.provider) ? "connected" : "ready"}</span>
+                <span class="connector-status ${isConnected ? "connected" : ""}">${statusLabel}</span>
+              </div>
+              <div class="connector-health ${isConnected ? "ok" : "idle"}">
+                ${isConnected
+                  ? item.requiresSecret && !hasSecret
+                    ? "Source exists. Add a provider key to enable gateway routing."
+                    : "Source is connected and tenant-scoped."
+                  : "Ready to add for this tenant."}
               </div>
               <p>${item.setup}</p>
               <div class="connector-endpoint">${item.endpoint}</div>
               ${item.requiresSecret ? `
                 <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
                   <input name="apiKey" placeholder="${item.provider === "anthropic" ? "sk-ant-..." : "sk-..."}" />
-                  <button type="submit">${configuredProviders.has(item.provider) ? "Update" : "Connect"}</button>
+                  <button type="submit">${isConnected ? "Update key" : "Connect"}</button>
                 </form>
               ` : `
-                <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${configuredProviders.has(item.provider) ? "Refresh Source" : "Add Source"}</button>
+                <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${isConnected ? "Refresh Source" : "Add Source"}</button>
               `}
               <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
             </div>
-          `).join("") : `<p class="muted">Connector catalog is loading.</p>`}
+          `}).join("") : `<p class="muted">Connector catalog is loading.</p>`}
         </div>
       </article>
 
@@ -505,7 +522,6 @@ function renderAdminView() {
           <input name="name" placeholder="Key name" value="Demo agent key" />
           <button type="submit">Create key</button>
         </form>
-        ${adminActionMessage ? `<p class="admin-message">${adminActionMessage}</p>` : ""}
         <p id="new-key-output" class="secret-output" hidden></p>
         <div class="admin-list">
           ${tenantApiKeys.length ? tenantApiKeys.map((key) => {
@@ -881,8 +897,16 @@ async function connectCatalogSource(event, dataset = null) {
   const source = dataset || event.currentTarget.dataset;
   const form = event ? new FormData(event.currentTarget) : null;
   const apiKey = form ? String(form.get("apiKey") || "") : "";
+  const button = event
+    ? event.currentTarget.querySelector("button")
+    : document.querySelector(`.connect-source-button[data-provider="${source.provider}"]`);
+  const originalLabel = button?.textContent;
 
   try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Connecting...";
+    }
     await request("/api/connectors", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -894,32 +918,46 @@ async function connectCatalogSource(event, dataset = null) {
         setupMethod: "connector-marketplace"
       })
     });
-    adminActionMessage = `${source.name} connector is ready.`;
+    adminActionMessage = `${source.name} connected. It now appears under Active sources. Use Send test event to see data in Overview and Token Coach.`;
     await loadTenantSummary();
     await loadDashboard();
     currentView = "admin";
     renderCurrentView();
   } catch (error) {
     adminActionMessage = error.message;
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
     renderCurrentView();
   }
 }
 
 async function testCatalogSource(provider) {
   adminActionMessage = "";
+  const button = document.querySelector(`.test-source-button[data-provider="${provider}"]`);
+  const originalLabel = button?.textContent;
   try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Sending...";
+    }
     const result = await request("/api/connectors/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider })
     });
-    adminActionMessage = `${result.normalizedRun.agentName} test event sent. Check Overview and Token Coach.`;
+    adminActionMessage = `${result.normalizedRun.agentName} test event sent. Overview and Token Coach now include this source.`;
     await loadTenantSummary();
     await loadDashboard();
     currentView = "admin";
     renderCurrentView();
   } catch (error) {
     adminActionMessage = error.message;
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
     renderCurrentView();
   }
 }
