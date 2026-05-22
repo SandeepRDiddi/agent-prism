@@ -954,7 +954,7 @@ canvas {
 .workspace-business .clean-dashboard {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 16px;
+  gap: 18px;
   width: 100%;
   max-width: 1500px;
   margin: 0 auto;
@@ -965,6 +965,7 @@ canvas {
   width: fit-content;
   gap: 4px;
   padding: 4px;
+  margin-top: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.025);
@@ -1381,8 +1382,9 @@ canvas {
 
 .rollout-step {
   display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 10px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 4px;
   align-items: start;
   padding: 14px;
   border: 1px solid rgba(122, 145, 255, 0.14);
@@ -1391,8 +1393,9 @@ canvas {
 }
 
 .rollout-step > span {
-  width: 30px;
-  height: 30px;
+  grid-row: 1 / span 2;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border-radius: 8px;
@@ -1404,13 +1407,16 @@ canvas {
 .rollout-step strong,
 .snippet-card strong {
   display: block;
+  min-width: 0;
 }
 
 .rollout-step p,
 .snippet-card span {
+  grid-column: 2;
   margin: 4px 0 0;
   color: var(--muted);
   line-height: 1.45;
+  max-width: 58ch;
 }
 
 .rollout-step code {
