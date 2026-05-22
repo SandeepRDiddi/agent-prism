@@ -53,6 +53,129 @@ export function detectCostLeaks(runs) {
     .sort((left, right) => right.costUsd - left.costUsd);
 }
 
+function buildTokenEfficiency(enrichedRuns) {
+  const tokenRuns = enrichedRuns.filter((run) => (run.tokensIn || 0) + (run.tokensOut || 0) > 0);
+  const totalInputTokens = tokenRuns.reduce((sum, run) => sum + (run.tokensIn || 0), 0);
+  const totalOutputTokens = tokenRuns.reduce((sum, run) => sum + (run.tokensOut || 0), 0);
+  const totalTokens = totalInputTokens + totalOutputTokens;
+  const totalCostUsd = tokenRuns.reduce((sum, run) => sum + (run.costUsd || 0), 0);
+  const retryRuns = tokenRuns.filter((run) => (run.retryCount || 0) > 0);
+  const retryWasteTokens = retryRuns.reduce((sum, run) => {
+    const runTokens = (run.tokensIn || 0) + (run.tokensOut || 0);
+    const retryShare = run.retryCount / (run.retryCount + 1);
+    return sum + Math.round(runTokens * retryShare);
+  }, 0);
+
+  const byAgent = Object.entries(groupBy(tokenRuns, (run) => run.agentName)).map(
+    ([agentName, agentRuns]) => {
+      const tokensIn = agentRuns.reduce((sum, run) => sum + (run.tokensIn || 0), 0);
+      const tokensOut = agentRuns.reduce((sum, run) => sum + (run.tokensOut || 0), 0);
+      const costUsd = agentRuns.reduce((sum, run) => sum + (run.costUsd || 0), 0);
+      return {
+        agentName,
+        provider: agentRuns[0]?.provider || "Unknown",
+        workflow: agentRuns[0]?.workflow || "default",
+        runs: agentRuns.length,
+        tokensIn,
+        tokensOut,
+        totalTokens: tokensIn + tokensOut,
+        avgTokensPerRun: Math.round((tokensIn + tokensOut) / agentRuns.length),
+        costUsd: Number(costUsd.toFixed(4))
+      };
+    }
+  ).sort((left, right) => right.totalTokens - left.totalTokens);
+
+  const byWorkflow = Object.entries(groupBy(tokenRuns, (run) => run.workflow)).map(
+    ([workflow, workflowRuns]) => {
+      const total = workflowRuns.reduce((sum, run) => sum + (run.tokensIn || 0) + (run.tokensOut || 0), 0);
+      const retries = workflowRuns.reduce((sum, run) => sum + (run.retryCount || 0), 0);
+      return {
+        workflow,
+        runs: workflowRuns.length,
+        totalTokens: total,
+        avgTokensPerRun: Math.round(total / workflowRuns.length),
+        retries
+      };
+    }
+  ).sort((left, right) => right.totalTokens - left.totalTokens);
+
+  const suggestions = [];
+  const inputRatio = totalTokens ? totalInputTokens / totalTokens : 0;
+  const outputRatio = totalTokens ? totalOutputTokens / totalTokens : 0;
+  const topAgent = byAgent[0];
+  const topWorkflow = byWorkflow[0];
+
+  if (!totalTokens) {
+    suggestions.push({
+      title: "Run a Copilot, Claude, or OpenAI demo to unlock token coaching",
+      impact: "Waiting for telemetry",
+      action: "Push a demo run through Agent Prism so token mix, retry waste, and workflow patterns can be scored."
+    });
+  }
+
+  if (inputRatio > 0.65 && totalTokens > 3000) {
+    suggestions.push({
+      title: "Reduce repeated context in prompts",
+      impact: `${Math.round(inputRatio * 100)}% of usage is input tokens`,
+      action: "Cache repository summaries, send only changed files, and pass compact task briefs instead of full project context on every run."
+    });
+  }
+
+  if (outputRatio > 0.4 && totalTokens > 3000) {
+    suggestions.push({
+      title: "Cap verbose responses",
+      impact: `${Math.round(outputRatio * 100)}% of usage is output tokens`,
+      action: "Ask agents for patch-first output, concise findings, or structured JSON summaries before requesting long explanations."
+    });
+  }
+
+  if (retryWasteTokens > 0) {
+    suggestions.push({
+      title: "Cut retry token waste",
+      impact: `${retryWasteTokens.toLocaleString()} tokens are tied to retry loops`,
+      action: "Add preflight checks, narrower tool permissions, and failure-specific stop conditions before the agent retries."
+    });
+  }
+
+  if (topAgent && topAgent.avgTokensPerRun > 8000) {
+    suggestions.push({
+      title: `Right-size ${topAgent.agentName}`,
+      impact: `${topAgent.avgTokensPerRun.toLocaleString()} average tokens per run`,
+      action: "Split large tasks into plan, patch, and verify phases so each model call receives only the context it needs."
+    });
+  }
+
+  if (topWorkflow && topWorkflow.retries > 0) {
+    suggestions.push({
+      title: `Stabilize ${topWorkflow.workflow}`,
+      impact: `${topWorkflow.retries} retries on the highest-token workflow`,
+      action: "Review the failure path for this workflow before scaling it to more repositories or teams."
+    });
+  }
+
+  if (suggestions.length < 3 && totalTokens > 0) {
+    suggestions.push({
+      title: "Use model tiers by task type",
+      impact: "Avoid premium models for routine steps",
+      action: "Route classification, formatting, and summarization to cheaper models while keeping complex reasoning on stronger models."
+    });
+  }
+
+  return {
+    totalTokens,
+    totalInputTokens,
+    totalOutputTokens,
+    inputTokenPercent: totalTokens ? Math.round((totalInputTokens / totalTokens) * 100) : 0,
+    outputTokenPercent: totalTokens ? Math.round((totalOutputTokens / totalTokens) * 100) : 0,
+    avgTokensPerRun: tokenRuns.length ? Math.round(totalTokens / tokenRuns.length) : 0,
+    costPer1kTokensUsd: totalTokens ? Number(((totalCostUsd / totalTokens) * 1000).toFixed(4)) : 0,
+    retryWasteTokens,
+    topAgents: byAgent.slice(0, 5),
+    workflowHotspots: byWorkflow.slice(0, 5),
+    suggestions: suggestions.slice(0, 5)
+  };
+}
+
 function groupBy(items, getKey) {
   return items.reduce((groups, item) => {
     const key = getKey(item);
@@ -203,6 +326,7 @@ export function buildDashboardSnapshot(runs) {
     providerComparison: byProvider.sort((left, right) => right.avgScore - left.avgScore),
     workflowInsights: byWorkflow.sort((left, right) => right.costUsd - left.costUsd),
     costLeaks: detectCostLeaks(enrichedRuns),
+    tokenEfficiency: buildTokenEfficiency(enrichedRuns),
     agentProfiles,
     selectedAgent,
     activityFeed,

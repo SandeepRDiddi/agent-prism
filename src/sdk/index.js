@@ -15,6 +15,10 @@ export class AgentPrism {
   constructor(options = {}) {
     let { clientId, clientSecret, endpoint } = options;
 
+    clientId = clientId || process.env.AGENT_PRISM_CLIENT_ID;
+    clientSecret = clientSecret || process.env.AGENT_PRISM_API_KEY;
+    endpoint = endpoint || process.env.AGENT_PRISM_ENDPOINT;
+
     // Fallback to CLI Credentials if no explicit options provided
     if (!clientSecret) {
       try {

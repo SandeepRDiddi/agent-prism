@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "demo:copilot": "node real_demo_copilot_agent.js"
   },
   "bin": {
     "agent-prism": "./bin/cli.js"

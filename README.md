@@ -45,9 +45,11 @@ The current product foundation includes:
 - Provider connector setup for Claude and OpenAI
 - Real Claude gateway demo agent
 - Real OpenAI gateway demo agent
+- Copilot demo telemetry agent for live product demos
 - Normalized ingest API for custom agents
 - Control Score analytics
 - Cost Leak Radar
+- Token Coach recommendations for efficient prompt and token usage
 - Provider comparison
 - Workflow reliability signals
 - Audit trail for key actions
@@ -75,6 +77,7 @@ Default view:
 Secondary views:
 
 - **Activity**: execution trail and recent agent events
+- **Token Coach**: token mix, retry waste, workflow hotspots, and usage-efficiency suggestions
 - **Governance**: provider performance, leak radar, and audit trail
 
 The goal is simple: customers should understand the product value in the first screen without scrolling through operational noise.
@@ -143,6 +146,22 @@ This saves an OpenAI connector, routes an OpenAI Responses API request through A
 ### 4. Refresh the dashboard
 
 The dashboard should show provider activity from both Claude and OpenAI, with normalized scoring and cost/risk signals.
+
+### 5. Run the Copilot demo telemetry agent
+
+```bash
+node real_demo_copilot_agent.js
+```
+
+This pushes realistic Copilot coding-agent telemetry into Agent Prism. Open the **Token Coach** tab to show token mix, retry waste, token-heavy agents, workflow hotspots, and suggestions for using tokens more effectively.
+
+If your saved CLI credential is stale, pass a fresh tenant key directly:
+
+```bash
+AGENT_PRISM_ENDPOINT=https://agent-prism.onrender.com \
+AGENT_PRISM_API_KEY=acp_your_tenant_key \
+node real_demo_copilot_agent.js
+```
 
 ## Product Architecture
 

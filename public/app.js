@@ -8,6 +8,7 @@ const workspaceShell = `
     <nav class="view-tabs" aria-label="Dashboard views">
       <button class="view-tab active" data-view="overview" type="button">Overview</button>
       <button class="view-tab" data-view="activity" type="button">Activity</button>
+      <button class="view-tab" data-view="tokens" type="button">Token Coach</button>
       <button class="view-tab" data-view="governance" type="button">Governance</button>
     </nav>
     <section class="metrics-grid cockpit-metrics" id="metrics-grid"></section>
@@ -330,6 +331,103 @@ function renderGovernanceView() {
   renderAuditLogs(dashboardAuditLogs);
 }
 
+function renderTokenCoachView() {
+  const efficiency = dashboardState.tokenEfficiency || {};
+  const suggestions = efficiency.suggestions || [];
+  const topAgents = efficiency.topAgents || [];
+  const hotspots = efficiency.workflowHotspots || [];
+
+  document.querySelector("#view-content").innerHTML = `
+    <section class="tab-stage token-stage">
+      <article class="panel wide-panel token-hero">
+        <div class="panel-title">
+          <p class="eyebrow">Token Coach</p>
+          <h2>Usage efficiency recommendations</h2>
+        </div>
+        <div class="token-summary">
+          <div>
+            <span>Total tokens</span>
+            <strong>${compactNumber(efficiency.totalTokens || 0)}</strong>
+          </div>
+          <div>
+            <span>Input mix</span>
+            <strong>${efficiency.inputTokenPercent || 0}%</strong>
+          </div>
+          <div>
+            <span>Output mix</span>
+            <strong>${efficiency.outputTokenPercent || 0}%</strong>
+          </div>
+          <div>
+            <span>Retry waste</span>
+            <strong>${compactNumber(efficiency.retryWasteTokens || 0)}</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Recommendations</p>
+          <h2>What to change next</h2>
+        </div>
+        <div class="coach-list">
+          ${suggestions.length ? suggestions.map((item, index) => `
+            <div class="coach-card">
+              <div class="coach-rank">${index + 1}</div>
+              <div>
+                <h3>${item.title}</h3>
+                <strong>${item.impact}</strong>
+                <p>${item.action}</p>
+              </div>
+            </div>
+          `).join("") : `<p class="muted">No token recommendations yet.</p>`}
+        </div>
+      </article>
+
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Top Agents</p>
+          <h2>Token-heavy agents</h2>
+        </div>
+        <div class="token-list">
+          ${topAgents.length ? topAgents.map((agent) => `
+            <div class="token-row">
+              <div>
+                <strong>${agent.agentName}</strong>
+                <span>${agent.provider} · ${agent.workflow}</span>
+              </div>
+              <div>
+                <strong>${compactNumber(agent.totalTokens)}</strong>
+                <span>${compactNumber(agent.avgTokensPerRun)} avg/run</span>
+              </div>
+            </div>
+          `).join("") : `<p class="muted">Token-heavy agents appear after telemetry arrives.</p>`}
+        </div>
+      </article>
+
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Workflow Hotspots</p>
+          <h2>Where tokens concentrate</h2>
+        </div>
+        <div class="token-list">
+          ${hotspots.length ? hotspots.map((workflow) => `
+            <div class="token-row">
+              <div>
+                <strong>${workflow.workflow}</strong>
+                <span>${workflow.runs} runs · ${workflow.retries} retries</span>
+              </div>
+              <div>
+                <strong>${compactNumber(workflow.totalTokens)}</strong>
+                <span>${compactNumber(workflow.avgTokensPerRun)} avg/run</span>
+              </div>
+            </div>
+          `).join("") : `<p class="muted">Workflow hotspots appear after telemetry arrives.</p>`}
+        </div>
+      </article>
+    </section>
+  `;
+}
+
 function renderCurrentView() {
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === currentView);
@@ -337,6 +435,8 @@ function renderCurrentView() {
 
   if (currentView === "activity") {
     renderActivityView();
+  } else if (currentView === "tokens") {
+    renderTokenCoachView();
   } else if (currentView === "governance") {
     renderGovernanceView();
   } else {
