@@ -1182,6 +1182,10 @@ canvas {
   grid-column: 1 / -1;
 }
 
+.developer-rollout {
+  grid-column: 1 / -1;
+}
+
 .connector-marketplace {
   grid-column: 1 / -1;
 }
@@ -1362,6 +1366,86 @@ canvas {
 
 .active-source-strip strong {
   color: #8ef0bf;
+}
+
+.workspace-business #metrics-grid[hidden] {
+  display: none !important;
+}
+
+.rollout-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.rollout-step {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid rgba(122, 145, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.rollout-step > span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(79, 128, 255, 0.16);
+  color: #b8c9ff;
+  font-weight: 800;
+}
+
+.rollout-step strong,
+.snippet-card strong {
+  display: block;
+}
+
+.rollout-step p,
+.snippet-card span {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.rollout-step code {
+  color: #cdd8ff;
+}
+
+.snippet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.snippet-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(122, 145, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(5, 10, 24, 0.24);
+}
+
+.snippet-card pre {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  overflow: auto;
+  background: rgba(3, 7, 18, 0.72);
+  border: 1px solid rgba(122, 145, 255, 0.12);
+}
+
+.snippet-card code {
+  color: #cdd8ff;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .connector-grid {
@@ -1566,6 +1650,8 @@ canvas {
   .inline-admin-form,
   .admin-row,
   .active-source-strip,
+  .rollout-grid,
+  .snippet-grid,
   .connector-card-top,
   .connector-form {
     flex-direction: column;
@@ -1582,6 +1668,11 @@ canvas {
   }
 
   .connector-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rollout-grid,
+  .snippet-grid {
     grid-template-columns: 1fr;
   }
 }

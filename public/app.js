@@ -465,6 +465,66 @@ function renderAdminView() {
         </div>
       </article>
 
+      <article class="panel wide-panel developer-rollout">
+        <div class="panel-title">
+          <p class="eyebrow">Developer Rollout</p>
+          <h2>Track agents from VS Code</h2>
+        </div>
+        <div class="rollout-grid">
+          <div class="rollout-step">
+            <span>1</span>
+            <strong>Create an Agent Prism key</strong>
+            <p>Create a tenant API key below, then run <code>node bin/cli.js login</code> once on the developer machine.</p>
+          </div>
+          <div class="rollout-step">
+            <span>2</span>
+            <strong>Choose tracking mode</strong>
+            <p>Use gateway mode for OpenAI/Claude calls, or event mode for Copilot, LangChain, CrewAI, and custom agents.</p>
+          </div>
+          <div class="rollout-step">
+            <span>3</span>
+            <strong>Verify in dashboard</strong>
+            <p>Run one agent task, then check Overview, Token Coach, Activity, and Governance for the new run.</p>
+          </div>
+        </div>
+        <div class="snippet-grid">
+          <div class="snippet-card">
+            <div>
+              <strong>OpenAI gateway mode</strong>
+              <span>Change the agent base URL to Agent Prism. No custom telemetry code.</span>
+            </div>
+            <pre><code>fetch("https://agent-prism.onrender.com/v1/responses", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer YOUR_AGENT_PRISM_KEY"
+  },
+  body: JSON.stringify({
+    model: "gpt-4.1-mini",
+    input: "Run the agent task"
+  })
+})</code></pre>
+          </div>
+          <div class="snippet-card">
+            <div>
+              <strong>Custom or Copilot event mode</strong>
+              <span>Send one run event when the local agent completes work.</span>
+            </div>
+            <pre><code>await prism.logRun({
+  source: "copilot",
+  payload: {
+    agent_name: "VS Code Copilot Agent",
+    intent: "code-generation",
+    outcome: "success",
+    prompt_tokens: 5200,
+    completion_tokens: 1100,
+    workflow: "local-development"
+  }
+})</code></pre>
+          </div>
+        </div>
+      </article>
+
       <article class="panel wide-panel connector-marketplace">
         <div class="panel-title">
           <p class="eyebrow">Integration Hub</p>
