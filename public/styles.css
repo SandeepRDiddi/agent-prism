@@ -1372,10 +1372,10 @@ canvas {
 
 .connector-card {
   display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
+  grid-template-rows: auto auto auto auto 1fr auto;
   gap: 12px;
   align-content: start;
-  min-height: 310px;
+  min-height: 280px;
   padding: 16px;
   border: 1px solid rgba(122, 145, 255, 0.16);
   border-radius: 10px;
@@ -1452,6 +1452,11 @@ canvas {
   background: rgba(5, 10, 24, 0.22);
 }
 
+.connector-action-zone.primary-action {
+  border-color: rgba(79, 128, 255, 0.28);
+  background: rgba(79, 128, 255, 0.08);
+}
+
 .connector-action-zone label {
   color: #91a4d2;
   font-size: 0.78rem;
@@ -1461,7 +1466,7 @@ canvas {
 
 .connector-form {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 132px;
+  grid-template-columns: minmax(360px, 1fr) 132px;
   gap: 8px;
 }
 
@@ -1473,6 +1478,7 @@ canvas {
   color: var(--text);
   padding: 0.75rem 0.8rem;
   font: inherit;
+  font-size: 0.95rem;
 }
 
 .connect-source-button,

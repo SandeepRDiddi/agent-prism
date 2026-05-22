@@ -494,6 +494,15 @@ function renderAdminView() {
                 </div>
                 <span class="connector-status ${isConnected ? "connected" : ""}">${statusLabel}</span>
               </div>
+              ${item.requiresSecret && (!isConnected || !hasSecret) ? `
+                <div class="connector-action-zone primary-action">
+                  <label>${item.name} API key</label>
+                  <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
+                    <input name="apiKey" placeholder="${item.provider === "anthropic" ? "Paste Claude key sk-ant-..." : "Paste OpenAI key sk-..."}" />
+                    <button type="submit">${isConnected ? "Save key" : "Connect"}</button>
+                  </form>
+                </div>
+              ` : ""}
               <div class="connector-health ${isConnected ? "ok" : "idle"}">
                 ${isConnected
                   ? item.requiresSecret && !hasSecret
@@ -502,25 +511,17 @@ function renderAdminView() {
                   : "Ready to add for this tenant."}
               </div>
               <p>${item.setup}</p>
-              ${item.requiresSecret && (!isConnected || !hasSecret) ? `
-                <div class="connector-action-zone">
-                  <label>${item.name} API key</label>
-                  <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
-                    <input name="apiKey" placeholder="${item.provider === "anthropic" ? "Paste Claude key sk-ant-..." : "Paste OpenAI key sk-..."}" />
-                    <button type="submit">${isConnected ? "Save key" : "Connect"}</button>
-                  </form>
-                </div>
-              ` : item.requiresSecret ? `
+              ${item.requiresSecret && isConnected && hasSecret ? `
                 <div class="connector-action-zone">
                   <label>Credential vault</label>
                   <button class="ghost rotate-key-button" data-provider="${item.provider}" type="button">Rotate provider key</button>
                 </div>
-              ` : `
+              ` : !item.requiresSecret ? `
                 <div class="connector-action-zone">
                   <label>Source registration</label>
                   <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${isConnected ? "Refresh Source" : "Add Source"}</button>
                 </div>
-              `}
+              ` : ""}
               <div class="connector-footer">
                 <span>${item.endpoint}</span>
                 <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
