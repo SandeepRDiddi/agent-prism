@@ -465,6 +465,37 @@ function renderAdminView() {
         </div>
       </article>
 
+      <article class="panel wide-panel connector-marketplace">
+        <div class="panel-title">
+          <p class="eyebrow">Connector Marketplace</p>
+          <h2>No-code onboarding</h2>
+        </div>
+        <div class="connector-grid">
+          ${connectorCatalog.length ? connectorCatalog.map((item) => `
+            <div class="connector-card">
+              <div class="connector-card-top">
+                <div>
+                  <strong>${item.name}</strong>
+                  <span>${item.category} · ${item.mode}</span>
+                </div>
+                <span class="admin-pill">${configuredProviders.has(item.provider) ? "connected" : "ready"}</span>
+              </div>
+              <p>${item.setup}</p>
+              <div class="connector-endpoint">${item.endpoint}</div>
+              ${item.requiresSecret ? `
+                <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
+                  <input name="apiKey" placeholder="${item.provider === "anthropic" ? "sk-ant-..." : "sk-..."}" />
+                  <button type="submit">${configuredProviders.has(item.provider) ? "Update" : "Connect"}</button>
+                </form>
+              ` : `
+                <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${configuredProviders.has(item.provider) ? "Refresh Source" : "Add Source"}</button>
+              `}
+              <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
+            </div>
+          `).join("") : `<p class="muted">Connector catalog is loading.</p>`}
+        </div>
+      </article>
+
       <article class="panel wide-panel">
         <div class="panel-title">
           <p class="eyebrow">API Keys</p>
@@ -509,37 +540,6 @@ function renderAdminView() {
         </div>
       </article>
 
-      <article class="panel wide-panel connector-marketplace">
-        <div class="panel-title">
-          <p class="eyebrow">Connector Marketplace</p>
-          <h2>No-code onboarding</h2>
-        </div>
-        <div class="connector-grid">
-          ${connectorCatalog.length ? connectorCatalog.map((item) => `
-            <div class="connector-card">
-              <div class="connector-card-top">
-                <div>
-                  <strong>${item.name}</strong>
-                  <span>${item.category} · ${item.mode}</span>
-                </div>
-                <span class="admin-pill">${configuredProviders.has(item.provider) ? "connected" : "ready"}</span>
-              </div>
-              <p>${item.setup}</p>
-              <div class="connector-endpoint">${item.endpoint}</div>
-              ${item.requiresSecret ? `
-                <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
-                  <input name="apiKey" placeholder="${item.provider === "anthropic" ? "sk-ant-..." : "sk-..."}" />
-                  <button type="submit">${configuredProviders.has(item.provider) ? "Update" : "Connect"}</button>
-                </form>
-              ` : `
-                <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${configuredProviders.has(item.provider) ? "Refresh Source" : "Add Source"}</button>
-              `}
-              <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
-            </div>
-          `).join("") : `<p class="muted">Connector catalog is loading.</p>`}
-        </div>
-      </article>
-
       <article class="panel wide-panel">
         <div class="panel-title">
           <p class="eyebrow">Audit</p>
@@ -573,6 +573,7 @@ function renderCurrentView() {
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === currentView);
   });
+  document.querySelector("#metrics-grid").hidden = currentView === "admin";
 
   if (currentView === "activity") {
     renderActivityView();
