@@ -476,7 +476,27 @@ function renderTokenCoachView() {
                 </div>
                 <strong class="coach-impact">${item.impact}</strong>
                 ${item.savingsEstimate ? `<div class="coach-savings">${item.savingsEstimate}</div>` : ""}
-                <p class="coach-action"><span class="coach-do-label">Do this:</span> ${item.action}</p>
+
+                ${item.diagnosis ? `
+                <div class="coach-diagnostic-block coach-diagnostic-block--problem">
+                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9888;</span> What went wrong</div>
+                  <p>${item.diagnosis}</p>
+                </div>` : ""}
+
+                ${item.whatToChange && item.whatToChange.length ? `
+                <div class="coach-diagnostic-block coach-diagnostic-block--change">
+                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9998;</span> What to change</div>
+                  <ol class="coach-change-list">
+                    ${item.whatToChange.map(step => `<li>${step}</li>`).join("")}
+                  </ol>
+                </div>` : item.action ? `<p class="coach-action"><span class="coach-do-label">Do this:</span> ${item.action}</p>` : ""}
+
+                ${item.howToTest ? `
+                <div class="coach-diagnostic-block coach-diagnostic-block--test">
+                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#10003;</span> How to verify the fix</div>
+                  <p>${item.howToTest}</p>
+                </div>` : ""}
+
                 ${item.target ? `<div class="coach-target">${item.target}</div>` : ""}
               </div>
             </div>

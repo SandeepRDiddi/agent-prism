@@ -1465,6 +1465,70 @@ canvas {
   font-style: italic;
 }
 
+.coach-diagnostic-block {
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+
+.coach-diagnostic-block--problem {
+  background: rgba(255, 99, 99, 0.06);
+  border-left: 3px solid rgba(255, 99, 99, 0.55);
+}
+
+.coach-diagnostic-block--change {
+  background: rgba(168, 190, 255, 0.06);
+  border-left: 3px solid rgba(168, 190, 255, 0.45);
+}
+
+.coach-diagnostic-block--test {
+  background: rgba(32, 194, 119, 0.06);
+  border-left: 3px solid rgba(32, 194, 119, 0.45);
+}
+
+.coach-diagnostic-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coach-diagnostic-block--problem .coach-diagnostic-label { color: #ff9a9a; }
+.coach-diagnostic-block--change .coach-diagnostic-label { color: #a8beff; }
+.coach-diagnostic-block--test .coach-diagnostic-label { color: #5ee3a3; }
+
+.coach-diagnostic-icon {
+  font-size: 0.9rem;
+}
+
+.coach-diagnostic-block p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.coach-diagnostic-block--problem p { color: #e8b4b4; }
+.coach-diagnostic-block--test p { color: #a8d9c0; }
+
+.coach-change-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.coach-change-list li {
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #c8d6ff;
+}
+
 .coach-card strong {
   display: block;
   color: #c8d6ff;

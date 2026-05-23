@@ -139,6 +139,14 @@ function buildTokenEfficiency(enrichedRuns) {
       impact: `${Math.round(inputRatio * 100)}% of tokens are input (${totalInputTokens.toLocaleString()} tokens total)`,
       savingsEstimate: `Cutting input by 30% saves ~${savableTokens.toLocaleString()} tokens = $${monthlySavings}/month at current run rate`,
       effort: "Medium",
+      diagnosis: `Your agents are sending ${Math.round(inputRatio * 100)}% input tokens — healthy agents stay below 65%. This gap of ${Math.round((inputRatio - 0.65) * 100)}% means prompts contain far more context than the model needs. Common causes: full file contents sent on every run, long system prompts repeated each call, entire conversation history re-attached instead of a summary.`,
+      whatToChange: [
+        `Cache repository or document summaries once per session — do not re-send on every run`,
+        `Send only the changed lines (diff), not the full file`,
+        `Replace system prompts longer than 2,000 tokens with a compact task brief`,
+        `Summarise prior conversation turns instead of appending the full history`
+      ],
+      howToTest: `After making these changes, run the same agent 3 times. Return to Token Coach — the Input Mix stat should drop below 65% and your Efficiency Score should increase. If input% is still above 70%, at least one of the above changes has not been applied yet.`,
       action: "Cache repository summaries once per session instead of re-sending them. Send only the diff, not the full file. Replace long system prompts with compact task briefs (target: under 2,000 input tokens per run).",
       target: `Target: input mix below 65% (currently ${Math.round(inputRatio * 100)}%)`
     });
@@ -153,6 +161,14 @@ function buildTokenEfficiency(enrichedRuns) {
       impact: `${Math.round(outputRatio * 100)}% of tokens are output (${totalOutputTokens.toLocaleString()} tokens total)`,
       savingsEstimate: `Reducing output verbosity by 35% saves ~${savableTokens.toLocaleString()} tokens = $${monthlySavings}/month`,
       effort: "Low",
+      diagnosis: `Output tokens account for ${Math.round(outputRatio * 100)}% of usage — above the 35% healthy ceiling. Models bill output at 3–5× the cost of input tokens, so verbosity compounds fast. Likely cause: no response length constraint in the system prompt. The model is generating preambles, recaps, and closing remarks that no downstream system reads.`,
+      whatToChange: [
+        `Add to system prompt: "Respond with findings only. No preamble, no recap, no closing remarks."`,
+        `Specify a word or token budget: "Maximum 400 words" or "max_tokens: 600" in the API call`,
+        `For programmatic consumers, instruct the model to return structured JSON instead of prose`,
+        `Use bullet points instead of paragraphs — models produce fewer tokens per fact`
+      ],
+      howToTest: `Run the same task after adding the constraint. Compare the Output Mix stat in Token Coach — it should drop below 35%. Check that the response still contains all the data your workflow actually uses. If quality drops, the constraint is too tight — relax the word budget by 20%.`,
       action: "Add to your system prompt: 'Respond with findings only. No preamble, no recap, no closing remarks. Use bullet points. Maximum 500 words.' Switch to structured JSON output for programmatic consumers.",
       target: `Target: output mix below 35% (currently ${Math.round(outputRatio * 100)}%)`
     });
@@ -165,6 +181,14 @@ function buildTokenEfficiency(enrichedRuns) {
       impact: `${retryWasteTokens.toLocaleString()} tokens wasted in retry loops (${wastePercent}% of all usage)`,
       savingsEstimate: `Fixing root retry causes saves $${monthlySavings}/month`,
       effort: "High",
+      diagnosis: `${retryWasteTokens.toLocaleString()} tokens (${wastePercent}% of total spend) were consumed by runs that failed and retried. Each retry re-sends the full context from scratch. Root causes are typically: tool call errors not caught before retry, missing validation between agent steps, no maximum retry cap configured, or upstream API rate limits hitting mid-run.`,
+      whatToChange: [
+        `Add a preflight validation step — check that required inputs and tool permissions are valid before the agent starts`,
+        `Log the exact error message from the first failure so you can diagnose the root cause`,
+        `Set max_retries: 2 (or equivalent) in your agent config — halting beats looping`,
+        `Add a checkpoint after each major workflow step so a failure restarts from the last checkpoint, not the beginning`
+      ],
+      howToTest: `After applying these changes, run the same workflow and check the Activity tab. You should see zero "retry" events in the event log. In Token Coach, Retry Waste should read 0%. If retries still appear, open the Activity log and find the exact error message — that is what still needs to be fixed.`,
       action: "Add a preflight validation step before the agent runs. Log the exact failure message on first attempt. Add a stop condition so the agent halts after 2 failures instead of retrying indefinitely.",
       target: "Target: retry count = 0 on all runs"
     });
@@ -178,6 +202,13 @@ function buildTokenEfficiency(enrichedRuns) {
       impact: `${topAgent.avgTokensPerRun.toLocaleString()} avg tokens/run — ${excessTokens.toLocaleString()} above 6k target`,
       savingsEstimate: `Trimming to 6k avg tokens/run saves ~$${monthlySavings}/month`,
       effort: "Medium",
+      diagnosis: `"${topAgent.agentName}" averages ${topAgent.avgTokensPerRun.toLocaleString()} tokens per run — ${excessTokens.toLocaleString()} tokens above the 6,000 recommended ceiling. This agent is likely doing too much in one call: combining planning, execution, and verification in a single prompt. Large single-call agents are expensive, harder to debug, and fail more expensively when something goes wrong.`,
+      whatToChange: [
+        `Split into 3 focused calls: (1) Plan — describe the task only, under 1,000 tokens; (2) Execute — pass only the specific context needed; (3) Verify — pass only the diff or output to check`,
+        `Remove any full codebase or document context — pass only the relevant section`,
+        `Profile which part of the prompt is largest using the token count in the Activity log`
+      ],
+      howToTest: `After splitting, check the Top Agents table in Token Coach. "${topAgent.agentName}" should now appear with an avg tokens/run below 6,000. Total cost for this agent should decrease even though run count increases (3 small calls replace 1 large one). If cost increases, the split is not reducing context — check what each sub-call is receiving.`,
       action: "Split this agent's work into 3 phases: (1) plan — lightweight, under 1k tokens; (2) execute — focused context only; (3) verify — diff only. Each call gets only what it needs.",
       target: "Target: avg tokens/run below 6,000"
     });
@@ -189,6 +220,14 @@ function buildTokenEfficiency(enrichedRuns) {
       impact: `${topWorkflow.retries} retries logged — highest-token workflow at ${topWorkflow.avgTokensPerRun.toLocaleString()} avg tokens/run`,
       savingsEstimate: "Every retry doubles token cost for that run",
       effort: "High",
+      diagnosis: `The "${topWorkflow.workflow}" workflow has logged ${topWorkflow.retries} retries and is your most token-intensive workflow at ${topWorkflow.avgTokensPerRun.toLocaleString()} avg tokens/run. Retries in high-token workflows are especially costly — each retry re-runs the full context window. This indicates missing validation between steps or an unhandled failure mode that causes the entire workflow to restart.`,
+      whatToChange: [
+        `Add a validation gate after each step — verify the output before passing it to the next step`,
+        `Identify which step triggers the retry by reading the Activity log for this workflow`,
+        `Set an explicit stop condition: fail fast with a clear error rather than retrying silently`,
+        `Add an idempotency key so resumed workflows pick up from the last successful step`
+      ],
+      howToTest: `After adding validation gates, run the workflow end-to-end. In the Activity tab, filter by this workflow name — you should see a clean sequence with no retry events. In Token Coach, the Workflow Hotspots table should show 0 retries for "${topWorkflow.workflow}". If retries persist, read the specific error in the Activity log — that step needs its own fix.`,
       action: "Add checkpoints between workflow steps. Validate tool outputs before passing to next step. Set explicit stop conditions so failures surface immediately rather than looping.",
       target: "Target: 0 retries on this workflow"
     });
@@ -201,6 +240,13 @@ function buildTokenEfficiency(enrichedRuns) {
       impact: `All runs on current model — not all tasks need premium capability`,
       savingsEstimate: `Routing 60% of tasks to a smaller model could save ~$${haiku_savings}/month`,
       effort: "Low",
+      diagnosis: `All current runs are using the same model tier regardless of task complexity. Simple tasks — classification, formatting, summarisation, boolean lookups — do not need a premium reasoning model. Running them on claude-sonnet or gpt-4o consumes 5–10× the budget of a smaller model with no improvement in outcome for routine operations.`,
+      whatToChange: [
+        `Classify tasks by complexity before routing: simple tasks go to claude-haiku or gpt-4.1-mini; complex reasoning goes to claude-sonnet or gpt-4o`,
+        `Tasks that are "simple": format conversion, field extraction, yes/no checks, short summarisation`,
+        `Tasks that need premium: multi-step code generation, chain-of-thought analysis, ambiguous instructions`
+      ],
+      howToTest: `After routing, return to Token Coach. The Provider Comparison scorecard in the Governance tab will show a new lightweight model alongside your current one. Compare cost-per-run — the lightweight model should cost 5–10× less per run. Verify quality by checking user satisfaction scores in the Agent Profiles panel. If satisfaction drops, move that task type back to the premium tier.`,
       action: "Use claude-haiku or gpt-4o-mini for classification, formatting, summarisation, and simple lookups. Reserve claude-sonnet or gpt-4o for multi-step reasoning and code generation.",
       target: "Target: 40% of runs on lightweight models"
     });
