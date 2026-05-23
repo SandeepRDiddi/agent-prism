@@ -491,6 +491,99 @@ function renderAdminView() {
         <p class="quick-connect-hint">After clicking, switch to the <strong>Overview</strong> tab to see the run appear live. To connect your real agent, use the sources below.</p>
       </article>
 
+      <article class="panel wide-panel dev-setup-panel">
+        <div class="panel-title">
+          <p class="eyebrow">For Your Developers</p>
+          <h2>Share this with your team — they add 3 lines to their agent</h2>
+          <p class="panel-subtitle">Pick the agent type your team built. Copy the snippet and send it to them. That's the entire integration.</p>
+        </div>
+        <div class="dev-tabs">
+          <button class="dev-tab active" data-tab="copilot" type="button">Copilot / Custom</button>
+          <button class="dev-tab" data-tab="openai" type="button">OpenAI Agent</button>
+          <button class="dev-tab" data-tab="claude" type="button">Claude Agent</button>
+        </div>
+        <div class="dev-snippet-panels">
+          <div class="dev-snippet-panel active" data-panel="copilot">
+            <p class="dev-snippet-desc">Your developer adds this after each agent run. Replace the field values with the real agent name, task type, and outcome.</p>
+            <div class="dev-snippet-block">
+              <button class="copy-snippet-btn" data-target="snippet-copilot" type="button">Copy</button>
+              <pre id="snippet-copilot"><code>// 1. Install once: copy src/sdk/index.js into your project as agent-prism-sdk.js
+// 2. Add this after each agent run
+
+import { AgentPrism } from "./agent-prism-sdk.js";
+
+const prism = new AgentPrism({
+  clientSecret: "${tenantApiKey || "YOUR_AGENT_PRISM_KEY"}",
+  endpoint: "${window.location.origin}"
+});
+
+await prism.logRun({
+  source: "copilot",
+  payload: {
+    session_id:         "unique-run-id",
+    agent_name:         "Your Agent Name",
+    intent:             "code-generation",   // what the agent did
+    outcome:            "success",           // or "failed"
+    started_at:         runStartTime,
+    completed_at:       new Date().toISOString(),
+    duration_ms:        elapsedMs,
+    prompt_tokens:      inputTokens,
+    completion_tokens:  outputTokens,
+    estimated_cost_usd: costUsd,
+    workflow:           "your-workflow-name",
+    team:               "engineering"
+  }
+});</code></pre>
+            </div>
+          </div>
+          <div class="dev-snippet-panel" data-panel="openai">
+            <p class="dev-snippet-desc">Change one line in your OpenAI agent — swap the base URL. Agent Prism proxies to OpenAI and records every run automatically.</p>
+            <div class="dev-snippet-block">
+              <button class="copy-snippet-btn" data-target="snippet-openai" type="button">Copy</button>
+              <pre id="snippet-openai"><code>// Before — calls OpenAI directly:
+// const response = await fetch("https://api.openai.com/v1/responses", ...)
+
+// After — route through Agent Prism (no other changes needed):
+const response = await fetch("${window.location.origin}/v1/responses", {
+  method: "POST",
+  headers: {
+    "Content-Type":  "application/json",
+    "Authorization": "Bearer ${tenantApiKey || "YOUR_AGENT_PRISM_KEY"}"
+    // Agent Prism forwards your OpenAI key automatically once configured
+  },
+  body: JSON.stringify({
+    model: "gpt-4.1-mini",
+    input: "Your agent prompt here"
+  })
+});</code></pre>
+            </div>
+          </div>
+          <div class="dev-snippet-panel" data-panel="claude">
+            <p class="dev-snippet-desc">Same idea — change the base URL in your Claude agent. Agent Prism proxies to Anthropic and records the run.</p>
+            <div class="dev-snippet-block">
+              <button class="copy-snippet-btn" data-target="snippet-claude" type="button">Copy</button>
+              <pre id="snippet-claude"><code>// Before — calls Anthropic directly:
+// const response = await fetch("https://api.anthropic.com/v1/messages", ...)
+
+// After — route through Agent Prism (no other changes needed):
+const response = await fetch("${window.location.origin}/v1/messages", {
+  method: "POST",
+  headers: {
+    "Content-Type":  "application/json",
+    "x-api-key":     "${tenantApiKey || "YOUR_AGENT_PRISM_KEY"}"
+    // Agent Prism forwards your Claude key automatically once configured
+  },
+  body: JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1024,
+    messages: [{ role: "user", content: "Your agent prompt here" }]
+  })
+});</code></pre>
+            </div>
+          </div>
+        </div>
+      </article>
+
       <article class="panel wide-panel connector-marketplace">
         <div class="panel-title">
           <p class="eyebrow">Agent Sources</p>
@@ -578,6 +671,23 @@ function renderAdminView() {
     </section>
   `;
 
+  document.querySelectorAll(".dev-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".dev-tab").forEach((t) => t.classList.remove("active"));
+      document.querySelectorAll(".dev-snippet-panel").forEach((p) => p.classList.remove("active"));
+      tab.classList.add("active");
+      document.querySelector(`.dev-snippet-panel[data-panel="${tab.dataset.tab}"]`).classList.add("active");
+    });
+  });
+  document.querySelectorAll(".copy-snippet-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pre = document.getElementById(btn.dataset.target);
+      navigator.clipboard.writeText(pre.innerText).then(() => {
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+      });
+    });
+  });
   document.querySelector("#create-key-form").addEventListener("submit", createTenantKey);
   document.querySelectorAll(".revoke-key-button").forEach((button) => {
     button.addEventListener("click", () => revokeTenantKey(button.dataset.keyId));

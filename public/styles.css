@@ -1495,6 +1495,94 @@ canvas {
   color: var(--text);
 }
 
+/* ── Developer setup panel ──────────────────────────────────────────────────── */
+.dev-setup-panel {
+  grid-column: 1 / -1;
+}
+
+.dev-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 16px 0 0;
+}
+
+.dev-tab {
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(122, 145, 255, 0.22);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.dev-tab:hover {
+  color: var(--text);
+  border-color: rgba(122, 145, 255, 0.45);
+}
+
+.dev-tab.active {
+  background: rgba(79, 128, 255, 0.14);
+  border-color: rgba(122, 145, 255, 0.5);
+  color: #c8d6ff;
+}
+
+.dev-snippet-panel {
+  display: none;
+  margin-top: 14px;
+}
+
+.dev-snippet-panel.active {
+  display: block;
+}
+
+.dev-snippet-desc {
+  margin: 0 0 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.dev-snippet-block {
+  position: relative;
+}
+
+.dev-snippet-block pre {
+  margin: 0;
+  padding: 16px;
+  border-radius: 10px;
+  overflow: auto;
+  background: rgba(3, 7, 18, 0.72);
+  border: 1px solid rgba(122, 145, 255, 0.14);
+}
+
+.dev-snippet-block code {
+  color: #cdd8ff;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.copy-snippet-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid rgba(122, 145, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(18, 28, 60, 0.9);
+  color: #a8beff;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.copy-snippet-btn:hover {
+  background: rgba(79, 128, 255, 0.2);
+}
+
 /* ── Connector card active state ────────────────────────────────────────────── */
 .connector-card--active {
   border-color: rgba(32, 194, 119, 0.28);
