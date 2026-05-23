@@ -1,0 +1,3776 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "agent-prism",
+    "languages": [
+      "javascript",
+      "css",
+      "html",
+      "markdown",
+      "yaml",
+      "json",
+      "sql",
+      "shell",
+      "dockerfile"
+    ],
+    "frameworks": [
+      "@anthropic-ai/sdk",
+      "Docker",
+      "Docker Compose",
+      "GitHub Actions",
+      "PostgreSQL (pg)",
+      "dotenv",
+      "jsonwebtoken"
+    ],
+    "description": "Agent Prism is a SaaS control plane for teams running AI agents across Claude, OpenAI, Copilot, and internal automation workflows. It provides a unified view of agent cost, quality, reliability, and governance through normalized Control Scores, a Cost Leak Radar, and provider-agnostic analytics.",
+    "analyzedAt": "2026-05-19T11:06:54.679Z",
+    "gitCommitHash": "817f822409e5c4ccde768bda8c4f645ad1a46a65"
+  },
+  "nodes": [
+    {
+      "id": "file:server.js",
+      "type": "file",
+      "name": "server.js",
+      "filePath": "server.js",
+      "summary": "Central HTTP server and route dispatcher for Agent Prism, handling all API endpoints for ingest, tenant management, session tracking, cost analytics, and dashboard data; wires together all middleware, stores, and business-logic modules.",
+      "tags": [
+        "entry-point",
+        "api-handler",
+        "middleware",
+        "service"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:parseBody",
+      "type": "function",
+      "name": "parseBody",
+      "filePath": "server.js",
+      "lineRange": [
+        80,
+        125
+      ],
+      "summary": "Reads and parses a raw HTTP request body as JSON, enforcing a content-type check and a maximum byte limit before resolving.",
+      "tags": [
+        "utility",
+        "validation",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server.js:normalizePayload",
+      "type": "function",
+      "name": "normalizePayload",
+      "filePath": "server.js",
+      "lineRange": [
+        127,
+        139
+      ],
+      "summary": "Dispatches inbound agent-run payloads to provider-specific normalizers (Claude, Copilot, or generic) based on the payload's provider field.",
+      "tags": [
+        "utility",
+        "serialization",
+        "api-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server.js:dispatchBudgetAlert",
+      "type": "function",
+      "name": "dispatchBudgetAlert",
+      "filePath": "server.js",
+      "lineRange": [
+        144,
+        163
+      ],
+      "summary": "Posts a budget-breach webhook notification to the tenant-configured alert URL when a run exceeds its cost budget.",
+      "tags": [
+        "event-handler",
+        "service",
+        "api-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server.js:requireTenant",
+      "type": "function",
+      "name": "requireTenant",
+      "filePath": "server.js",
+      "lineRange": [
+        170,
+        205
+      ],
+      "summary": "Middleware that authenticates inbound requests via JWT or API-key, resolves the tenant context, and applies per-tenant rate limiting before calling the next handler.",
+      "tags": [
+        "middleware",
+        "api-handler",
+        "validation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server.js:requireBasicAuth",
+      "type": "function",
+      "name": "requireBasicAuth",
+      "filePath": "server.js",
+      "lineRange": [
+        235,
+        266
+      ],
+      "summary": "Validates HTTP Basic Auth credentials for admin-only bootstrap endpoints, comparing against configured admin credentials.",
+      "tags": [
+        "middleware",
+        "validation",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server.js:getWindowStart",
+      "type": "function",
+      "name": "getWindowStart",
+      "filePath": "server.js",
+      "lineRange": [
+        268,
+        282
+      ],
+      "summary": "Computes the UTC start timestamp for day, week, or month analytics windows used in cost and usage roll-ups.",
+      "tags": [
+        "utility",
+        "service"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server.js:serveStatic",
+      "type": "function",
+      "name": "serveStatic",
+      "filePath": "server.js",
+      "lineRange": [
+        312,
+        336
+      ],
+      "summary": "Reads and streams static dashboard files from the public directory, resolving MIME types and guarding against path-traversal attacks.",
+      "tags": [
+        "utility",
+        "api-handler",
+        "middleware"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/auth.js",
+      "type": "file",
+      "name": "auth.js",
+      "filePath": "src/auth.js",
+      "summary": "Provides cryptographic API-key generation and verification utilities (HMAC-SHA256, timing-safe compare) plus a short-ID factory used across the data layer.",
+      "tags": [
+        "utility",
+        "security",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/auth.js:createApiKey",
+      "type": "function",
+      "name": "createApiKey",
+      "filePath": "src/auth.js",
+      "lineRange": [
+        7,
+        15
+      ],
+      "summary": "Generates a random 24-byte API key prefixed with 'ap_', returning both the plaintext value and its SHA-256 hash for storage.",
+      "tags": [
+        "utility",
+        "security",
+        "factory"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/auth.js:verifyApiKey",
+      "type": "function",
+      "name": "verifyApiKey",
+      "filePath": "src/auth.js",
+      "lineRange": [
+        17,
+        26
+      ],
+      "summary": "Compares a plaintext API key against a stored hash using a constant-time buffer comparison to prevent timing attacks.",
+      "tags": [
+        "utility",
+        "security",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/config.js",
+      "type": "file",
+      "name": "config.js",
+      "filePath": "src/config.js",
+      "summary": "Exports a frozen configuration object populated from environment variables, centralizing all runtime settings such as JWT secret, database URL, and CORS origins.",
+      "tags": [
+        "configuration",
+        "utility",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/connectors.js",
+      "type": "file",
+      "name": "connectors.js",
+      "filePath": "src/connectors.js",
+      "summary": "Normalizes provider-specific agent-run payloads (Claude, Copilot, and generic) into a uniform internal run schema used by the store and analytics layers.",
+      "tags": [
+        "serialization",
+        "utility",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/connectors.js:normalizeCopilotRun",
+      "type": "function",
+      "name": "normalizeCopilotRun",
+      "filePath": "src/connectors.js",
+      "lineRange": [
+        42,
+        70
+      ],
+      "summary": "Transforms a raw Copilot telemetry payload into the standard Agent Prism run schema, mapping Copilot-specific fields to shared run properties.",
+      "tags": [
+        "serialization",
+        "utility",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/connectors.js:normalizeClaudeRun",
+      "type": "function",
+      "name": "normalizeClaudeRun",
+      "filePath": "src/connectors.js",
+      "lineRange": [
+        72,
+        100
+      ],
+      "summary": "Transforms a raw Claude telemetry payload into the standard Agent Prism run schema, mapping model, token, and cost fields to shared run properties.",
+      "tags": [
+        "serialization",
+        "utility",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/cost/claude.js",
+      "type": "file",
+      "name": "claude.js",
+      "filePath": "src/cost/claude.js",
+      "summary": "Computes USD cost for a Claude agent run using the loaded pricing table, applying per-token input and output rates for the run's model.",
+      "tags": [
+        "utility",
+        "service",
+        "data-model",
+        "tested"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/cost/copilot.js",
+      "type": "file",
+      "name": "copilot.js",
+      "filePath": "src/cost/copilot.js",
+      "summary": "Computes USD cost for a Copilot agent run using the loaded pricing table and the run's seat and usage fields.",
+      "tags": [
+        "utility",
+        "service",
+        "data-model",
+        "tested"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/cost/generic.js",
+      "type": "file",
+      "name": "generic.js",
+      "filePath": "src/cost/generic.js",
+      "summary": "Extracts and normalizes the pre-computed cost field from a generic (non-provider-specific) agent-run payload.",
+      "tags": [
+        "utility",
+        "service",
+        "data-model",
+        "tested"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/ingest/verify.js",
+      "type": "file",
+      "name": "verify.js",
+      "filePath": "src/ingest/verify.js",
+      "summary": "Verifies the HMAC-SHA256 signature on inbound ingest webhook payloads to authenticate that events originate from a trusted source.",
+      "tags": [
+        "security",
+        "validation",
+        "middleware"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/jobs/session-timeout.js",
+      "type": "file",
+      "name": "session-timeout.js",
+      "filePath": "src/jobs/session-timeout.js",
+      "summary": "Background job that applies a configurable idle-session timeout by delegating to the store's session-expiry routine.",
+      "tags": [
+        "service",
+        "utility",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/middleware/cors.js",
+      "type": "file",
+      "name": "cors.js",
+      "filePath": "src/middleware/cors.js",
+      "summary": "Implements CORS enforcement for the Agent Prism API, checking the request origin against an allowlist and returning appropriate Access-Control headers including preflight responses.",
+      "tags": [
+        "middleware",
+        "security",
+        "api-handler",
+        "tested"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/middleware/cors.js:applyCors",
+      "type": "function",
+      "name": "applyCors",
+      "filePath": "src/middleware/cors.js",
+      "lineRange": [
+        19,
+        36
+      ],
+      "summary": "Sets CORS response headers for allowed origins and dispatches OPTIONS preflight requests to the handlePreflight helper.",
+      "tags": [
+        "middleware",
+        "security",
+        "api-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/middleware/logger.js",
+      "type": "file",
+      "name": "logger.js",
+      "filePath": "src/middleware/logger.js",
+      "summary": "Provides structured JSON request and error logging middleware, emitting timing, status, and path metadata to stdout/stderr for observability.",
+      "tags": [
+        "middleware",
+        "utility",
+        "service"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/middleware/logger.js:logRequest",
+      "type": "function",
+      "name": "logRequest",
+      "filePath": "src/middleware/logger.js",
+      "lineRange": [
+        28,
+        41
+      ],
+      "summary": "Writes a structured JSON log line to stdout capturing the HTTP method, sanitized path, status code, and round-trip latency in milliseconds.",
+      "tags": [
+        "middleware",
+        "utility",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/middleware/logger.js:logError",
+      "type": "function",
+      "name": "logError",
+      "filePath": "src/middleware/logger.js",
+      "lineRange": [
+        50,
+        62
+      ],
+      "summary": "Writes a structured JSON error log line to stderr including the error message, stack trace, and request path for diagnostics.",
+      "tags": [
+        "middleware",
+        "utility",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/middleware/rate-limiter.js",
+      "type": "file",
+      "name": "rate-limiter.js",
+      "filePath": "src/middleware/rate-limiter.js",
+      "summary": "In-memory token-bucket rate limiter used to throttle per-tenant API requests, with a garbage-collection routine to evict stale buckets.",
+      "tags": [
+        "middleware",
+        "security",
+        "service",
+        "tested"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/middleware/rate-limiter.js:RateLimiter",
+      "type": "class",
+      "name": "RateLimiter",
+      "filePath": "src/middleware/rate-limiter.js",
+      "lineRange": [
+        7,
+        52
+      ],
+      "summary": "Token-bucket rate limiter class tracking per-key request counts in a Map; exposes check() to test/increment and gc() to evict expired buckets.",
+      "tags": [
+        "middleware",
+        "security",
+        "service"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/middleware/security-headers.js",
+      "type": "file",
+      "name": "security-headers.js",
+      "filePath": "src/middleware/security-headers.js",
+      "summary": "Sets a hardened suite of HTTP security response headers (CSP, HSTS, X-Frame-Options, etc.) on every outgoing response.",
+      "tags": [
+        "middleware",
+        "security",
+        "utility",
+        "tested"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/pricing.js",
+      "type": "file",
+      "name": "pricing.js",
+      "filePath": "src/pricing.js",
+      "summary": "Loads and caches the provider token-pricing table from a local JSON file, exposing a stale-check helper so callers can trigger a reload.",
+      "tags": [
+        "utility",
+        "service",
+        "configuration",
+        "tested"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/roi.js",
+      "type": "file",
+      "name": "roi.js",
+      "filePath": "src/roi.js",
+      "summary": "Computes Return-on-Investment metrics from a set of agent sessions, calculating FTE savings, net cost, and ROI multiplier based on configured hourly rates.",
+      "tags": [
+        "utility",
+        "service",
+        "data-model",
+        "tested"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:src/roi.js:computeRoi",
+      "type": "function",
+      "name": "computeRoi",
+      "filePath": "src/roi.js",
+      "lineRange": [
+        9,
+        30
+      ],
+      "summary": "Aggregates session-level work-hours saved and agent cost to produce FTE-equivalent savings, net savings, and an ROI multiplier ratio.",
+      "tags": [
+        "utility",
+        "service",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/saas-store.js",
+      "type": "file",
+      "name": "saas-store.js",
+      "filePath": "src/saas-store.js",
+      "summary": "Adapter facade that dynamically selects the file-based or PostgreSQL storage backend at runtime based on configuration, proxying all store operations transparently.",
+      "tags": [
+        "service",
+        "factory",
+        "data-model"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Uses dynamic import() inside getBackend() to lazy-load the appropriate backend module, avoiding a static dependency on both implementations."
+    },
+    {
+      "id": "file:src/scoring.js",
+      "type": "file",
+      "name": "scoring.js",
+      "filePath": "src/scoring.js",
+      "summary": "Implements the Agent Prism Control Score algorithm, combining cost efficiency, latency, reliability, user satisfaction, and compliance signals into a 0-100 composite score with health classification.",
+      "tags": [
+        "utility",
+        "service",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/scoring.js:computeControlScore",
+      "type": "function",
+      "name": "computeControlScore",
+      "filePath": "src/scoring.js",
+      "lineRange": [
+        14,
+        35
+      ],
+      "summary": "Calculates a weighted composite Control Score (0-100) for an agent run from five sub-scores: cost efficiency, latency, reliability, satisfaction, and compliance.",
+      "tags": [
+        "utility",
+        "service",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/scoring.js:summarizeStatus",
+      "type": "function",
+      "name": "summarizeStatus",
+      "filePath": "src/scoring.js",
+      "lineRange": [
+        53,
+        69
+      ],
+      "summary": "Aggregates a list of runs into a summary status object counting success, failed, and running states.",
+      "tags": [
+        "utility",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/sdk/index.js",
+      "type": "file",
+      "name": "index.js",
+      "filePath": "src/sdk/index.js",
+      "summary": "Client-side SDK exposing the AgentPrism class, which authenticates via the server's bootstrap API and provides a logRun method for submitting agent telemetry.",
+      "tags": [
+        "service",
+        "api-handler",
+        "entry-point"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:src/sdk/index.js:AgentPrism",
+      "type": "class",
+      "name": "AgentPrism",
+      "filePath": "src/sdk/index.js",
+      "lineRange": [
+        10,
+        100
+      ],
+      "summary": "SDK client class that manages JWT authentication (with caching) and exposes logRun() to POST normalized agent-run data to the Agent Prism server.",
+      "tags": [
+        "service",
+        "api-handler",
+        "singleton"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/shutdown.js",
+      "type": "file",
+      "name": "shutdown.js",
+      "filePath": "src/shutdown.js",
+      "summary": "Registers SIGTERM and SIGINT handlers for graceful server shutdown, waiting for in-flight requests to drain before forcing process exit.",
+      "tags": [
+        "utility",
+        "service",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/startup.js",
+      "type": "file",
+      "name": "startup.js",
+      "filePath": "src/startup.js",
+      "summary": "Validates all required environment variables at process startup, emitting fatal errors for missing credentials and warnings for misconfigured optional settings.",
+      "tags": [
+        "utility",
+        "validation",
+        "service"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/startup.js:validateConfig",
+      "type": "function",
+      "name": "validateConfig",
+      "filePath": "src/startup.js",
+      "lineRange": [
+        13,
+        53
+      ],
+      "summary": "Checks all required and optional environment variables on startup, exiting fatally if mandatory configuration like JWT_SECRET or API credentials are missing.",
+      "tags": [
+        "utility",
+        "validation",
+        "service"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/store.js",
+      "type": "file",
+      "name": "store.js",
+      "filePath": "src/store.js",
+      "summary": "Core analytics and dashboard data layer: merges incoming runs with stored runs, detects Cost Leak patterns, and assembles the full dashboard snapshot used by the UI.",
+      "tags": [
+        "service",
+        "data-model",
+        "utility"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/store.js:detectCostLeaks",
+      "type": "function",
+      "name": "detectCostLeaks",
+      "filePath": "src/store.js",
+      "lineRange": [
+        23,
+        54
+      ],
+      "summary": "Identifies runs exceeding their budget, exhibiting retry spirals, or producing low-value spend, returning annotated leak records with recommended remediation actions.",
+      "tags": [
+        "service",
+        "utility",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/store.js:buildDashboardSnapshot",
+      "type": "function",
+      "name": "buildDashboardSnapshot",
+      "filePath": "src/store.js",
+      "lineRange": [
+        67,
+        215
+      ],
+      "summary": "Produces the complete dashboard payload from enriched runs, including per-provider and per-workflow analytics, agent status cards, activity logs, cost trends, and cost-leak alerts.",
+      "tags": [
+        "service",
+        "data-model",
+        "utility"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/store.js:upsertRuns",
+      "type": "function",
+      "name": "upsertRuns",
+      "filePath": "src/store.js",
+      "lineRange": [
+        11,
+        21
+      ],
+      "summary": "Merges an array of incoming runs into the existing run collection using run ID as the deduplication key, returning a time-sorted array.",
+      "tags": [
+        "utility",
+        "data-model",
+        "service"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/stores/file-store.js",
+      "type": "file",
+      "name": "file-store.js",
+      "filePath": "src/stores/file-store.js",
+      "summary": "JSON-file-backed persistence layer implementing the full SaaS store interface (tenants, users, API keys, connectors, runs, sessions, audit logs) with atomic writes via rename.",
+      "tags": [
+        "service",
+        "data-model",
+        "utility"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/stores/file-store.js:bootstrapSaas",
+      "type": "function",
+      "name": "bootstrapSaas",
+      "filePath": "src/stores/file-store.js",
+      "lineRange": [
+        52,
+        119
+      ],
+      "summary": "Initializes the SaaS instance by creating the first tenant, admin user, API key, and default connector in the JSON state file.",
+      "tags": [
+        "service",
+        "factory",
+        "data-model"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/stores/file-store.js:authenticateTenantApiKey",
+      "type": "function",
+      "name": "authenticateTenantApiKey",
+      "filePath": "src/stores/file-store.js",
+      "lineRange": [
+        162,
+        184
+      ],
+      "summary": "Verifies an API key against the stored hash, updates the last-used timestamp, and returns the associated tenant context.",
+      "tags": [
+        "service",
+        "security",
+        "validation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/stores/file-store.js:upsertTenantRuns",
+      "type": "function",
+      "name": "upsertTenantRuns",
+      "filePath": "src/stores/file-store.js",
+      "lineRange": [
+        196,
+        215
+      ],
+      "summary": "Merges incoming runs for a tenant into the file store's run array using ID-based deduplication and atomic write.",
+      "tags": [
+        "service",
+        "data-model",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/stores/file-store.js:applySessionTimeout",
+      "type": "function",
+      "name": "applySessionTimeout",
+      "filePath": "src/stores/file-store.js",
+      "lineRange": [
+        278,
+        297
+      ],
+      "summary": "Marks sessions that have been idle longer than the timeout threshold as timed-out and persists the updated state.",
+      "tags": [
+        "service",
+        "data-model",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/stores/postgres-store.js",
+      "type": "file",
+      "name": "postgres-store.js",
+      "filePath": "src/stores/postgres-store.js",
+      "summary": "PostgreSQL-backed persistence layer implementing the full SaaS store interface using connection pooling, parameterized SQL queries, and row mappers for tenants, runs, connectors, and audit logs.",
+      "tags": [
+        "service",
+        "data-model",
+        "utility"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/stores/postgres-store.js:bootstrapSaas",
+      "type": "function",
+      "name": "bootstrapSaas",
+      "filePath": "src/stores/postgres-store.js",
+      "lineRange": [
+        99,
+        172
+      ],
+      "summary": "Creates the first tenant, admin user, API key, and default connector in Postgres within a transaction, guarding against double-initialization.",
+      "tags": [
+        "service",
+        "factory",
+        "data-model"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/stores/postgres-store.js:upsertTenantRuns",
+      "type": "function",
+      "name": "upsertTenantRuns",
+      "filePath": "src/stores/postgres-store.js",
+      "lineRange": [
+        261,
+        353
+      ],
+      "summary": "Bulk-upserts agent run records into Postgres within a transaction using parameterized INSERT...ON CONFLICT DO UPDATE statements for each incoming run.",
+      "tags": [
+        "service",
+        "data-model",
+        "utility"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:src/stores/postgres-store.js:authenticateTenantApiKey",
+      "type": "function",
+      "name": "authenticateTenantApiKey",
+      "filePath": "src/stores/postgres-store.js",
+      "lineRange": [
+        210,
+        242
+      ],
+      "summary": "Looks up API key candidates by prefix, verifies with timing-safe comparison, updates last-used timestamp, and returns the resolved tenant context.",
+      "tags": [
+        "service",
+        "security",
+        "validation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/validation.js",
+      "type": "file",
+      "name": "validation.js",
+      "filePath": "src/validation.js",
+      "summary": "Lightweight schema-validation engine with named schemas for ingest runs and connector creation, checking required fields, types, and range constraints without external dependencies.",
+      "tags": [
+        "validation",
+        "utility",
+        "service",
+        "tested"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:src/validation.js:validate",
+      "type": "function",
+      "name": "validate",
+      "filePath": "src/validation.js",
+      "lineRange": [
+        21,
+        64
+      ],
+      "summary": "Validates a data object against a named schema definition, accumulating all field errors and returning them as a structured error list.",
+      "tags": [
+        "validation",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:public/app.js",
+      "type": "file",
+      "name": "app.js",
+      "filePath": "public/app.js",
+      "summary": "Core client-side application controller for the Agent Prism dashboard, handling setup flows, API requests, and rendering of all dashboard views including overview, activity feed, governance, and agent lists.",
+      "tags": [
+        "entry-point",
+        "component",
+        "api-handler",
+        "event-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:public/app.js:request",
+      "type": "function",
+      "name": "request",
+      "filePath": "public/app.js",
+      "lineRange": [
+        18,
+        35
+      ],
+      "summary": "Wrapper around fetch that attaches the stored API key header and normalizes JSON responses with error fallback.",
+      "tags": [
+        "utility",
+        "api-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:public/app.js:renderSetupScreen",
+      "type": "function",
+      "name": "renderSetupScreen",
+      "filePath": "public/app.js",
+      "lineRange": [
+        60,
+        174
+      ],
+      "summary": "Renders and manages the multi-step setup screen for onboarding (tenant creation, API key entry, and API key generation), attaching form submission handlers for each flow.",
+      "tags": [
+        "component",
+        "event-handler",
+        "validation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:public/app.js:renderMetrics",
+      "type": "function",
+      "name": "renderMetrics",
+      "filePath": "public/app.js",
+      "lineRange": [
+        176,
+        195
+      ],
+      "summary": "Renders the top-level KPI metric cards (total spend, agent runs, success rate, control score) into the metrics bar.",
+      "tags": [
+        "component",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:public/app.js:renderOverview",
+      "type": "function",
+      "name": "renderOverview",
+      "filePath": "public/app.js",
+      "lineRange": [
+        205,
+        271
+      ],
+      "summary": "Renders the main Overview tab including the top agent card, provider comparison tiles, cost leak radar, workflow stats, and recent runs list.",
+      "tags": [
+        "component",
+        "api-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:public/app.js:renderActivityView",
+      "type": "function",
+      "name": "renderActivityView",
+      "filePath": "public/app.js",
+      "lineRange": [
+        273,
+        295
+      ],
+      "summary": "Renders the Activity tab showing a live feed of recent agent events with timestamps and severity levels.",
+      "tags": [
+        "component",
+        "event-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:public/app.js:renderGovernanceView",
+      "type": "function",
+      "name": "renderGovernanceView",
+      "filePath": "public/app.js",
+      "lineRange": [
+        297,
+        331
+      ],
+      "summary": "Renders the Governance tab composing the provider comparison table, cost leak cards, workflow summary, and audit log sections.",
+      "tags": [
+        "component",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:public/app.js:renderAgentList",
+      "type": "function",
+      "name": "renderAgentList",
+      "filePath": "public/app.js",
+      "lineRange": [
+        356,
+        384
+      ],
+      "summary": "Renders the sidebar agent list as compact agent cards with progress bars, status labels, and micro-stats.",
+      "tags": [
+        "component",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:public/app.js:renderSelectedAgent",
+      "type": "function",
+      "name": "renderSelectedAgent",
+      "filePath": "public/app.js",
+      "lineRange": [
+        386,
+        456
+      ],
+      "summary": "Renders the detailed agent panel for a selected agent including breadcrumb log rows, token usage, latency stats, and task history.",
+      "tags": [
+        "component",
+        "api-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:public/app.js:renderProviderTable",
+      "type": "function",
+      "name": "renderProviderTable",
+      "filePath": "public/app.js",
+      "lineRange": [
+        476,
+        508
+      ],
+      "summary": "Renders the provider comparison table showing runs, cost, success rate, and control score per AI provider.",
+      "tags": [
+        "component",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:public/app.js:renderLeaks",
+      "type": "function",
+      "name": "renderLeaks",
+      "filePath": "public/app.js",
+      "lineRange": [
+        510,
+        529
+      ],
+      "summary": "Renders Cost Leak Radar cards highlighting agents exceeding budget with spend, budget, retry count, and recommendations.",
+      "tags": [
+        "component",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:public/app.js:renderWorkflows",
+      "type": "function",
+      "name": "renderWorkflows",
+      "filePath": "public/app.js",
+      "lineRange": [
+        531,
+        548
+      ],
+      "summary": "Renders workflow summary cards showing spend, latency, control score, and failure count per workflow.",
+      "tags": [
+        "component",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:public/app.js:renderDashboard",
+      "type": "function",
+      "name": "renderDashboard",
+      "filePath": "public/app.js",
+      "lineRange": [
+        571,
+        575
+      ],
+      "summary": "Top-level dashboard render orchestrator that updates metrics and delegates to the current tab view.",
+      "tags": [
+        "component",
+        "entry-point"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:public/app.js:loadDashboard",
+      "type": "function",
+      "name": "loadDashboard",
+      "filePath": "public/app.js",
+      "lineRange": [
+        582,
+        589
+      ],
+      "summary": "Fetches all dashboard data in parallel (agents, metrics, runs, leaks, workflows, audit) and triggers a full re-render.",
+      "tags": [
+        "api-handler",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:public/app.js:initializeApp",
+      "type": "function",
+      "name": "initializeApp",
+      "filePath": "public/app.js",
+      "lineRange": [
+        596,
+        625
+      ],
+      "summary": "Application bootstrap function that checks tenant and API key state, routes to setup or dashboard, and starts polling.",
+      "tags": [
+        "entry-point",
+        "event-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:public/dashboard.html",
+      "type": "file",
+      "name": "dashboard.html",
+      "filePath": "public/dashboard.html",
+      "summary": "Main HTML shell for the Agent Prism dashboard SPA, defining the DOM structure for the metrics bar, view tabs (Overview, Activity, Governance), sidebar agent list, and setup screens loaded by app.js.",
+      "tags": [
+        "entry-point",
+        "component",
+        "markup"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:public/index.html",
+      "type": "file",
+      "name": "index.html",
+      "filePath": "public/index.html",
+      "summary": "Public-facing landing page for Agent Prism, presenting the product value proposition and links to the dashboard and leadership views.",
+      "tags": [
+        "entry-point",
+        "markup",
+        "documentation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:public/leadership.html",
+      "type": "file",
+      "name": "leadership.html",
+      "filePath": "public/leadership.html",
+      "summary": "Executive-level analytics HTML page rendering cumulative spend trend charts and team allocation charts via Chart.js, powered by leadership.js.",
+      "tags": [
+        "component",
+        "markup",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:public/leadership.js",
+      "type": "file",
+      "name": "leadership.js",
+      "filePath": "public/leadership.js",
+      "summary": "Client-side controller for the executive leadership dashboard, fetching agent run data and rendering Chart.js spend trend and team allocation charts with derived ROI metrics.",
+      "tags": [
+        "component",
+        "api-handler",
+        "utility"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:public/storyline.css",
+      "type": "file",
+      "name": "storyline.css",
+      "filePath": "public/storyline.css",
+      "summary": "Stylesheet for the Agent Prism product storyline/marketing page, providing layout, typography, and component styles for the narrative presentation.",
+      "tags": [
+        "markup",
+        "configuration"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:public/storyline.html",
+      "type": "file",
+      "name": "storyline.html",
+      "filePath": "public/storyline.html",
+      "summary": "Product narrative HTML page walking through the Agent Prism value story across multiple sections covering cost visibility, governance, and provider analytics.",
+      "tags": [
+        "markup",
+        "documentation",
+        "entry-point"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:public/styles.css",
+      "type": "file",
+      "name": "styles.css",
+      "filePath": "public/styles.css",
+      "summary": "Primary stylesheet for the Agent Prism dashboard application, defining the full design system including layout grid, typography, metric cards, feed rows, agent cards, governance tables, and responsive utilities.",
+      "tags": [
+        "markup",
+        "configuration",
+        "component"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Over 1000 non-empty lines covering the entire design token system and component library for the SPA dashboard."
+    },
+    {
+      "id": "file:test/cost.test.js",
+      "type": "file",
+      "name": "cost.test.js",
+      "filePath": "test/cost.test.js",
+      "summary": "Unit tests for provider-specific cost calculation modules (Claude, Copilot, Generic) and the pricing module, verifying token-to-USD cost calculations.",
+      "tags": [
+        "test",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:test/pricing.test.js",
+      "type": "file",
+      "name": "pricing.test.js",
+      "filePath": "test/pricing.test.js",
+      "summary": "Unit tests for the pricing module, verifying per-token cost lookups for supported AI providers.",
+      "tags": [
+        "test",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:test/roi.test.js",
+      "type": "file",
+      "name": "roi.test.js",
+      "filePath": "test/roi.test.js",
+      "summary": "Unit tests for the ROI calculation module, covering human cost savings, efficiency ratios, and net benefit computations.",
+      "tags": [
+        "test",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:test/security.test.js",
+      "type": "file",
+      "name": "security.test.js",
+      "filePath": "test/security.test.js",
+      "summary": "Integration tests for security middleware covering input validation, security headers, CORS policies, and rate limiter behavior across multiple endpoint scenarios.",
+      "tags": [
+        "test",
+        "security",
+        "middleware"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:test/sessions.test.js",
+      "type": "file",
+      "name": "sessions.test.js",
+      "filePath": "test/sessions.test.js",
+      "summary": "Unit tests for session management functionality, verifying agent session lifecycle operations such as creation, lookup, and expiry.",
+      "tags": [
+        "test",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:real_demo_agent.js",
+      "type": "file",
+      "name": "real_demo_agent.js",
+      "filePath": "real_demo_agent.js",
+      "summary": "Runnable demo script that sends a real Anthropic Claude API request through the Agent Prism SDK gateway and logs the tracked cost and token usage.",
+      "tags": [
+        "entry-point",
+        "api-handler",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:real_demo_agent.js:main",
+      "type": "function",
+      "name": "main",
+      "filePath": "real_demo_agent.js",
+      "lineRange": [
+        30,
+        63
+      ],
+      "summary": "Orchestrates the Claude demo: initializes the SDK-proxied Anthropic client, sends a message creation request, and logs response metrics.",
+      "tags": [
+        "entry-point",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:real_demo_openai_agent.js",
+      "type": "file",
+      "name": "real_demo_openai_agent.js",
+      "filePath": "real_demo_openai_agent.js",
+      "summary": "Runnable demo script that sends a real OpenAI API request through the Agent Prism SDK gateway and logs the tracked cost and token usage.",
+      "tags": [
+        "entry-point",
+        "api-handler",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:real_demo_openai_agent.js:main",
+      "type": "function",
+      "name": "main",
+      "filePath": "real_demo_openai_agent.js",
+      "lineRange": [
+        26,
+        60
+      ],
+      "summary": "Orchestrates the OpenAI demo: sends a request to the SDK proxy gateway and logs parsed response text with cost and token metrics.",
+      "tags": [
+        "entry-point",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:simulate_claude.js",
+      "type": "file",
+      "name": "simulate_claude.js",
+      "filePath": "simulate_claude.js",
+      "summary": "Standalone simulation script that generates synthetic Claude API usage data and posts it to the Agent Prism server for testing dashboard population.",
+      "tags": [
+        "utility",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:setup_gateway.js",
+      "type": "file",
+      "name": "setup_gateway.js",
+      "filePath": "setup_gateway.js",
+      "summary": "Interactive CLI setup script for configuring the Claude AI gateway by prompting for an API key and registering it with the Agent Prism server.",
+      "tags": [
+        "entry-point",
+        "utility",
+        "api-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:setup_gateway.js:setup",
+      "type": "function",
+      "name": "setup",
+      "filePath": "setup_gateway.js",
+      "lineRange": [
+        4,
+        47
+      ],
+      "summary": "Interactive gateway setup flow that prompts the user for a Claude API key, validates it, and posts it to the Agent Prism registration endpoint.",
+      "tags": [
+        "entry-point",
+        "validation",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:setup_openai_gateway.js",
+      "type": "file",
+      "name": "setup_openai_gateway.js",
+      "filePath": "setup_openai_gateway.js",
+      "summary": "Interactive CLI setup script for configuring the OpenAI gateway by prompting for an API key and registering it with the Agent Prism server.",
+      "tags": [
+        "entry-point",
+        "utility",
+        "api-handler"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:setup_openai_gateway.js:setup",
+      "type": "function",
+      "name": "setup",
+      "filePath": "setup_openai_gateway.js",
+      "lineRange": [
+        4,
+        47
+      ],
+      "summary": "Interactive gateway setup flow that prompts the user for an OpenAI API key, validates it, and posts it to the Agent Prism registration endpoint.",
+      "tags": [
+        "entry-point",
+        "validation",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:bin/cli.js",
+      "type": "file",
+      "name": "cli.js",
+      "filePath": "bin/cli.js",
+      "summary": "CLI entry point for the Agent Prism command-line interface, handling argument parsing and routing to subcommands such as server start and gateway configuration.",
+      "tags": [
+        "entry-point",
+        "utility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:test_server.js",
+      "type": "file",
+      "name": "test_server.js",
+      "filePath": "test_server.js",
+      "summary": "Minimal ad-hoc script for verifying the Agent Prism server is reachable and returning expected responses.",
+      "tags": [
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:test_url.js",
+      "type": "file",
+      "name": "test_url.js",
+      "filePath": "test_url.js",
+      "summary": "Minimal one-liner test snippet for URL construction or validation, likely used for quick manual verification.",
+      "tags": [
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:demo.sh",
+      "type": "file",
+      "name": "demo.sh",
+      "filePath": "demo.sh",
+      "summary": "Comprehensive end-to-end demo shell script that starts the Agent Prism server, registers gateways, runs simulated agent calls, and validates API responses across the full workflow.",
+      "tags": [
+        "entry-point",
+        "utility",
+        "api-handler"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "service:Dockerfile",
+      "type": "service",
+      "name": "Dockerfile",
+      "filePath": "Dockerfile",
+      "summary": "Single-stage Node.js 24 Alpine build that runs the Agent Prism server on port 3000 as a non-root user with a dedicated appgroup, copying server.js, src/, config/, and public/ into the container.",
+      "tags": [
+        "containerization",
+        "infrastructure",
+        "deployment",
+        "security"
+      ],
+      "complexity": "simple",
+      "languageNotes": "Uses a non-root user/group pattern (appuser:appgroup) for security hardening on Alpine Linux."
+    },
+    {
+      "id": "service:docker-compose.yml",
+      "type": "service",
+      "name": "docker-compose.yml",
+      "filePath": "docker-compose.yml",
+      "summary": "Docker Compose orchestration file that defines the app service, its environment variable bindings, port mappings, and a named volume for persistent data storage.",
+      "tags": [
+        "orchestration",
+        "infrastructure",
+        "deployment",
+        "configuration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:.dockerignore",
+      "type": "file",
+      "name": ".dockerignore",
+      "filePath": ".dockerignore",
+      "summary": "Docker build context exclusion list that prevents node_modules, data files, environment secrets, logs, and git metadata from being copied into the Docker image.",
+      "tags": [
+        "configuration",
+        "infrastructure",
+        "security",
+        "containerization"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:.env.example",
+      "type": "file",
+      "name": ".env.example",
+      "filePath": ".env.example",
+      "summary": "Template listing all required environment variables for the Agent Prism server, covering server settings, authentication, storage backend, CORS, rate limiting, and webhook secrets for Anthropic and GitHub integrations.",
+      "tags": [
+        "configuration",
+        "security",
+        "documentation",
+        "environment"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "pipeline:.github/workflows/claude-code-review.yml",
+      "type": "pipeline",
+      "name": "claude-code-review.yml",
+      "filePath": ".github/workflows/claude-code-review.yml",
+      "summary": "GitHub Actions workflow that triggers Claude-based automated code review on pull request events, using Anthropic's claude-code-review action to post AI-generated review comments.",
+      "tags": [
+        "ci-cd",
+        "code-review",
+        "automation",
+        "github-actions"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "pipeline:.github/workflows/claude.yml",
+      "type": "pipeline",
+      "name": "claude.yml",
+      "filePath": ".github/workflows/claude.yml",
+      "summary": "GitHub Actions workflow enabling Claude-powered issue and PR assistance, triggering on issue_comment and pull_request events to allow @claude mentions to invoke the claude-code GitHub Action.",
+      "tags": [
+        "ci-cd",
+        "automation",
+        "github-actions",
+        "ai-assistant"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:config/pricing.json",
+      "type": "config",
+      "name": "pricing.json",
+      "filePath": "config/pricing.json",
+      "summary": "Per-token cost lookup table for AI provider models (Claude, GPT-4o, Copilot) with FTE hourly rate and session timeout settings used by the cost intelligence layer to compute agent run costs.",
+      "tags": [
+        "configuration",
+        "pricing",
+        "cost-intelligence",
+        "data"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:db/schema.sql:tenants",
+      "type": "table",
+      "name": "tenants",
+      "filePath": "db/schema.sql",
+      "lineRange": [
+        1,
+        8
+      ],
+      "summary": "Multi-tenant root table storing tenant identity, plan tier, and status for the Agent Prism SaaS platform.",
+      "tags": [
+        "database",
+        "multi-tenancy",
+        "schema-definition"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:db/schema.sql:users",
+      "type": "table",
+      "name": "users",
+      "filePath": "db/schema.sql",
+      "lineRange": [
+        10,
+        17
+      ],
+      "summary": "User table scoped to tenants with role-based access control fields for dashboard authentication.",
+      "tags": [
+        "database",
+        "authentication",
+        "multi-tenancy"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:db/schema.sql:api_keys",
+      "type": "table",
+      "name": "api_keys",
+      "filePath": "db/schema.sql",
+      "lineRange": [
+        19,
+        28
+      ],
+      "summary": "API key management table storing hashed prefixes, status, and last-used timestamps for tenant API authentication.",
+      "tags": [
+        "database",
+        "authentication",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:db/schema.sql:connectors",
+      "type": "table",
+      "name": "connectors",
+      "filePath": "db/schema.sql",
+      "lineRange": [
+        30,
+        39
+      ],
+      "summary": "Provider connector registry storing configuration for integrations with Claude, OpenAI, Copilot, and other AI providers per tenant.",
+      "tags": [
+        "database",
+        "integration",
+        "multi-tenancy"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:db/schema.sql:agent_runs",
+      "type": "table",
+      "name": "agent_runs",
+      "filePath": "db/schema.sql",
+      "lineRange": [
+        41,
+        69
+      ],
+      "summary": "Core fact table recording every agent execution with normalized cost, token usage, latency, quality scores, policy violations, and governance metadata — the primary data source for the Control Score and Cost Leak Radar.",
+      "tags": [
+        "database",
+        "analytics",
+        "core-model",
+        "governance"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Rich denormalized schema with 27 columns including JSONB-like fields (breadcrumbs, tags) for flexible telemetry storage."
+    },
+    {
+      "id": "table:db/schema.sql:audit_logs",
+      "type": "table",
+      "name": "audit_logs",
+      "filePath": "db/schema.sql",
+      "lineRange": [
+        75,
+        84
+      ],
+      "summary": "Immutable audit trail table capturing all actor actions with resource context and IP address for compliance and governance reporting.",
+      "tags": [
+        "database",
+        "audit",
+        "security",
+        "governance"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:db/schema.sql",
+      "type": "table",
+      "name": "schema.sql",
+      "filePath": "db/schema.sql",
+      "summary": "Full database schema defining the multi-tenant data model with six tables (tenants, users, api_keys, connectors, agent_runs, audit_logs) and four performance indexes supporting Agent Prism's analytics and governance features.",
+      "tags": [
+        "database",
+        "schema-definition",
+        "multi-tenancy",
+        "migration"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:data/app-state 2.json",
+      "type": "config",
+      "name": "app-state 2.json",
+      "filePath": "data/app-state 2.json",
+      "summary": "JSON-based application state file containing seed or runtime data for tenants, users, API keys, connectors, sessions, events, and webhooks — used as the file-backed storage state.",
+      "tags": [
+        "configuration",
+        "data",
+        "state-management",
+        "development"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:data/app-state.json.demo-backup",
+      "type": "file",
+      "name": "app-state.json.demo-backup",
+      "filePath": "data/app-state.json.demo-backup",
+      "summary": "Backup snapshot of the application state JSON used for demo purposes, preserving a known-good dataset that can be restored to reset the demo environment.",
+      "tags": [
+        "data",
+        "demo",
+        "backup",
+        "development"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:data/sample-runs.json",
+      "type": "config",
+      "name": "sample-runs.json",
+      "filePath": "data/sample-runs.json",
+      "summary": "Minimal JSON file intended to hold sample agent run records for seeding or testing the Agent Prism platform (currently empty or minimal).",
+      "tags": [
+        "data",
+        "sample",
+        "development",
+        "configuration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:openspec/config.yaml",
+      "type": "config",
+      "name": "config.yaml",
+      "filePath": "openspec/config.yaml",
+      "summary": "OpenSpec configuration file defining schema version, project metadata, and directory conventions for the OpenSpec change-management workflow used in this repository.",
+      "tags": [
+        "configuration",
+        "development",
+        "build-system",
+        "workflow"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "package.json",
+      "summary": "Node.js package manifest declaring the agent-prism project as an ES module, defining start/dev/seed scripts, the CLI bin entry, and runtime dependencies including express, better-sqlite3, and @anthropic-ai/sdk.",
+      "tags": [
+        "configuration",
+        "build-system",
+        "dependencies",
+        "entry-point"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "README.md",
+      "summary": "Comprehensive product brief covering Agent Prism's value proposition (Control Score, Cost Leak Radar, provider-agnostic governance), architecture layers, target buyers, demo flow, roadmap, and local setup instructions across 34 sections.",
+      "tags": [
+        "documentation",
+        "entry-point",
+        "overview",
+        "product"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:docs/agent-tracker-setup.md",
+      "type": "document",
+      "name": "agent-tracker-setup.md",
+      "filePath": "docs/agent-tracker-setup.md",
+      "summary": "Step-by-step setup guide covering pricing configuration, environment variables, tenant bootstrapping, session registration, usage event reporting, and the REST API reference for integrating agents with the cost and ROI tracker.",
+      "tags": [
+        "documentation",
+        "api-reference",
+        "setup",
+        "integration"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:docs/index.html",
+      "type": "file",
+      "name": "index.html",
+      "filePath": "docs/index.html",
+      "summary": "Static HTML landing page or documentation site for Agent Prism, structured as a rich storytelling/marketing page with sections rendered via the accompanying storyline.css stylesheet.",
+      "tags": [
+        "markup",
+        "documentation",
+        "landing-page",
+        "frontend"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:docs/storyline.css",
+      "type": "file",
+      "name": "storyline.css",
+      "filePath": "docs/storyline.css",
+      "summary": "Large CSS stylesheet providing the visual design and layout for the docs/index.html storytelling page, including typography, animations, component styles, and responsive layout rules.",
+      "tags": [
+        "markup",
+        "styling",
+        "frontend",
+        "design"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:openspec/changes/agent-cost-roi-tracker/.openspec.yaml",
+      "type": "config",
+      "name": ".openspec.yaml",
+      "filePath": "openspec/changes/agent-cost-roi-tracker/.openspec.yaml",
+      "summary": "OpenSpec metadata manifest for the agent-cost-roi-tracker change, recording schema version and creation date.",
+      "tags": [
+        "configuration",
+        "openspec",
+        "change-management"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/agent-cost-roi-tracker/design.md",
+      "type": "document",
+      "name": "design.md",
+      "filePath": "openspec/changes/agent-cost-roi-tracker/design.md",
+      "summary": "Architectural design document for the agent cost and ROI tracker feature, covering decisions on SQLite/Turso persistence, Next.js API routes, SSE for real-time updates, static pricing config, and a configurable FTE equivalence model.",
+      "tags": [
+        "documentation",
+        "architecture",
+        "design-decisions"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/changes/agent-cost-roi-tracker/proposal.md",
+      "type": "document",
+      "name": "proposal.md",
+      "filePath": "openspec/changes/agent-cost-roi-tracker/proposal.md",
+      "summary": "Change proposal for the agent cost and ROI tracker, describing motivation, new capabilities (agent registry, cost burn tracking, FTE ROI computation), and expected business impact.",
+      "tags": [
+        "documentation",
+        "proposal",
+        "change-management"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/agent-cost-roi-tracker/specs/agent-dashboard/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/agent-cost-roi-tracker/specs/agent-dashboard/spec.md",
+      "summary": "BDD-style specification for the agent dashboard UI, defining requirements and scenarios for live agent count display, real-time cost burn, FTE/ROI metrics, authentication gating, and platform configuration status.",
+      "tags": [
+        "documentation",
+        "specification",
+        "dashboard"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/changes/agent-cost-roi-tracker/specs/agent-registry/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/agent-cost-roi-tracker/specs/agent-registry/spec.md",
+      "summary": "BDD-style specification for the agent registry service, covering session registration across Claude/Copilot/generic agents, status updates, automatic timeout handling, and active agent count queries.",
+      "tags": [
+        "documentation",
+        "specification",
+        "api-handler"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/changes/agent-cost-roi-tracker/specs/cost-tracker/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/agent-cost-roi-tracker/specs/cost-tracker/spec.md",
+      "summary": "BDD-style specification for the cost tracker service, detailing requirements for per-session cost accumulation by platform, daily and rolling 30-day aggregation, pricing config validation, and total cumulative cost queries.",
+      "tags": [
+        "documentation",
+        "specification",
+        "data-model"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/changes/agent-cost-roi-tracker/specs/fte-roi-engine/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/agent-cost-roi-tracker/specs/fte-roi-engine/spec.md",
+      "summary": "BDD-style specification for the FTE ROI engine, defining requirements for FTE equivalence computation, loaded cost comparison, ROI config transparency, and time-windowed ROI queries including edge cases for zero cost.",
+      "tags": [
+        "documentation",
+        "specification",
+        "service"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/changes/agent-cost-roi-tracker/tasks.md",
+      "type": "document",
+      "name": "tasks.md",
+      "filePath": "openspec/changes/agent-cost-roi-tracker/tasks.md",
+      "summary": "Ordered implementation task list for the agent cost and ROI tracker feature, covering 10 work streams from database foundation and API layers through dashboard UI, authentication, platform integrations, and test coverage.",
+      "tags": [
+        "documentation",
+        "tasks",
+        "project-management"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:openspec/changes/production-hardening-and-security/.openspec.yaml",
+      "type": "config",
+      "name": ".openspec.yaml",
+      "filePath": "openspec/changes/production-hardening-and-security/.openspec.yaml",
+      "summary": "OpenSpec metadata manifest for the production-hardening-and-security change, recording schema version and creation date.",
+      "tags": [
+        "configuration",
+        "openspec",
+        "change-management"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/design.md",
+      "type": "document",
+      "name": "design.md",
+      "filePath": "openspec/changes/production-hardening-and-security/design.md",
+      "summary": "Architectural design document for production hardening, documenting decisions to use only Node.js stdlib (no new npm deps), implement middleware as a pipeline in server.js, add in-memory sliding-window rate limiting, hand-written JSON schema validation, security headers, path traversal fix, structured JSON logging, and fail-fast startup validation.",
+      "tags": [
+        "documentation",
+        "architecture",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/proposal.md",
+      "type": "document",
+      "name": "proposal.md",
+      "filePath": "openspec/changes/production-hardening-and-security/proposal.md",
+      "summary": "Change proposal for production hardening and security, articulating motivation around production readiness, listing new capabilities (rate limiting, CORS, input validation, security headers, structured logging, graceful shutdown), and expected impact.",
+      "tags": [
+        "documentation",
+        "proposal",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/cors-policy/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/cors-policy/spec.md",
+      "summary": "BDD-style specification for CORS policy enforcement, covering allowed/disallowed origin handling, wildcard prevention, preflight OPTIONS responses, and credentials header behavior.",
+      "tags": [
+        "documentation",
+        "specification",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/graceful-shutdown/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/graceful-shutdown/spec.md",
+      "summary": "BDD-style specification for graceful shutdown behavior, defining requirements for SIGTERM/SIGINT handling, in-flight request draining, forced exit timeout, and rejection of new connections after signal receipt.",
+      "tags": [
+        "documentation",
+        "specification",
+        "infrastructure"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/input-validation/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/input-validation/spec.md",
+      "summary": "BDD-style specification for request input validation, covering required field presence, type checking, enum rejection, string length limits, non-JSON content type handling, and structured 422 error response format.",
+      "tags": [
+        "documentation",
+        "specification",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/path-traversal-protection/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/path-traversal-protection/spec.md",
+      "summary": "BDD-style specification for static file path traversal protection, defining containment checks using path.resolve, handling of double-encoded traversal attempts, symlinks, and query string stripping before resolution.",
+      "tags": [
+        "documentation",
+        "specification",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/rate-limiting/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/rate-limiting/spec.md",
+      "summary": "BDD-style specification for rate limiting, covering per-tenant sliding-window limits on ingest/metrics endpoints, IP-based bootstrap endpoint limiting, independent tenant counters, and environment-variable-driven configuration.",
+      "tags": [
+        "documentation",
+        "specification",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/request-size-limits/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/request-size-limits/spec.md",
+      "summary": "BDD-style specification for request body size limits, requiring enforcement before full buffering, configurable limit via environment variable, and safe handling of unexpected GET request bodies.",
+      "tags": [
+        "documentation",
+        "specification",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/security-headers/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/security-headers/spec.md",
+      "summary": "BDD-style specification for HTTP security headers, requiring headers on all responses (including errors), Content-Security-Policy presence, and HSTS emitted only in production environments.",
+      "tags": [
+        "documentation",
+        "specification",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/startup-validation/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/startup-validation/spec.md",
+      "summary": "BDD-style specification for startup validation, defining fail-fast requirements for insecure default secrets in production, missing dashboard credentials, unrecognized NODE_ENV values, and ensuring all checks run before port binding.",
+      "tags": [
+        "documentation",
+        "specification",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/structured-logging/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/structured-logging/spec.md",
+      "summary": "BDD-style specification for structured JSON logging, covering per-request log lines with tenant context, error logs with stack traces, and explicit prohibition against logging secrets or PII.",
+      "tags": [
+        "documentation",
+        "specification",
+        "monitoring"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/specs/ui-cleanup/spec.md",
+      "type": "document",
+      "name": "spec.md",
+      "filePath": "openspec/changes/production-hardening-and-security/specs/ui-cleanup/spec.md",
+      "summary": "BDD-style specification for removing the Sales Story navigation button from the main and ROI dashboards while keeping the storyline page accessible.",
+      "tags": [
+        "documentation",
+        "specification",
+        "ui"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "type": "document",
+      "name": "tasks.md",
+      "filePath": "openspec/changes/production-hardening-and-security/tasks.md",
+      "summary": "Ordered implementation task list for production hardening and security, spanning 12 work streams including UI cleanup, startup validation, request size limits, path traversal protection, security headers, CORS, rate limiting, input validation, structured logging, graceful shutdown, Docker hardening, and test coverage.",
+      "tags": [
+        "documentation",
+        "tasks",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/apply.md",
+      "type": "document",
+      "name": "apply.md",
+      "filePath": ".claude/commands/opsx/apply.md",
+      "summary": "OpenSpec slash-command definition for /opsx:apply that instructs the AI to implement tasks from an active OpenSpec change, iterating through pending tasks and updating their completion status.",
+      "tags": [
+        "documentation",
+        "ai-workflow",
+        "openspec",
+        "command-definition",
+        "development"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/archive.md",
+      "type": "document",
+      "name": "archive.md",
+      "filePath": ".claude/commands/opsx/archive.md",
+      "summary": "OpenSpec slash-command definition for /opsx:archive that guides the AI to finalize and archive a completed change by updating its status and moving artifacts to the archive directory.",
+      "tags": [
+        "documentation",
+        "ai-workflow",
+        "openspec",
+        "command-definition",
+        "development"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/commands/opsx/explore.md",
+      "type": "document",
+      "name": "explore.md",
+      "filePath": ".claude/commands/opsx/explore.md",
+      "summary": "OpenSpec slash-command definition for /opsx:explore that enters an interactive discovery mode, helping developers think through ideas and clarify requirements before committing to an implementation plan.",
+      "tags": [
+        "documentation",
+        "ai-workflow",
+        "openspec",
+        "command-definition",
+        "development"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Structured with 9 sections covering stance, activities, OpenSpec awareness, guardrails, and discovery ending protocols."
+    },
+    {
+      "id": "document:.claude/commands/opsx/propose.md",
+      "type": "document",
+      "name": "propose.md",
+      "filePath": ".claude/commands/opsx/propose.md",
+      "summary": "OpenSpec slash-command definition for /opsx:propose that orchestrates creation of a complete change proposal including design docs, specs, and task breakdowns in a single step.",
+      "tags": [
+        "documentation",
+        "ai-workflow",
+        "openspec",
+        "command-definition",
+        "development"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-apply-change/SKILL.md",
+      "type": "document",
+      "name": "SKILL.md",
+      "filePath": ".claude/skills/openspec-apply-change/SKILL.md",
+      "summary": "Skill definition for the openspec-apply-change Claude Code skill, detailing how the AI should implement tasks from an OpenSpec change with step-by-step task execution and status tracking.",
+      "tags": [
+        "documentation",
+        "ai-workflow",
+        "openspec",
+        "skill-definition",
+        "development"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:.claude/skills/openspec-archive-change/SKILL.md",
+      "type": "document",
+      "name": "SKILL.md",
+      "filePath": ".claude/skills/openspec-archive-change/SKILL.md",
+      "summary": "Skill definition for the openspec-archive-change Claude Code skill, specifying the procedure to finalize a completed OpenSpec change by archiving its artifacts and marking it as done.",
+      "tags": [
+        "documentation",
+        "ai-workflow",
+        "openspec",
+        "skill-definition",
+        "development"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:.claude/skills/openspec-explore/SKILL.md",
+      "type": "document",
+      "name": "SKILL.md",
+      "filePath": ".claude/skills/openspec-explore/SKILL.md",
+      "summary": "Comprehensive skill definition for the openspec-explore Claude Code skill, defining an interactive discovery and ideation mode with detailed guardrails, entry-point handling, and OpenSpec context awareness across 10 sections.",
+      "tags": [
+        "documentation",
+        "ai-workflow",
+        "openspec",
+        "skill-definition",
+        "development"
+      ],
+      "complexity": "complex",
+      "languageNotes": "The most detailed skill in this batch at 288 lines with 10 structured sections; covers multiple entry-point scenarios and termination protocols."
+    },
+    {
+      "id": "document:.claude/skills/openspec-propose/SKILL.md",
+      "type": "document",
+      "name": "SKILL.md",
+      "filePath": ".claude/skills/openspec-propose/SKILL.md",
+      "summary": "Skill definition for the openspec-propose Claude Code skill, describing how the AI generates a complete change proposal with design artifacts and task lists in one orchestrated pass.",
+      "tags": [
+        "documentation",
+        "ai-workflow",
+        "openspec",
+        "skill-definition",
+        "development"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:server.js",
+      "target": "file:src/store.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/config.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/auth.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/connectors.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/saas-store.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/pricing.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/cost/claude.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/cost/copilot.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/cost/generic.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/roi.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/jobs/session-timeout.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/ingest/verify.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/startup.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/middleware/security-headers.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/middleware/cors.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/middleware/rate-limiter.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/validation.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/middleware/logger.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "file:src/shutdown.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/cost/claude.js",
+      "target": "file:src/pricing.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/cost/copilot.js",
+      "target": "file:src/pricing.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/jobs/session-timeout.js",
+      "target": "file:src/pricing.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/jobs/session-timeout.js",
+      "target": "file:src/saas-store.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/roi.js",
+      "target": "file:src/pricing.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/saas-store.js",
+      "target": "file:src/config.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "file:src/scoring.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "file:src/auth.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/stores/postgres-store.js",
+      "target": "file:src/auth.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/stores/postgres-store.js",
+      "target": "file:src/config.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:parseBody",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:normalizePayload",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:dispatchBudgetAlert",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:requireTenant",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:requireBasicAuth",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:getWindowStart",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:serveStatic",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/auth.js",
+      "target": "function:src/auth.js:createApiKey",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/auth.js",
+      "target": "function:src/auth.js:verifyApiKey",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/auth.js",
+      "target": "function:src/auth.js:createApiKey",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/auth.js",
+      "target": "function:src/auth.js:verifyApiKey",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/connectors.js",
+      "target": "function:src/connectors.js:normalizeCopilotRun",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/connectors.js",
+      "target": "function:src/connectors.js:normalizeClaudeRun",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/connectors.js",
+      "target": "function:src/connectors.js:normalizeCopilotRun",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/connectors.js",
+      "target": "function:src/connectors.js:normalizeClaudeRun",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/middleware/cors.js",
+      "target": "function:src/middleware/cors.js:applyCors",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/middleware/cors.js",
+      "target": "function:src/middleware/cors.js:applyCors",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/middleware/logger.js",
+      "target": "function:src/middleware/logger.js:logRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/middleware/logger.js",
+      "target": "function:src/middleware/logger.js:logError",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/middleware/logger.js",
+      "target": "function:src/middleware/logger.js:logRequest",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/middleware/logger.js",
+      "target": "function:src/middleware/logger.js:logError",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/middleware/rate-limiter.js",
+      "target": "class:src/middleware/rate-limiter.js:RateLimiter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/middleware/rate-limiter.js",
+      "target": "class:src/middleware/rate-limiter.js:RateLimiter",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/roi.js",
+      "target": "function:src/roi.js:computeRoi",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/roi.js",
+      "target": "function:src/roi.js:computeRoi",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/scoring.js",
+      "target": "function:src/scoring.js:computeControlScore",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/scoring.js",
+      "target": "function:src/scoring.js:summarizeStatus",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/scoring.js",
+      "target": "function:src/scoring.js:computeControlScore",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/scoring.js",
+      "target": "function:src/scoring.js:summarizeStatus",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/sdk/index.js",
+      "target": "class:src/sdk/index.js:AgentPrism",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/sdk/index.js",
+      "target": "class:src/sdk/index.js:AgentPrism",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/startup.js",
+      "target": "function:src/startup.js:validateConfig",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/startup.js",
+      "target": "function:src/startup.js:validateConfig",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "function:src/store.js:upsertRuns",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "function:src/store.js:detectCostLeaks",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "function:src/store.js:buildDashboardSnapshot",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "function:src/store.js:upsertRuns",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "function:src/store.js:detectCostLeaks",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "function:src/store.js:buildDashboardSnapshot",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "function:src/stores/file-store.js:bootstrapSaas",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "function:src/stores/file-store.js:authenticateTenantApiKey",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "function:src/stores/file-store.js:upsertTenantRuns",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "function:src/stores/file-store.js:applySessionTimeout",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "function:src/stores/file-store.js:bootstrapSaas",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "function:src/stores/file-store.js:authenticateTenantApiKey",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "function:src/stores/file-store.js:upsertTenantRuns",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/stores/file-store.js",
+      "target": "function:src/stores/file-store.js:applySessionTimeout",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/stores/postgres-store.js",
+      "target": "function:src/stores/postgres-store.js:bootstrapSaas",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/stores/postgres-store.js",
+      "target": "function:src/stores/postgres-store.js:upsertTenantRuns",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/stores/postgres-store.js",
+      "target": "function:src/stores/postgres-store.js:authenticateTenantApiKey",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/stores/postgres-store.js",
+      "target": "function:src/stores/postgres-store.js:bootstrapSaas",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/stores/postgres-store.js",
+      "target": "function:src/stores/postgres-store.js:upsertTenantRuns",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/stores/postgres-store.js",
+      "target": "function:src/stores/postgres-store.js:authenticateTenantApiKey",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/validation.js",
+      "target": "function:src/validation.js:validate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:src/validation.js",
+      "target": "function:src/validation.js:validate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/saas-store.js",
+      "target": "file:src/stores/file-store.js",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/saas-store.js",
+      "target": "file:src/stores/postgres-store.js",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "function:src/scoring.js:computeControlScore",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:src/store.js",
+      "target": "function:src/scoring.js:summarizeStatus",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:request",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderSetupScreen",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderMetrics",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderOverview",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderActivityView",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderGovernanceView",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderAgentList",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderSelectedAgent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderProviderTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderLeaks",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderWorkflows",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:renderDashboard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:loadDashboard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/app.js",
+      "target": "function:public/app.js:initializeApp",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:public/dashboard.html",
+      "target": "file:public/app.js",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:public/dashboard.html",
+      "target": "file:public/styles.css",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:public/leadership.html",
+      "target": "file:public/leadership.js",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:public/storyline.html",
+      "target": "file:public/storyline.css",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:test/cost.test.js",
+      "target": "file:src/cost/claude.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:test/cost.test.js",
+      "target": "file:src/cost/copilot.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:test/cost.test.js",
+      "target": "file:src/cost/generic.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:test/cost.test.js",
+      "target": "file:src/pricing.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/cost/claude.js",
+      "target": "file:test/cost.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/cost/copilot.js",
+      "target": "file:test/cost.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/cost/generic.js",
+      "target": "file:test/cost.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:test/pricing.test.js",
+      "target": "file:src/pricing.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/pricing.js",
+      "target": "file:test/pricing.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/pricing.js",
+      "target": "file:test/cost.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:test/roi.test.js",
+      "target": "file:src/roi.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/roi.js",
+      "target": "file:test/roi.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:test/security.test.js",
+      "target": "file:src/validation.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:test/security.test.js",
+      "target": "file:src/middleware/security-headers.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:test/security.test.js",
+      "target": "file:src/middleware/cors.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:test/security.test.js",
+      "target": "file:src/middleware/rate-limiter.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:src/validation.js",
+      "target": "file:test/security.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/middleware/security-headers.js",
+      "target": "file:test/security.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/middleware/cors.js",
+      "target": "file:test/security.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:src/middleware/rate-limiter.js",
+      "target": "file:test/security.test.js",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:real_demo_agent.js",
+      "target": "file:src/sdk/index.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:real_demo_agent.js",
+      "target": "function:real_demo_agent.js:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:real_demo_openai_agent.js",
+      "target": "file:src/sdk/index.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:real_demo_openai_agent.js",
+      "target": "function:real_demo_openai_agent.js:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:setup_gateway.js",
+      "target": "file:src/sdk/index.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:setup_gateway.js",
+      "target": "function:setup_gateway.js:setup",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:setup_openai_gateway.js",
+      "target": "file:src/sdk/index.js",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:setup_openai_gateway.js",
+      "target": "function:setup_openai_gateway.js:setup",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "service:Dockerfile",
+      "target": "file:server.js",
+      "type": "deploys",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "service:Dockerfile",
+      "target": "config:package.json",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "service:docker-compose.yml",
+      "target": "service:Dockerfile",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:.dockerignore",
+      "target": "service:Dockerfile",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:.env.example",
+      "target": "file:server.js",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "pipeline:.github/workflows/claude-code-review.yml",
+      "target": "file:server.js",
+      "type": "triggers",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "pipeline:.github/workflows/claude.yml",
+      "target": "file:server.js",
+      "type": "triggers",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "table:db/schema.sql",
+      "target": "table:db/schema.sql:tenants",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "table:db/schema.sql",
+      "target": "table:db/schema.sql:users",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "table:db/schema.sql",
+      "target": "table:db/schema.sql:api_keys",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "table:db/schema.sql",
+      "target": "table:db/schema.sql:connectors",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "table:db/schema.sql",
+      "target": "table:db/schema.sql:agent_runs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "table:db/schema.sql",
+      "target": "table:db/schema.sql:audit_logs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "config:data/app-state 2.json",
+      "target": "file:server.js",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:data/app-state.json.demo-backup",
+      "target": "config:data/app-state 2.json",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:package.json",
+      "target": "file:server.js",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:README.md",
+      "target": "file:server.js",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:README.md",
+      "target": "config:config/pricing.json",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:README.md",
+      "target": "file:.env.example",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:docs/agent-tracker-setup.md",
+      "target": "config:config/pricing.json",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:docs/agent-tracker-setup.md",
+      "target": "file:.env.example",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:docs/agent-tracker-setup.md",
+      "target": "file:server.js",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:docs/index.html",
+      "target": "file:docs/storyline.css",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:openspec/changes/agent-cost-roi-tracker/.openspec.yaml",
+      "target": "document:openspec/changes/agent-cost-roi-tracker/design.md",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:openspec/changes/agent-cost-roi-tracker/proposal.md",
+      "target": "document:openspec/changes/agent-cost-roi-tracker/design.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/agent-cost-roi-tracker/design.md",
+      "target": "document:openspec/changes/agent-cost-roi-tracker/tasks.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/agent-cost-roi-tracker/tasks.md",
+      "target": "document:openspec/changes/agent-cost-roi-tracker/specs/agent-dashboard/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/agent-cost-roi-tracker/tasks.md",
+      "target": "document:openspec/changes/agent-cost-roi-tracker/specs/agent-registry/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/agent-cost-roi-tracker/tasks.md",
+      "target": "document:openspec/changes/agent-cost-roi-tracker/specs/cost-tracker/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/agent-cost-roi-tracker/tasks.md",
+      "target": "document:openspec/changes/agent-cost-roi-tracker/specs/fte-roi-engine/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:openspec/changes/production-hardening-and-security/.openspec.yaml",
+      "target": "document:openspec/changes/production-hardening-and-security/design.md",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/proposal.md",
+      "target": "document:openspec/changes/production-hardening-and-security/design.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/design.md",
+      "target": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/cors-policy/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/graceful-shutdown/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/input-validation/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/path-traversal-protection/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/rate-limiting/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/request-size-limits/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/security-headers/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/startup-validation/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/structured-logging/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:openspec/changes/production-hardening-and-security/tasks.md",
+      "target": "document:openspec/changes/production-hardening-and-security/specs/ui-cleanup/spec.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/apply.md",
+      "target": "document:.claude/skills/openspec-apply-change/SKILL.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/archive.md",
+      "target": "document:.claude/skills/openspec-archive-change/SKILL.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/explore.md",
+      "target": "document:.claude/skills/openspec-explore/SKILL.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:.claude/commands/opsx/propose.md",
+      "target": "document:.claude/skills/openspec-propose/SKILL.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:api-server",
+      "name": "API Server & Entry Points",
+      "description": "Central HTTP server routing all Agent Prism API endpoints, plus CLI entry point, demo runners, and interactive gateway setup scripts that exercise the server through the SDK.",
+      "nodeIds": [
+        "file:server.js",
+        "file:bin/cli.js",
+        "file:real_demo_agent.js",
+        "file:real_demo_openai_agent.js",
+        "file:simulate_claude.js",
+        "file:setup_gateway.js",
+        "file:setup_openai_gateway.js",
+        "file:demo.sh",
+        "file:test_server.js",
+        "file:test_url.js"
+      ]
+    },
+    {
+      "id": "layer:middleware",
+      "name": "Middleware & Security",
+      "description": "Request pipeline components enforcing CORS, rate limiting, security headers, structured logging, inbound webhook signature verification, and input schema validation before requests reach business logic.",
+      "nodeIds": [
+        "file:src/middleware/cors.js",
+        "file:src/middleware/logger.js",
+        "file:src/middleware/rate-limiter.js",
+        "file:src/middleware/security-headers.js",
+        "file:src/ingest/verify.js",
+        "file:src/validation.js"
+      ]
+    },
+    {
+      "id": "layer:business-logic",
+      "name": "Business Logic & Analytics",
+      "description": "Core Agent Prism domain services implementing Control Score calculation, Cost Leak detection, ROI computation, provider-agnostic run normalization, session timeout jobs, graceful shutdown, startup validation, and the client-facing SDK.",
+      "nodeIds": [
+        "file:src/store.js",
+        "file:src/scoring.js",
+        "file:src/roi.js",
+        "file:src/connectors.js",
+        "file:src/cost/claude.js",
+        "file:src/cost/copilot.js",
+        "file:src/cost/generic.js",
+        "file:src/jobs/session-timeout.js",
+        "file:src/saas-store.js",
+        "file:src/sdk/index.js",
+        "file:src/startup.js",
+        "file:src/shutdown.js"
+      ]
+    },
+    {
+      "id": "layer:data",
+      "name": "Data & Persistence",
+      "description": "Storage backends (file-based and PostgreSQL), auth and API key utilities, runtime configuration, pricing table, database schema tables, and seeded application state files backing the multi-tenant SaaS data model.",
+      "nodeIds": [
+        "file:src/stores/file-store.js",
+        "file:src/stores/postgres-store.js",
+        "file:src/auth.js",
+        "file:src/config.js",
+        "file:src/pricing.js",
+        "table:db/schema.sql:tenants",
+        "table:db/schema.sql:users",
+        "table:db/schema.sql:api_keys",
+        "table:db/schema.sql:connectors",
+        "table:db/schema.sql:agent_runs",
+        "table:db/schema.sql:audit_logs",
+        "table:db/schema.sql",
+        "config:config/pricing.json",
+        "config:data/app-state 2.json",
+        "file:data/app-state.json.demo-backup",
+        "config:data/sample-runs.json"
+      ]
+    },
+    {
+      "id": "layer:frontend",
+      "name": "Frontend Dashboard",
+      "description": "Browser-based SPA serving the Agent Prism analytics dashboard, executive leadership charts, product landing page, and marketing storyline — including HTML shells, client-side controllers, and stylesheets.",
+      "nodeIds": [
+        "file:public/app.js",
+        "file:public/dashboard.html",
+        "file:public/index.html",
+        "file:public/leadership.html",
+        "file:public/leadership.js",
+        "file:public/storyline.css",
+        "file:public/storyline.html",
+        "file:public/styles.css"
+      ]
+    },
+    {
+      "id": "layer:test",
+      "name": "Test Suite",
+      "description": "Unit and integration tests covering cost calculation accuracy, pricing lookups, ROI computation, security middleware behavior, and agent session lifecycle.",
+      "nodeIds": [
+        "file:test/cost.test.js",
+        "file:test/pricing.test.js",
+        "file:test/roi.test.js",
+        "file:test/security.test.js",
+        "file:test/sessions.test.js"
+      ]
+    },
+    {
+      "id": "layer:infrastructure",
+      "name": "Infrastructure & CI/CD",
+      "description": "Container build and orchestration files (Dockerfile, Compose), Docker context exclusions, environment variable template, and GitHub Actions workflows for automated Claude-powered code review and PR assistance.",
+      "nodeIds": [
+        "service:Dockerfile",
+        "service:docker-compose.yml",
+        "file:.dockerignore",
+        "file:.env.example",
+        "pipeline:.github/workflows/claude-code-review.yml",
+        "pipeline:.github/workflows/claude.yml"
+      ]
+    },
+    {
+      "id": "layer:documentation",
+      "name": "Documentation & Dev Tooling",
+      "description": "Product README, integration setup guide, docs site pages, OpenSpec change management artifacts (proposals, design docs, BDD specs, task lists), project config, and Claude Code skill/command definitions for the AI-assisted workflow.",
+      "nodeIds": [
+        "document:README.md",
+        "document:docs/agent-tracker-setup.md",
+        "file:docs/index.html",
+        "file:docs/storyline.css",
+        "config:package.json",
+        "config:openspec/config.yaml",
+        "config:openspec/changes/agent-cost-roi-tracker/.openspec.yaml",
+        "document:openspec/changes/agent-cost-roi-tracker/design.md",
+        "document:openspec/changes/agent-cost-roi-tracker/proposal.md",
+        "document:openspec/changes/agent-cost-roi-tracker/specs/agent-dashboard/spec.md",
+        "document:openspec/changes/agent-cost-roi-tracker/specs/agent-registry/spec.md",
+        "document:openspec/changes/agent-cost-roi-tracker/specs/cost-tracker/spec.md",
+        "document:openspec/changes/agent-cost-roi-tracker/specs/fte-roi-engine/spec.md",
+        "document:openspec/changes/agent-cost-roi-tracker/tasks.md",
+        "config:openspec/changes/production-hardening-and-security/.openspec.yaml",
+        "document:openspec/changes/production-hardening-and-security/design.md",
+        "document:openspec/changes/production-hardening-and-security/proposal.md",
+        "document:openspec/changes/production-hardening-and-security/specs/cors-policy/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/graceful-shutdown/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/input-validation/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/path-traversal-protection/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/rate-limiting/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/request-size-limits/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/security-headers/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/startup-validation/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/structured-logging/spec.md",
+        "document:openspec/changes/production-hardening-and-security/specs/ui-cleanup/spec.md",
+        "document:openspec/changes/production-hardening-and-security/tasks.md",
+        "document:.claude/commands/opsx/apply.md",
+        "document:.claude/commands/opsx/archive.md",
+        "document:.claude/commands/opsx/explore.md",
+        "document:.claude/commands/opsx/propose.md",
+        "document:.claude/skills/openspec-apply-change/SKILL.md",
+        "document:.claude/skills/openspec-archive-change/SKILL.md",
+        "document:.claude/skills/openspec-explore/SKILL.md",
+        "document:.claude/skills/openspec-propose/SKILL.md"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "Product Overview",
+      "description": "Start with the README to understand what Agent Prism is and why it exists. The document frames the four business questions the product answers — which agents are working, which providers are worth scaling, where spend is wasted, and which workflows need governance — and introduces the two core differentiators (Control Score and Cost Leak Radar) that shape every technical decision in the codebase.",
+      "nodeIds": [
+        "document:README.md"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "Server Entry Point",
+      "description": "server.js is the single highest fan-in file in the entire graph and the starting node for the BFS traversal. It registers every route, applies every middleware in order, initializes the storage layer, and starts the HTTP listener. Reading it gives you a complete map of every capability the platform exposes and the order in which cross-cutting concerns (startup validation, security headers, CORS, rate limiting, logging, auth) wrap each request before business logic is reached.",
+      "nodeIds": [
+        "file:server.js"
+      ],
+      "languageLesson": "Node.js ES module projects declare 'type': 'module' in package.json, enabling top-level await and named imports. All require() calls become import statements and .cjs extensions are used for scripts that must stay CommonJS."
+    },
+    {
+      "order": 3,
+      "title": "Runtime Configuration",
+      "description": "Before the server can accept a single request, it must know where to store data, which origins to trust, and what credentials to use. src/config.js centralizes all of this by reading environment variables at startup and exporting a single frozen object — once constructed it cannot be mutated. The companion .env.example file documents every variable the server understands, covering storage backend selection, JWT secrets, CORS allowlist, rate limit thresholds, and webhook secrets for Anthropic and GitHub.",
+      "nodeIds": [
+        "file:src/config.js",
+        "file:.env.example"
+      ]
+    },
+    {
+      "order": 4,
+      "title": "Startup & Shutdown Lifecycle",
+      "description": "Two small but critical modules bookend the server's process lifetime. src/startup.js runs synchronous checks on every required environment variable before the server binds its port — missing credentials cause a fatal exit, protecting against silent misconfigurations in production. src/shutdown.js attaches SIGTERM and SIGINT handlers that stop accepting new connections and wait for in-flight requests to drain before forcing exit, ensuring a containerized deployment can be safely restarted without dropping live traffic.",
+      "nodeIds": [
+        "file:src/startup.js",
+        "file:src/shutdown.js"
+      ]
+    },
+    {
+      "order": 5,
+      "title": "Security Middleware Pipeline",
+      "description": "Every inbound request traverses a pipeline of four security modules before it reaches any business logic. src/middleware/security-headers.js stamps hardened HTTP headers (CSP, HSTS, X-Frame-Options) on every response. src/middleware/cors.js enforces an allowlist of trusted origins and handles OPTIONS preflight. src/middleware/rate-limiter.js applies a per-tenant token-bucket to the ingest and metrics endpoints. src/middleware/logger.js emits structured JSON with timing and tenant context to stdout, ensuring every request is observable without leaking secrets or PII.",
+      "nodeIds": [
+        "file:src/middleware/security-headers.js",
+        "file:src/middleware/cors.js",
+        "file:src/middleware/rate-limiter.js",
+        "file:src/middleware/logger.js"
+      ],
+      "languageLesson": "Middleware in Node.js HTTP servers is a function with signature (req, res, next) — each module in the pipeline calls next() to pass control to the subsequent handler, or terminates the request by writing a response. Ordering matters: security headers should run before any handler that might write a response."
+    },
+    {
+      "order": 6,
+      "title": "Input Validation & Webhook Auth",
+      "description": "Two modules guard the boundary between the network and business logic. src/validation.js is a dependency-free schema engine that checks required fields, types, and range constraints on ingest payloads and connector creation requests, returning structured 422 errors before any database write happens. src/ingest/verify.js authenticates inbound webhook events by recomputing the HMAC-SHA256 signature using the shared webhook secret and comparing it with a timing-safe comparison, preventing replay attacks and spoofed ingest events.",
+      "nodeIds": [
+        "file:src/validation.js",
+        "file:src/ingest/verify.js"
+      ]
+    },
+    {
+      "order": 7,
+      "title": "Provider Connectors & Pricing",
+      "description": "Agent Prism is explicitly provider-agnostic. src/connectors.js is where that promise is implemented: it receives raw webhook payloads from Claude, Copilot, or any generic provider and normalizes them into a single internal run schema with consistent fields for cost, tokens, latency, and quality. This normalization is what makes the analytics layer provider-blind. The pricing table that feeds cost calculations lives in config/pricing.json — a static JSON file mapping model names to per-token USD rates, loaded and cached by src/pricing.js (the second-highest fan-in node in the graph with 7 dependents).",
+      "nodeIds": [
+        "file:src/connectors.js",
+        "file:src/pricing.js",
+        "config:config/pricing.json"
+      ],
+      "languageLesson": "Static configuration files like pricing.json are a deliberate design choice for cost data: they are auditable in version control, can be reviewed and updated without deploying new code, and avoid the latency and availability risk of fetching pricing from an external API at request time."
+    },
+    {
+      "order": 8,
+      "title": "Cost Intelligence Layer",
+      "description": "Once a run is normalized by connectors.js, one of three cost calculators converts it to a USD amount. src/cost/claude.js applies per-token input and output rates from the pricing table for Claude models. src/cost/copilot.js uses seat-count and usage-tier fields specific to Copilot billing. src/cost/generic.js simply passes through the pre-computed cost field for providers that report their own billing. This three-module fan-out pattern is how Agent Prism extends to new providers — add a calculator module, point it at the pricing table, and the rest of the pipeline is unchanged.",
+      "nodeIds": [
+        "file:src/cost/claude.js",
+        "file:src/cost/copilot.js",
+        "file:src/cost/generic.js"
+      ],
+      "languageLesson": "Each cost module is a pure function: given a run payload and a pricing table, it returns a number. Pure functions are easy to unit test in isolation, which is why these three modules are covered by test/cost.test.js independently of the server."
+    },
+    {
+      "order": 9,
+      "title": "Control Score Algorithm",
+      "description": "The Control Score is the product's core differentiator — described in the README as the metric that lets teams compare agents across providers instead of relying on anecdotes. src/scoring.js implements this as a weighted composite of cost efficiency, latency, reliability, user satisfaction, and compliance signals, producing a 0-100 score and a health classification (healthy, degraded, critical). It is the deepest node in the BFS traversal (depth 2), called exclusively by store.js, which passes it the normalized run set after each ingest event.",
+      "nodeIds": [
+        "file:src/scoring.js"
+      ]
+    },
+    {
+      "order": 10,
+      "title": "Analytics Store & Cost Leak Radar",
+      "description": "src/store.js is where incoming runs are merged with historical data, Control Scores are computed via scoring.js, and the Cost Leak Radar patterns are detected. The detectCostLeaks function identifies the specific waste signals the README names: retry loops, budget breaches, slow workflows, and failed runs. The buildDashboardSnapshot function assembles the full JSON payload that the frontend polls — every metric card, agent list entry, and governance flag originates here. This is the engine behind the product's value proposition.",
+      "nodeIds": [
+        "file:src/store.js"
+      ]
+    },
+    {
+      "order": 11,
+      "title": "ROI Engine",
+      "description": "Beyond cost visibility, Agent Prism answers whether agent spend is producing value by computing FTE savings. src/roi.js takes a set of agent sessions, applies the FTE hourly rate from the pricing configuration, and returns net cost saved, FTE equivalence, and an ROI multiplier. The README frames this as the answer to 'which agents are actually working?' — the ROI engine is what converts raw run telemetry into the business-level metrics that matter to leadership.",
+      "nodeIds": [
+        "file:src/roi.js",
+        "file:src/jobs/session-timeout.js"
+      ],
+      "languageLesson": "Session timeout is implemented as a background job rather than a per-request check. A scheduled interval calls applySessionTimeout on the store at a configurable cadence, marking idle sessions as expired. This keeps the hot request path clean while ensuring ROI calculations are not skewed by sessions that stalled without an explicit end event."
+    },
+    {
+      "order": 12,
+      "title": "Multi-Tenant Data Model",
+      "description": "Agent Prism is a SaaS platform, and db/schema.sql defines the relational foundation. The tenants table is the root of the multi-tenant hierarchy. The connectors table registers each provider integration per tenant. The agent_runs table is the core fact table — every normalized run record lands here with cost, token usage, latency, quality score, policy violations, and governance metadata, making it the primary data source for the Control Score and Cost Leak Radar. The audit_logs table provides the immutable compliance trail the README describes as a governance requirement.",
+      "nodeIds": [
+        "table:db/schema.sql",
+        "table:db/schema.sql:tenants",
+        "table:db/schema.sql:agent_runs",
+        "table:db/schema.sql:audit_logs"
+      ],
+      "languageLesson": "The schema follows a multi-tenancy pattern where every operational table carries a tenant_id foreign key back to the tenants root. All queries are scoped to a tenant_id, which prevents data leakage between customers without requiring separate databases or schemas per tenant."
+    },
+    {
+      "order": 13,
+      "title": "Storage Backends",
+      "description": "Agent Prism supports two persistence backends selectable at runtime through a single environment variable. src/saas-store.js is the adapter facade that reads the configuration and proxies every store operation to either src/stores/file-store.js (a JSON-file backend with atomic rename writes, suitable for local development and demos) or src/stores/postgres-store.js (a full PostgreSQL backend with connection pooling and parameterized queries for production). src/auth.js underpins both backends, providing the HMAC-SHA256 API key generation and timing-safe verification used at every authenticated endpoint.",
+      "nodeIds": [
+        "file:src/saas-store.js",
+        "file:src/stores/file-store.js",
+        "file:src/stores/postgres-store.js",
+        "file:src/auth.js"
+      ]
+    },
+    {
+      "order": 14,
+      "title": "Client SDK",
+      "description": "src/sdk/index.js is the interface through which agents actually report telemetry to Agent Prism. It exposes a single AgentPrism class: the constructor calls the server's bootstrap API with a tenant API key to exchange credentials, and the logRun method submits a normalized agent run payload. With a fan-in of 4, it is used by the two real demo agents (real_demo_agent.js and real_demo_openai_agent.js) and both gateway setup scripts, making it the integration point that connects external agent code to the entire analytics pipeline built in the previous steps.",
+      "nodeIds": [
+        "file:src/sdk/index.js",
+        "file:real_demo_agent.js",
+        "file:real_demo_openai_agent.js"
+      ]
+    },
+    {
+      "order": 15,
+      "title": "Frontend Dashboard & Containerization",
+      "description": "The operator-facing experience is a browser SPA served from the public/ directory. public/dashboard.html defines the shell — metrics bar, Overview/Activity/Governance tabs, and agent sidebar — and public/app.js drives all data fetching and rendering logic against the server API. public/leadership.js powers a separate executive view with Chart.js spend trend and team allocation charts derived from the ROI engine. The Dockerfile packages the entire application as a Node.js 24 Alpine container running as a non-root user, and docker-compose.yml wires the service to environment variables and a named volume for persistent file-store data.",
+      "nodeIds": [
+        "file:public/dashboard.html",
+        "file:public/app.js",
+        "file:public/leadership.js",
+        "service:Dockerfile",
+        "service:docker-compose.yml"
+      ],
+      "languageLesson": "The Dockerfile uses a single-stage build rather than a multi-stage build because the project has no compile step — JavaScript runs directly in Node. The non-root user pattern (addgroup/adduser) is a container security baseline: even if a vulnerability allows code execution inside the container, the attacker cannot write to paths owned by root."
+    }
+  ]
+}

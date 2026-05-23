@@ -445,159 +445,108 @@ function formatDate(value) {
 
 function renderAdminView() {
   const tenant = tenantSummary?.tenant || {};
-  const users = tenantSummary?.users || [];
   const connectors = tenantSummary?.connectors || [];
   const currentKeyPrefix = tenantApiKey ? tenantApiKey.slice(0, 12) : "";
-  const configuredProviders = new Set(connectors.map((connector) => connector.provider));
+
+  const quickTryAgents = [
+    { provider: "github-copilot", label: "GitHub Copilot", icon: "&#xea84;", desc: "Coding agent" },
+    { provider: "openai",         label: "OpenAI Agent",   icon: "&#x2B22;", desc: "Responses API" },
+    { provider: "anthropic",      label: "Claude Agent",   icon: "&#x2736;", desc: "Messages API" },
+    { provider: "generic-webhook",label: "Custom Agent",   icon: "&#x229C;", desc: "Any framework" },
+  ];
 
   document.querySelector("#view-content").innerHTML = `
     <section class="tab-stage admin-stage">
+
       <article class="panel wide-panel admin-hero">
-        <div class="panel-title">
-          <p class="eyebrow">Workspace Admin</p>
-          <h2>${tenant.name || "Tenant workspace"}</h2>
-        </div>
-        <div class="admin-summary">
-          <div><span>Tenant ID</span><strong>${tenant.id || "Unknown"}</strong></div>
-          <div><span>Plan</span><strong>${tenant.plan || "Trial"}</strong></div>
-          <div><span>Users</span><strong>${users.length}</strong></div>
-          <div><span>Runs</span><strong>${tenantSummary?.runCount || 0}</strong></div>
+        <div class="admin-workspace-header">
+          <div>
+            <p class="eyebrow">Workspace</p>
+            <h2>${tenant.name || "Your workspace"}</h2>
+          </div>
+          <div class="workspace-stats">
+            <div><span>Plan</span><strong>${tenant.plan || "Trial"}</strong></div>
+            <div><span>Agent runs</span><strong>${tenantSummary?.runCount || 0}</strong></div>
+            <div><span>Connected sources</span><strong>${connectors.length}</strong></div>
+          </div>
         </div>
       </article>
 
-      <article class="panel wide-panel developer-rollout">
+      <article class="panel wide-panel quick-connect-panel">
         <div class="panel-title">
-          <p class="eyebrow">Developer Rollout</p>
-          <h2>Track agents from VS Code</h2>
+          <p class="eyebrow">Quick Connect</p>
+          <h2>See your agents in Agent Prism — in seconds</h2>
+          <p class="panel-subtitle">Pick your agent type below. We'll send a sample run so you can see the dashboard populate live. No code needed.</p>
         </div>
-        <div class="rollout-grid">
-          <div class="rollout-step">
-            <span>1</span>
-            <strong>Create an Agent Prism key</strong>
-            <p>Create a tenant API key below, then run <code>node bin/cli.js login</code> once on the developer machine.</p>
-          </div>
-          <div class="rollout-step">
-            <span>2</span>
-            <strong>Choose tracking mode</strong>
-            <p>Use gateway mode for OpenAI/Claude calls, or event mode for Copilot, LangChain, CrewAI, and custom agents.</p>
-          </div>
-          <div class="rollout-step">
-            <span>3</span>
-            <strong>Verify in dashboard</strong>
-            <p>Run one agent task, then check Overview, Token Coach, Activity, and Governance for the new run.</p>
-          </div>
+        <div class="quick-try-grid">
+          ${quickTryAgents.map((a) => `
+            <button class="quick-try-btn test-source-button" data-provider="${a.provider}" type="button">
+              <span class="quick-try-icon">${a.icon}</span>
+              <strong>${a.label}</strong>
+              <span>${a.desc}</span>
+              <em>Send sample run &rarr;</em>
+            </button>
+          `).join("")}
         </div>
-        <div class="snippet-grid">
-          <div class="snippet-card">
-            <div>
-              <strong>OpenAI gateway mode</strong>
-              <span>Change the agent base URL to Agent Prism. No custom telemetry code.</span>
-            </div>
-            <pre><code>fetch("https://agent-prism.onrender.com/v1/responses", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer YOUR_AGENT_PRISM_KEY"
-  },
-  body: JSON.stringify({
-    model: "gpt-4.1-mini",
-    input: "Run the agent task"
-  })
-})</code></pre>
-          </div>
-          <div class="snippet-card">
-            <div>
-              <strong>Custom or Copilot event mode</strong>
-              <span>Send one run event when the local agent completes work.</span>
-            </div>
-            <pre><code>await prism.logRun({
-  source: "copilot",
-  payload: {
-    agent_name: "VS Code Copilot Agent",
-    intent: "code-generation",
-    outcome: "success",
-    prompt_tokens: 5200,
-    completion_tokens: 1100,
-    workflow: "local-development"
-  }
-})</code></pre>
-          </div>
-        </div>
+        <p class="quick-connect-hint">After clicking, switch to the <strong>Overview</strong> tab to see the run appear live. To connect your real agent, use the sources below.</p>
       </article>
 
       <article class="panel wide-panel connector-marketplace">
         <div class="panel-title">
-          <p class="eyebrow">Integration Hub</p>
-          <h2>Connect agent platforms</h2>
+          <p class="eyebrow">Agent Sources</p>
+          <h2>Connect your AI agents</h2>
         </div>
         ${adminActionMessage ? `<p class="admin-message">${adminActionMessage}</p>` : ""}
-        <div class="active-source-strip">
-          <span>Active tenant sources</span>
-          <strong>${connectors.length ? connectors.map((connector) => connector.name).join(", ") : "None yet"}</strong>
-        </div>
         <div class="connector-grid">
           ${connectorCatalog.length ? connectorCatalog.map((item) => {
             const existing = connectors.find((connector) => connector.provider === item.provider);
             const isConnected = !!existing;
             const hasSecret = !!existing?.hasSecret;
-            const statusLabel = isConnected
-              ? item.requiresSecret && !hasSecret
-                ? "needs key"
-                : "connected"
-              : "not connected";
+            const fullyReady = isConnected && (!item.requiresSecret || hasSecret);
+            const needsKey = item.requiresSecret && (!isConnected || !hasSecret);
+            const statusLabel = fullyReady ? "Active" : needsKey ? "Needs setup" : "Not connected";
+
             return `
-            <div class="connector-card">
+            <div class="connector-card ${fullyReady ? "connector-card--active" : ""}">
               <div class="connector-card-top">
                 <div>
                   <strong>${item.name}</strong>
-                  <span>${item.category} · ${item.mode}</span>
+                  <span>${item.category}</span>
                 </div>
-                <span class="connector-status ${isConnected ? "connected" : ""}">${statusLabel}</span>
-              </div>
-              ${item.requiresSecret && (!isConnected || !hasSecret) ? `
-                <div class="connector-action-zone primary-action">
-                  <label>${item.name} API key</label>
-                  <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
-                    <input name="apiKey" placeholder="${item.provider === "anthropic" ? "Paste Claude key sk-ant-..." : "Paste OpenAI key sk-..."}" />
-                    <button type="submit">${isConnected ? "Save key" : "Connect"}</button>
-                  </form>
-                </div>
-              ` : ""}
-              <div class="connector-health ${isConnected ? "ok" : "idle"}">
-                ${isConnected
-                  ? item.requiresSecret && !hasSecret
-                    ? "Source exists. Add a provider key to enable gateway routing."
-                    : `${item.name} is connected for this tenant. New ${item.name} agent activity can now be tracked by Agent Prism.`
-                  : "Ready to add for this tenant."}
+                <span class="connector-status ${fullyReady ? "connected" : ""}">${statusLabel}</span>
               </div>
               <p>${item.setup}</p>
-              ${item.requiresSecret && isConnected && hasSecret ? `
-                <div class="connector-action-zone">
-                  <label>Credential vault</label>
-                  <button class="ghost rotate-key-button" data-provider="${item.provider}" type="button">Rotate provider key</button>
+              ${needsKey ? `
+                <div class="connector-action-zone primary-action">
+                  <form class="connector-form" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}">
+                    <input name="apiKey" placeholder="${item.provider === "anthropic" ? "Paste your Claude API key" : "Paste your OpenAI API key"}" />
+                    <button type="submit">${isConnected ? "Save" : "Connect"}</button>
+                  </form>
                 </div>
-              ` : !item.requiresSecret ? `
+              ` : !item.requiresSecret && !isConnected ? `
                 <div class="connector-action-zone">
-                  <label>Source registration</label>
-                  <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">${isConnected ? "Refresh Source" : "Add Source"}</button>
+                  <button class="ghost connect-source-button" data-provider="${item.provider}" data-name="${item.name}" data-mode="${item.mode}" type="button">Add source</button>
+                </div>
+              ` : item.requiresSecret && fullyReady ? `
+                <div class="connector-action-zone">
+                  <button class="ghost rotate-key-button" data-provider="${item.provider}" type="button">Rotate API key</button>
                 </div>
               ` : ""}
               <div class="connector-footer">
-                <span>${item.endpoint}</span>
-                <button class="test-source-button" data-provider="${item.provider}" type="button">Send test event</button>
+                <button class="ghost test-source-button" data-provider="${item.provider}" type="button">Send sample run</button>
               </div>
             </div>
-          `}).join("") : `<p class="muted">Connector catalog is loading.</p>`}
+          `}).join("") : `<p class="muted">Loading agent sources…</p>`}
         </div>
       </article>
 
       <article class="panel wide-panel">
         <div class="panel-title">
-          <p class="eyebrow">API Keys</p>
-          <h2>Tenant-scoped access</h2>
+          <p class="eyebrow">Access Keys</p>
+          <h2>Workspace credentials</h2>
         </div>
         <form id="create-key-form" class="inline-admin-form">
-          <input name="name" placeholder="Key name" value="Demo agent key" />
+          <input name="name" placeholder="Key name — e.g. Production agent" value="Demo agent key" />
           <button type="submit">Create key</button>
         </form>
         <p id="new-key-output" class="secret-output" hidden></p>
@@ -608,41 +557,23 @@ function renderAdminView() {
             <div class="admin-row">
               <div>
                 <strong>${key.name}</strong>
-                <span>${key.prefix} · ${key.status}${isCurrentKey ? " · current browser key" : ""} · last used ${formatDate(key.lastUsedAt)}</span>
+                <span>${key.status === "active" ? "Active" : "Revoked"}${isCurrentKey ? " · this session" : ""} · last used ${formatDate(key.lastUsedAt)}</span>
               </div>
               <button class="ghost revoke-key-button" data-key-id="${key.id}" ${key.status !== "active" || isCurrentKey ? "disabled" : ""}>${isCurrentKey ? "In use" : "Revoke"}</button>
             </div>
-          `}).join("") : `<p class="muted">No API keys found.</p>`}
+          `}).join("") : `<p class="muted">No access keys yet.</p>`}
         </div>
       </article>
 
       <article class="panel wide-panel">
         <div class="panel-title">
-          <p class="eyebrow">Connectors</p>
-          <h2>Active sources</h2>
-        </div>
-        <div class="admin-list">
-          ${connectors.length ? connectors.map((connector) => `
-            <div class="admin-row">
-              <div>
-                <strong>${connector.name}</strong>
-                <span>${connector.provider} · ${connector.status} · ${connector.hasSecret ? "secret configured" : "no secret stored"}</span>
-              </div>
-              <span class="admin-pill">${connector.mode || "webhook"}</span>
-            </div>
-          `).join("") : `<p class="muted">No connectors configured.</p>`}
-        </div>
-      </article>
-
-      <article class="panel wide-panel">
-        <div class="panel-title">
-          <p class="eyebrow">Audit</p>
-          <h2>Evidence controls</h2>
+          <p class="eyebrow">Compliance</p>
+          <h2>Activity log</h2>
         </div>
         <div class="admin-actions">
-          <button id="export-audit-button" type="button">Export audit CSV</button>
+          <button id="export-audit-button" type="button">Download activity report</button>
         </div>
-        <p class="muted">Audit exports are tenant-scoped and never include provider secrets or full API keys.</p>
+        <p class="muted">Reports are scoped to this workspace and never include API secrets or full keys.</p>
       </article>
     </section>
   `;
@@ -668,7 +599,7 @@ function renderAdminView() {
 
 function showRotateKeyForm(provider) {
   const source = connectorCatalog.find((item) => item.provider === provider);
-  adminActionMessage = `Paste the new ${source?.name || provider} key below and click Save key.`;
+  adminActionMessage = `Paste the new ${source?.name || provider} API key below and click Save.`;
   const connector = tenantSummary?.connectors?.find((item) => item.provider === provider);
   if (connector) {
     connector.hasSecret = false;
