@@ -303,12 +303,13 @@ function renderActivityView() {
 function renderGovernanceView() {
   document.querySelector("#view-content").innerHTML = `
     <section class="tab-stage governance-stage">
-      <article class="panel wide-panel">
+      <article class="panel wide-panel provider-compare-panel">
         <div class="panel-title">
-          <p class="eyebrow">Provider Control</p>
-          <h2>Performance by platform</h2>
+          <p class="eyebrow">Provider Benchmark</p>
+          <h2>Head-to-head: which AI provider wins?</h2>
+          <p class="panel-subtitle">Ranked by real run data through the Agent Prism proxy. Green = winner for that metric.</p>
         </div>
-        <div id="provider-table"></div>
+        <div id="provider-scorecard"></div>
       </article>
       <article class="panel wide-panel">
         <div class="panel-title">
@@ -331,9 +332,79 @@ function renderGovernanceView() {
       </article>
     </section>
   `;
-  renderProviderTable(dashboardState.providerComparison);
+  renderProviderScorecard(dashboardState.providerComparison);
   renderLeaks(dashboardState.costLeaks);
   renderAuditLogs(dashboardAuditLogs);
+}
+
+function renderProviderScorecard(providers) {
+  const el = document.querySelector("#provider-scorecard");
+  if (!providers.length) {
+    el.innerHTML = `<p class="muted">Provider comparison appears once you have runs from more than one AI provider.</p>`;
+    return;
+  }
+
+  const metrics = [
+    { key: "avgScore",       label: "Control Score",      unit: "",     higherBetter: true,  fmt: (v) => v },
+    { key: "successRate",    label: "Success Rate",        unit: "%",    higherBetter: true,  fmt: (v) => v + "%" },
+    { key: "avgLatencyMs",   label: "Avg Latency",         unit: "ms",   higherBetter: false, fmt: (v) => v >= 1000 ? (v / 1000).toFixed(1) + "s" : v + "ms" },
+    { key: "costPerRun",     label: "Cost per Run",        unit: "$",    higherBetter: false, fmt: (v) => "$" + v.toFixed(4) },
+    { key: "costPer1kTokens",label: "Cost / 1k Tokens",   unit: "$",    higherBetter: false, fmt: (v) => v > 0 ? "$" + v.toFixed(4) : "—" },
+    { key: "avgTokensPerRun",label: "Tokens per Run",      unit: "",     higherBetter: false, fmt: (v) => v.toLocaleString() },
+    { key: "retries",        label: "Total Retries",       unit: "",     higherBetter: false, fmt: (v) => v },
+    { key: "runs",           label: "Total Runs",          unit: "",     higherBetter: true,  fmt: (v) => v },
+  ];
+
+  // Compute overall winner (most metric wins)
+  const wins = {};
+  providers.forEach((p) => { wins[p.provider] = 0; });
+  metrics.forEach(({ key, higherBetter }) => {
+    const vals = providers.map((p) => p[key]);
+    const best = higherBetter ? Math.max(...vals) : Math.min(...vals);
+    providers.forEach((p) => {
+      if (p[key] === best) wins[p.provider] = (wins[p.provider] || 0) + 1;
+    });
+  });
+  const overallWinner = Object.entries(wins).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  el.innerHTML = `
+    ${overallWinner && providers.length > 1 ? `
+      <div class="provider-winner-banner">
+        <span>Overall winner based on ${metrics.length} metrics</span>
+        <strong>${overallWinner}</strong>
+        <em>${wins[overallWinner]} of ${metrics.length} metrics won</em>
+      </div>
+    ` : ""}
+    <div class="provider-cards">
+      ${providers.map((p) => {
+        const isWinner = p.provider === overallWinner && providers.length > 1;
+        return `
+        <div class="provider-card ${isWinner ? "provider-card--winner" : ""}">
+          <div class="provider-card-header">
+            <div class="provider-mark">${p.provider.slice(0, 1).toUpperCase()}</div>
+            <div>
+              <strong>${p.provider}</strong>
+              <span>${p.runs} run${p.runs !== 1 ? "s" : ""}</span>
+            </div>
+            ${isWinner ? `<span class="provider-winner-chip">Top pick</span>` : ""}
+          </div>
+          <div class="provider-metrics">
+            ${metrics.map(({ key, label, higherBetter, fmt }) => {
+              const vals = providers.map((q) => q[key]);
+              const best = higherBetter ? Math.max(...vals) : Math.min(...vals);
+              const isMetricWinner = p[key] === best && providers.length > 1;
+              return `
+              <div class="provider-metric ${isMetricWinner ? "provider-metric--win" : ""}">
+                <span>${label}</span>
+                <strong>${fmt(p[key])}</strong>
+                ${isMetricWinner ? `<em class="win-dot"></em>` : ""}
+              </div>`;
+            }).join("")}
+          </div>
+        </div>`;
+      }).join("")}
+    </div>
+  `;
 }
 
 function renderTokenCoachView() {
@@ -898,39 +969,6 @@ function renderActivityFeed(feed) {
           .join("");
 }
 
-function renderProviderTable(rows) {
-  document.querySelector("#provider-table").innerHTML =
-    rows.length === 0
-      ? `<div class="detail-subpanel"><p class="usp-summary">Provider benchmarks show up after the first few tenant runs.</p></div>`
-      : `
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Provider</th>
-              <th>Runs</th>
-              <th>Cost</th>
-              <th>Success</th>
-              <th>Avg Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows
-              .map(
-                (row) => `
-                  <tr>
-                    <td>${row.provider}</td>
-                    <td>${row.runs}</td>
-                    <td>${currency(row.costUsd)}</td>
-                    <td>${row.successRate}%</td>
-                    <td>${row.avgScore}</td>
-                  </tr>
-                `
-              )
-              .join("")}
-          </tbody>
-        </table>
-      `;
-}
 
 function renderLeaks(leaks) {
   document.querySelector("#leak-list").innerHTML =

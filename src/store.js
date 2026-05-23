@@ -253,15 +253,28 @@ export function buildDashboardSnapshot(runs) {
   const averageSatisfaction = average(enrichedRuns.map((run) => run.userSatisfaction)).toFixed(1);
 
   const byProvider = Object.entries(groupBy(enrichedRuns, (run) => run.provider)).map(
-    ([provider, providerRuns]) => ({
-      provider,
-      runs: providerRuns.length,
-      costUsd: Number(providerRuns.reduce((sum, run) => sum + run.costUsd, 0).toFixed(2)),
-      avgScore: Math.round(average(providerRuns.map((run) => run.controlScore))),
-      successRate: Math.round(
-        (providerRuns.filter((run) => run.status === "success").length / providerRuns.length) * 100
-      )
-    })
+    ([provider, providerRuns]) => {
+      const totalCost = providerRuns.reduce((sum, run) => sum + run.costUsd, 0);
+      const totalTokensIn = providerRuns.reduce((sum, run) => sum + (run.tokensIn || 0), 0);
+      const totalTokensOut = providerRuns.reduce((sum, run) => sum + (run.tokensOut || 0), 0);
+      const totalTokens = totalTokensIn + totalTokensOut;
+      const successRuns = providerRuns.filter((run) => run.status === "success");
+      return {
+        provider,
+        runs: providerRuns.length,
+        costUsd: Number(totalCost.toFixed(4)),
+        avgScore: Math.round(average(providerRuns.map((run) => run.controlScore))),
+        successRate: Math.round((successRuns.length / providerRuns.length) * 100),
+        avgLatencyMs: Math.round(average(providerRuns.map((run) => run.latencyMs || 0))),
+        avgTokensPerRun: providerRuns.length ? Math.round(totalTokens / providerRuns.length) : 0,
+        costPerRun: providerRuns.length ? Number((totalCost / providerRuns.length).toFixed(4)) : 0,
+        costPer1kTokens: totalTokens ? Number(((totalCost / totalTokens) * 1000).toFixed(4)) : 0,
+        totalTokensIn,
+        totalTokensOut,
+        totalTokens,
+        retries: providerRuns.reduce((sum, run) => sum + (run.retryCount || 0), 0)
+      };
+    }
   );
 
   const byWorkflow = Object.entries(groupBy(enrichedRuns, (run) => run.workflow)).map(
