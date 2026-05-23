@@ -341,13 +341,25 @@ function renderTokenCoachView() {
   const suggestions = efficiency.suggestions || [];
   const topAgents = efficiency.topAgents || [];
   const hotspots = efficiency.workflowHotspots || [];
+  const score = efficiency.efficiencyScore ?? null;
+  const scoreColor = score === null ? "muted" : score >= 80 ? "green" : score >= 60 ? "amber" : "red";
+  const effortColor = { Low: "green", Medium: "amber", High: "red" };
 
   document.querySelector("#view-content").innerHTML = `
     <section class="tab-stage token-stage">
       <article class="panel wide-panel token-hero">
-        <div class="panel-title">
-          <p class="eyebrow">Token Coach</p>
-          <h2>Usage efficiency recommendations</h2>
+        <div class="coach-hero-header">
+          <div class="panel-title">
+            <p class="eyebrow">Token Coach</p>
+            <h2>Usage efficiency — act on these to reduce cost</h2>
+          </div>
+          ${score !== null ? `
+            <div class="efficiency-score-badge">
+              <span>Efficiency Score</span>
+              <strong class="${scoreColor}">${score}/100</strong>
+              <em>${score >= 80 ? "Well optimised" : score >= 60 ? "Room to improve" : "High waste detected"}</em>
+            </div>
+          ` : ""}
         </div>
         <div class="token-summary">
           <div>
@@ -356,70 +368,86 @@ function renderTokenCoachView() {
           </div>
           <div>
             <span>Input mix</span>
-            <strong>${efficiency.inputTokenPercent || 0}%</strong>
+            <strong class="${(efficiency.inputTokenPercent || 0) > 70 ? "amber" : ""}">${efficiency.inputTokenPercent || 0}%</strong>
           </div>
           <div>
             <span>Output mix</span>
-            <strong>${efficiency.outputTokenPercent || 0}%</strong>
+            <strong class="${(efficiency.outputTokenPercent || 0) > 40 ? "amber" : ""}">${efficiency.outputTokenPercent || 0}%</strong>
           </div>
           <div>
             <span>Retry waste</span>
-            <strong>${compactNumber(efficiency.retryWasteTokens || 0)}</strong>
+            <strong class="${(efficiency.wastePercent || 0) > 5 ? "red" : ""}">${efficiency.wastePercent || 0}%</strong>
+          </div>
+          <div>
+            <span>Cost / 1k tokens</span>
+            <strong>$${efficiency.costPer1kTokensUsd || 0}</strong>
+          </div>
+          <div>
+            <span>Projected / month</span>
+            <strong class="amber">$${efficiency.projectedMonthlyCost || 0}</strong>
           </div>
         </div>
       </article>
 
       <article class="panel wide-panel">
         <div class="panel-title">
-          <p class="eyebrow">Recommendations</p>
-          <h2>What to change next</h2>
+          <p class="eyebrow">Action Plan</p>
+          <h2>Do these — in order — to reduce token cost</h2>
         </div>
         <div class="coach-list">
           ${suggestions.length ? suggestions.map((item, index) => `
-            <div class="coach-card">
+            <div class="coach-card coach-card--actionable">
               <div class="coach-rank">${index + 1}</div>
-              <div>
-                <h3>${item.title}</h3>
-                <strong>${item.impact}</strong>
-                <p>${item.action}</p>
+              <div class="coach-body">
+                <div class="coach-card-header">
+                  <h3>${item.title}</h3>
+                  ${item.effort ? `<span class="coach-effort coach-effort--${(item.effort || "").toLowerCase()}">${item.effort} effort</span>` : ""}
+                </div>
+                <strong class="coach-impact">${item.impact}</strong>
+                ${item.savingsEstimate ? `<div class="coach-savings">${item.savingsEstimate}</div>` : ""}
+                <p class="coach-action"><span class="coach-do-label">Do this:</span> ${item.action}</p>
+                ${item.target ? `<div class="coach-target">${item.target}</div>` : ""}
               </div>
             </div>
-          `).join("") : `<p class="muted">No token recommendations yet.</p>`}
+          `).join("") : `<p class="muted">No token recommendations yet. Run agents through the proxy to generate coaching data.</p>`}
         </div>
       </article>
 
       <article class="panel wide-panel">
         <div class="panel-title">
-          <p class="eyebrow">Top Agents</p>
-          <h2>Token-heavy agents</h2>
+          <p class="eyebrow">Top Agents by Token Cost</p>
+          <h2>Where to focus first</h2>
         </div>
         <div class="token-list">
-          ${topAgents.length ? topAgents.map((agent) => `
+          ${topAgents.length ? topAgents.map((agent) => {
+            const inputPct = (agent.tokensIn + agent.tokensOut) > 0
+              ? Math.round((agent.tokensIn / (agent.tokensIn + agent.tokensOut)) * 100) : 0;
+            return `
             <div class="token-row">
               <div>
                 <strong>${agent.agentName}</strong>
-                <span>${agent.provider} · ${agent.workflow}</span>
+                <span>${agent.provider} · ${agent.runs} runs · ${inputPct}% input</span>
               </div>
               <div>
                 <strong>${compactNumber(agent.totalTokens)}</strong>
-                <span>${compactNumber(agent.avgTokensPerRun)} avg/run</span>
+                <span>${compactNumber(agent.avgTokensPerRun)} avg/run · $${agent.costUsd.toFixed(4)}</span>
               </div>
             </div>
-          `).join("") : `<p class="muted">Token-heavy agents appear after telemetry arrives.</p>`}
+          `}).join("") : `<p class="muted">Token-heavy agents appear after telemetry arrives.</p>`}
         </div>
       </article>
 
       <article class="panel wide-panel">
         <div class="panel-title">
           <p class="eyebrow">Workflow Hotspots</p>
-          <h2>Where tokens concentrate</h2>
+          <h2>Highest-token workflows</h2>
         </div>
         <div class="token-list">
           ${hotspots.length ? hotspots.map((workflow) => `
             <div class="token-row">
               <div>
                 <strong>${workflow.workflow}</strong>
-                <span>${workflow.runs} runs · ${workflow.retries} retries</span>
+                <span>${workflow.runs} runs · ${workflow.retries} retries${workflow.retries > 0 ? " ⚠" : ""}</span>
               </div>
               <div>
                 <strong>${compactNumber(workflow.totalTokens)}</strong>

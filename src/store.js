@@ -104,60 +104,105 @@ function buildTokenEfficiency(enrichedRuns) {
   const outputRatio = totalTokens ? totalOutputTokens / totalTokens : 0;
   const topAgent = byAgent[0];
   const topWorkflow = byWorkflow[0];
+  const costPer1kTokens = totalTokens ? (totalCostUsd / totalTokens) * 1000 : 0;
+  const runsPerDay = tokenRuns.length > 0 ? tokenRuns.length : 1;
+  const projectedMonthlyRuns = runsPerDay * 30;
+  const projectedMonthlyCost = totalCostUsd > 0
+    ? Number((totalCostUsd / tokenRuns.length * projectedMonthlyRuns).toFixed(2))
+    : 0;
+  const wastePercent = totalTokens ? Math.round((retryWasteTokens / totalTokens) * 100) : 0;
+  const efficiencyScore = Math.max(0, Math.min(100,
+    100
+    - (inputRatio > 0.70 ? 25 : inputRatio > 0.65 ? 12 : 0)
+    - (outputRatio > 0.45 ? 20 : outputRatio > 0.40 ? 10 : 0)
+    - (wastePercent > 10 ? 25 : wastePercent > 5 ? 12 : 0)
+    - (topAgent && topAgent.avgTokensPerRun > 15000 ? 20 : topAgent && topAgent.avgTokensPerRun > 8000 ? 10 : 0)
+  ));
 
   if (!totalTokens) {
     suggestions.push({
-      title: "Run a Copilot, Claude, or OpenAI demo to unlock token coaching",
+      title: "Run an agent to unlock token coaching",
       impact: "Waiting for telemetry",
-      action: "Push a demo run through Agent Prism so token mix, retry waste, and workflow patterns can be scored."
+      savingsEstimate: null,
+      effort: "None",
+      action: "Send a run through the Claude or OpenAI proxy. Token mix, cost efficiency, and workflow patterns will be scored automatically.",
+      target: "Goal: first run recorded"
     });
   }
 
   if (inputRatio > 0.65 && totalTokens > 3000) {
+    const savableTokens = Math.round(totalInputTokens * 0.30);
+    const savingsUsd = Number((savableTokens * costPer1kTokens / 1000).toFixed(4));
+    const monthlySavings = Number((savingsUsd / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
-      title: "Reduce repeated context in prompts",
-      impact: `${Math.round(inputRatio * 100)}% of usage is input tokens`,
-      action: "Cache repository summaries, send only changed files, and pass compact task briefs instead of full project context on every run."
+      title: "Trim repeated context from prompts",
+      impact: `${Math.round(inputRatio * 100)}% of tokens are input (${totalInputTokens.toLocaleString()} tokens total)`,
+      savingsEstimate: `Cutting input by 30% saves ~${savableTokens.toLocaleString()} tokens = $${monthlySavings}/month at current run rate`,
+      effort: "Medium",
+      action: "Cache repository summaries once per session instead of re-sending them. Send only the diff, not the full file. Replace long system prompts with compact task briefs (target: under 2,000 input tokens per run).",
+      target: `Target: input mix below 65% (currently ${Math.round(inputRatio * 100)}%)`
     });
   }
 
   if (outputRatio > 0.4 && totalTokens > 3000) {
+    const savableTokens = Math.round(totalOutputTokens * 0.35);
+    const savingsUsd = Number((savableTokens * costPer1kTokens / 1000).toFixed(4));
+    const monthlySavings = Number((savingsUsd / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
-      title: "Cap verbose responses",
-      impact: `${Math.round(outputRatio * 100)}% of usage is output tokens`,
-      action: "Ask agents for patch-first output, concise findings, or structured JSON summaries before requesting long explanations."
+      title: "Cap verbose agent responses",
+      impact: `${Math.round(outputRatio * 100)}% of tokens are output (${totalOutputTokens.toLocaleString()} tokens total)`,
+      savingsEstimate: `Reducing output verbosity by 35% saves ~${savableTokens.toLocaleString()} tokens = $${monthlySavings}/month`,
+      effort: "Low",
+      action: "Add to your system prompt: 'Respond with findings only. No preamble, no recap, no closing remarks. Use bullet points. Maximum 500 words.' Switch to structured JSON output for programmatic consumers.",
+      target: `Target: output mix below 35% (currently ${Math.round(outputRatio * 100)}%)`
     });
   }
 
   if (retryWasteTokens > 0) {
+    const monthlySavings = Number((retryWasteTokens * costPer1kTokens / 1000 / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
-      title: "Cut retry token waste",
-      impact: `${retryWasteTokens.toLocaleString()} tokens are tied to retry loops`,
-      action: "Add preflight checks, narrower tool permissions, and failure-specific stop conditions before the agent retries."
+      title: "Eliminate retry token waste",
+      impact: `${retryWasteTokens.toLocaleString()} tokens wasted in retry loops (${wastePercent}% of all usage)`,
+      savingsEstimate: `Fixing root retry causes saves $${monthlySavings}/month`,
+      effort: "High",
+      action: "Add a preflight validation step before the agent runs. Log the exact failure message on first attempt. Add a stop condition so the agent halts after 2 failures instead of retrying indefinitely.",
+      target: "Target: retry count = 0 on all runs"
     });
   }
 
   if (topAgent && topAgent.avgTokensPerRun > 8000) {
+    const excessTokens = topAgent.avgTokensPerRun - 6000;
+    const monthlySavings = Number((excessTokens * costPer1kTokens / 1000 * topAgent.runs / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
-      title: `Right-size ${topAgent.agentName}`,
-      impact: `${topAgent.avgTokensPerRun.toLocaleString()} average tokens per run`,
-      action: "Split large tasks into plan, patch, and verify phases so each model call receives only the context it needs."
+      title: `Right-size "${topAgent.agentName}"`,
+      impact: `${topAgent.avgTokensPerRun.toLocaleString()} avg tokens/run — ${excessTokens.toLocaleString()} above 6k target`,
+      savingsEstimate: `Trimming to 6k avg tokens/run saves ~$${monthlySavings}/month`,
+      effort: "Medium",
+      action: "Split this agent's work into 3 phases: (1) plan — lightweight, under 1k tokens; (2) execute — focused context only; (3) verify — diff only. Each call gets only what it needs.",
+      target: "Target: avg tokens/run below 6,000"
     });
   }
 
   if (topWorkflow && topWorkflow.retries > 0) {
     suggestions.push({
-      title: `Stabilize ${topWorkflow.workflow}`,
-      impact: `${topWorkflow.retries} retries on the highest-token workflow`,
-      action: "Review the failure path for this workflow before scaling it to more repositories or teams."
+      title: `Stabilise "${topWorkflow.workflow}" workflow`,
+      impact: `${topWorkflow.retries} retries logged — highest-token workflow at ${topWorkflow.avgTokensPerRun.toLocaleString()} avg tokens/run`,
+      savingsEstimate: "Every retry doubles token cost for that run",
+      effort: "High",
+      action: "Add checkpoints between workflow steps. Validate tool outputs before passing to next step. Set explicit stop conditions so failures surface immediately rather than looping.",
+      target: "Target: 0 retries on this workflow"
     });
   }
 
   if (suggestions.length < 3 && totalTokens > 0) {
+    const haiku_savings = Number((totalCostUsd * 0.6 / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
-      title: "Use model tiers by task type",
-      impact: "Avoid premium models for routine steps",
-      action: "Route classification, formatting, and summarization to cheaper models while keeping complex reasoning on stronger models."
+      title: "Route routine tasks to cheaper model tiers",
+      impact: `All runs on current model — not all tasks need premium capability`,
+      savingsEstimate: `Routing 60% of tasks to a smaller model could save ~$${haiku_savings}/month`,
+      effort: "Low",
+      action: "Use claude-haiku or gpt-4o-mini for classification, formatting, summarisation, and simple lookups. Reserve claude-sonnet or gpt-4o for multi-step reasoning and code generation.",
+      target: "Target: 40% of runs on lightweight models"
     });
   }
 
@@ -169,6 +214,9 @@ function buildTokenEfficiency(enrichedRuns) {
     outputTokenPercent: totalTokens ? Math.round((totalOutputTokens / totalTokens) * 100) : 0,
     avgTokensPerRun: tokenRuns.length ? Math.round(totalTokens / tokenRuns.length) : 0,
     costPer1kTokensUsd: totalTokens ? Number(((totalCostUsd / totalTokens) * 1000).toFixed(4)) : 0,
+    projectedMonthlyCost,
+    efficiencyScore,
+    wastePercent,
     retryWasteTokens,
     topAgents: byAgent.slice(0, 5),
     workflowHotspots: byWorkflow.slice(0, 5),
@@ -280,25 +328,53 @@ export function buildDashboardSnapshot(runs) {
   const activityFeed = enrichedRuns
     .slice()
     .sort((left, right) => right.startTime.localeCompare(left.startTime))
-    .flatMap((run) =>
-      (run.breadcrumbs || []).map((breadcrumb, index) => ({
-        time: new Date(new Date(run.startTime).getTime() + index * 15000).toISOString(),
-        agentName: run.agentName,
-        level:
-          run.status === "failed"
-            ? "error"
-            : breadcrumb.toLowerCase().includes("retry")
-              ? "warn"
-              : breadcrumb.toLowerCase().includes("fetched") ||
-                  breadcrumb.toLowerCase().includes("parsed") ||
-                  breadcrumb.toLowerCase().includes("loaded")
-                ? "info"
-                : run.status === "success"
-                  ? "success"
-                  : "tool",
-        message: breadcrumb
-      }))
-    )
+    .flatMap((run) => {
+      const crumbs = run.breadcrumbs || [];
+      if (crumbs.length > 0) {
+        return crumbs.map((breadcrumb, index) => ({
+          time: new Date(new Date(run.startTime).getTime() + index * 15000).toISOString(),
+          agentName: run.agentName,
+          level:
+            run.status === "failed"
+              ? "error"
+              : breadcrumb.toLowerCase().includes("retry")
+                ? "warn"
+                : breadcrumb.toLowerCase().includes("fetched") ||
+                    breadcrumb.toLowerCase().includes("parsed") ||
+                    breadcrumb.toLowerCase().includes("loaded")
+                  ? "info"
+                  : run.status === "success"
+                    ? "success"
+                    : "tool",
+          message: breadcrumb
+        }));
+      }
+      const totalTokens = (run.tokensIn || 0) + (run.tokensOut || 0);
+      const events = [
+        {
+          time: run.startTime,
+          agentName: run.agentName,
+          level: "info",
+          message: `Started — model: ${run.model || "unknown"}, workflow: ${run.workflow || "default"}`
+        }
+      ];
+      if (totalTokens > 0) {
+        events.push({
+          time: run.endTime || run.startTime,
+          agentName: run.agentName,
+          level: run.status === "success" ? "success" : "error",
+          message: `${run.status === "success" ? "Completed" : "Failed"} — ${(run.tokensIn || 0).toLocaleString()} in + ${(run.tokensOut || 0).toLocaleString()} out = ${totalTokens.toLocaleString()} tokens · $${(run.costUsd || 0).toFixed(4)} · ${run.latencyMs}ms`
+        });
+      } else {
+        events.push({
+          time: run.endTime || run.startTime,
+          agentName: run.agentName,
+          level: run.status === "success" ? "success" : "error",
+          message: `${run.status === "success" ? "Completed" : "Failed"} in ${run.latencyMs}ms`
+        });
+      }
+      return events;
+    })
     .sort((left, right) => right.time.localeCompare(left.time))
     .slice(0, 24);
 

@@ -1257,6 +1257,23 @@ canvas {
   padding: 12px;
 }
 
+.coach-card--actionable {
+  padding: 16px;
+  border-color: rgba(122, 145, 255, 0.18);
+}
+
+.coach-body {
+  display: grid;
+  gap: 6px;
+}
+
+.coach-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .coach-rank {
   width: 30px;
   height: 30px;
@@ -1266,11 +1283,60 @@ canvas {
   background: rgba(32, 194, 119, 0.14);
   color: #5ee3a3;
   font-weight: 800;
+  flex-shrink: 0;
+  align-self: start;
+  margin-top: 2px;
 }
 
 .coach-card h3 {
-  margin: 0 0 6px;
+  margin: 0;
   font-size: 1rem;
+}
+
+.coach-effort {
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.coach-effort--low    { background: rgba(32, 194, 119, 0.15); color: #5ee3a3; }
+.coach-effort--medium { background: rgba(255, 171, 64, 0.15); color: #ffba4d; }
+.coach-effort--high   { background: rgba(255, 90, 90, 0.15);  color: #ff7f7f; }
+
+.coach-impact {
+  display: block;
+  color: #c8d6ff;
+  font-size: 0.88rem;
+}
+
+.coach-savings {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(32, 194, 119, 0.08);
+  border: 1px solid rgba(32, 194, 119, 0.2);
+  color: #5ee3a3;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.coach-action {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 0.88rem;
+}
+
+.coach-do-label {
+  font-weight: 700;
+  color: #a8beff;
+}
+
+.coach-target {
+  font-size: 0.8rem;
+  color: #7891c8;
+  font-style: italic;
 }
 
 .coach-card strong {
@@ -1285,6 +1351,51 @@ canvas {
   color: var(--muted);
   line-height: 1.45;
 }
+
+/* Token Coach hero header */
+.coach-hero-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.efficiency-score-badge {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.efficiency-score-badge span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.efficiency-score-badge strong {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.efficiency-score-badge em {
+  font-style: normal;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.efficiency-score-badge strong.green  { color: #5ee3a3; }
+.efficiency-score-badge strong.amber  { color: #ffba4d; }
+.efficiency-score-badge strong.red    { color: #ff7f7f; }
+
+/* Token summary extended */
+.token-summary {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+strong.amber { color: #ffba4d; }
+strong.red   { color: #ff7f7f; }
 
 .token-row {
   display: flex;

@@ -1,0 +1,129 @@
+# ============================================================================
+# PR Agent + Agent Prism Telemetry
+# ============================================================================
+# Setup:
+#   1. Go to Agent Prism dashboard → Admin → Access Keys → Create key
+#   2. In THIS repo: Settings → Secrets → Actions → New secret
+#      Name:  AGENT_PRISM_KEY
+#      Value: paste the acp_... key
+#   3. Replace AGENT_PRISM_ENDPOINT below with your Agent Prism URL
+# ============================================================================
+
+name: PR Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  pull-requests: write
+  contents: read
+  checks: write
+
+jobs:
+  pr_agent_job:
+    runs-on: ubuntu-latest
+    name: PR Agent Review
+    steps:
+
+      # ── Step 1: Capture start time before agent runs ──────────────────────
+      - name: Record start time
+        id: timing
+        run: echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      # ── Step 2: Your existing PR Agent (unchanged) ────────────────────────
+      - name: PR Agent action step
+        id: pr_agent
+        continue-on-error: true     # must be true so telemetry runs on failure too
+        uses: the-pr-agent/pr-agent@main
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFIG__GIT_PROVIDER: github
+
+      # ── Step 3: Send telemetry to Agent Prism ─────────────────────────────
+      # Runs after every PR agent execution — success or failure.
+      # Token counts are estimated because the-pr-agent/pr-agent does not
+      # expose OpenAI usage data as step outputs. Typical GPT-4o PR review:
+      #   ~9,000 input tokens (diff + repo context)
+      #   ~1,500 output tokens (review comments)
+      # Adjust ESTIMATED_PROMPT_TOKENS and ESTIMATED_COMPLETION_TOKENS
+      # to match your actual average once you have a few runs.
+      - name: Send telemetry to Agent Prism
+        if: always()
+        env:
+          AGENT_PRISM_KEY:  ${{ secrets.AGENT_PRISM_KEY }}
+          AGENT_PRISM_URL:  https://agent-prism.onrender.com   # change to your URL if self-hosted
+          JOB_STATUS:       ${{ steps.pr_agent.outcome }}       # success | failure | cancelled
+          STARTED_AT:       ${{ steps.timing.outputs.started_at }}
+          PR_NUMBER:        ${{ github.event.pull_request.number || '0' }}
+          PR_TITLE:         ${{ github.event.pull_request.title || 'push-event' }}
+          PR_AUTHOR:        ${{ github.event.pull_request.user.login || github.actor }}
+          REPO:             ${{ github.repository }}
+          RUN_ID:           ${{ github.run_id }}
+          BASE_BRANCH:      ${{ github.event.pull_request.base.ref || github.ref_name }}
+        run: |
+          # Skip silently if key not configured yet
+          if [ -z "$AGENT_PRISM_KEY" ]; then
+            echo "AGENT_PRISM_KEY secret not set — skipping Agent Prism telemetry"
+            exit 0
+          fi
+
+          # Outcome
+          OUTCOME="success"
+          if [ "$JOB_STATUS" != "success" ]; then OUTCOME="failed"; fi
+
+          # Duration in milliseconds
+          COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          START_EPOCH=$(date -d "$STARTED_AT" +%s)
+          END_EPOCH=$(date +%s)
+          DURATION_MS=$(( (END_EPOCH - START_EPOCH) * 1000 ))
+
+          # Token estimates — adjust these to your real averages
+          ESTIMATED_PROMPT_TOKENS=9000
+          ESTIMATED_COMPLETION_TOKENS=1500
+          ESTIMATED_COST=$(echo "scale=4; ($ESTIMATED_PROMPT_TOKENS * 0.000005) + ($ESTIMATED_COMPLETION_TOKENS * 0.000015)" | bc)
+
+          # Send to Agent Prism
+          HTTP_STATUS=$(curl -s -o /tmp/prism_response.json -w "%{http_code}" \
+            -X POST "${AGENT_PRISM_URL}/api/ingest" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $AGENT_PRISM_KEY" \
+            -d "{
+              \"source\": \"copilot\",
+              \"payload\": {
+                \"session_id\":          \"pr-agent-${RUN_ID}\",
+                \"agent_name\":          \"PR Review Agent\",
+                \"model_name\":          \"gpt-4o\",
+                \"intent\":              \"pull-request-review\",
+                \"outcome\":             \"${OUTCOME}\",
+                \"started_at\":          \"${STARTED_AT}\",
+                \"completed_at\":        \"${COMPLETED_AT}\",
+                \"duration_ms\":         ${DURATION_MS},
+                \"prompt_tokens\":       ${ESTIMATED_PROMPT_TOKENS},
+                \"completion_tokens\":   ${ESTIMATED_COMPLETION_TOKENS},
+                \"estimated_cost_usd\":  ${ESTIMATED_COST},
+                \"budget_usd\":          0.25,
+                \"autonomy_level\":      4,
+                \"retry_count\":         0,
+                \"tool_invocations\":    5,
+                \"policy_alerts\":       0,
+                \"user_score\":          4,
+                \"environment\":         \"production\",
+                \"workflow\":            \"pr-review\",
+                \"team\":               \"engineering\",
+                \"labels\":             [\"github-actions\", \"openai\", \"pr-${PR_NUMBER}\", \"${BASE_BRANCH}\"],
+                \"summary\":            \"PR #${PR_NUMBER} by ${PR_AUTHOR}: ${PR_TITLE}\"
+              }
+            }")
+
+          if [ "$HTTP_STATUS" = "201" ]; then
+            echo "Agent Prism telemetry sent for PR #${PR_NUMBER} (${OUTCOME})"
+          else
+            echo "Agent Prism returned HTTP ${HTTP_STATUS}"
+            cat /tmp/prism_response.json
+          fi
