@@ -838,6 +838,76 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    // OpenAI Chat Completions proxy (/v1/chat/completions — standard OpenAI SDK endpoint)
+    if (req.method === "POST" && req.url.startsWith("/v1/chat/completions")) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+
+      const body = await parseBody(req, res);
+      if (body === null) return;
+
+      const context = await listTenantContext(auth.tenant.id);
+      const openAiConnector = context.connectors.find((c) => c.provider === "openai");
+
+      if (!openAiConnector?.config?.apiKey) {
+        return sendJson(res, 403, {
+          error: "forbidden",
+          message: "No OpenAI API key configured in your Agent Prism Dashboard."
+        });
+      }
+
+      const startTime = Date.now();
+      try {
+        const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openAiConnector.config.apiKey}`
+          },
+          body: JSON.stringify(body)
+        });
+
+        const openAiData = await openAiRes.json();
+        const endTime = Date.now();
+
+        if (openAiRes.ok) {
+          const inputTokens = openAiData.usage?.prompt_tokens || 0;
+          const outputTokens = openAiData.usage?.completion_tokens || 0;
+          const run = {
+            id: createId("run"),
+            agentName: "OpenAI Chat Agent",
+            provider: "OpenAI",
+            model: body.model || openAiData.model || "unknown",
+            taskType: body.messages?.[0]?.content?.slice(0, 40) || "chat",
+            status: "success",
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date(endTime).toISOString(),
+            latencyMs: endTime - startTime,
+            tokensIn: inputTokens,
+            tokensOut: outputTokens,
+            costUsd: estimateOpenAiCost({ inputTokens, outputTokens }),
+            budgetUsd: Number(process.env.OPENAI_DEMO_BUDGET_USD || 0.05),
+            autonomyLevel: 3,
+            retryCount: 0,
+            toolCalls: Array.isArray(body.tools) ? body.tools.length : 0,
+            policyViolations: 0,
+            userSatisfaction: 4,
+            environment: "production",
+            workflow: "chat-completions",
+            team: "engineering"
+          };
+          await upsertTenantRuns(auth.tenant.id, [run]);
+        }
+
+        setSecurityHeaders(res);
+        res.writeHead(openAiRes.status, { "Content-Type": contentTypes[".json"] });
+        res.end(JSON.stringify(openAiData));
+        return;
+      } catch (err) {
+        return sendJson(res, 502, { error: "bad_gateway", message: err.message });
+      }
+    }
+
     if (req.method === "GET" && req.url === "/api/dashboard") {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) {
