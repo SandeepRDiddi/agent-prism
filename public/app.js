@@ -723,6 +723,11 @@ function renderCurrentView() {
   });
   document.querySelector("#metrics-grid").hidden = currentView === "admin";
 
+  const workspace = document.querySelector(".workspace");
+  if (workspace) {
+    workspace.classList.toggle("admin-scroll", currentView === "admin");
+  }
+
   if (currentView === "activity") {
     renderActivityView();
   } else if (currentView === "tokens") {

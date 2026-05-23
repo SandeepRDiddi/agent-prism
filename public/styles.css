@@ -1852,6 +1852,16 @@ canvas {
   .workspace-business .clean-dashboard {
     height: 100%;
   }
+
+  .workspace.workspace-business.admin-scroll {
+    height: auto;
+    overflow: visible;
+  }
+
+  .workspace-business.admin-scroll .clean-dashboard {
+    height: auto;
+    overflow-y: auto;
+  }
 }
 
 @media (max-width: 1120px) {
