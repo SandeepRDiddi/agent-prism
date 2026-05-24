@@ -8,6 +8,7 @@ let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
 
 // ── Token Coach: collapse/expand + savings detection ──────────────────────────
+const expandedCoachCards = new Set(); // persists across re-renders
 const COACH_SNAPSHOTS_KEY = "prism_coach_snapshots_v1";
 
 function getCoachSnapshots() {
@@ -58,16 +59,23 @@ function detectCoachSavings(efficiency) {
 window.coachToggleDetails = function(cardId) {
   const card = document.getElementById(cardId);
   if (!card) return;
-  const expanding = !card.classList.contains("coach-card--expanded");
+  const expanding = !expandedCoachCards.has(cardId);
   // Accordion — close all others first
   if (expanding) {
-    document.querySelectorAll(".coach-card--expanded").forEach(c => {
-      if (c.id !== cardId) {
-        c.classList.remove("coach-card--expanded");
-        const b = c.querySelector(".coach-show-btn");
-        if (b) b.innerHTML = "Show &#9662;";
+    expandedCoachCards.forEach(otherId => {
+      if (otherId !== cardId) {
+        const other = document.getElementById(otherId);
+        if (other) {
+          other.classList.remove("coach-card--expanded");
+          const b = other.querySelector(".coach-show-btn");
+          if (b) b.innerHTML = "Show &#9662;";
+        }
       }
     });
+    expandedCoachCards.clear();
+    expandedCoachCards.add(cardId);
+  } else {
+    expandedCoachCards.delete(cardId);
   }
   card.classList.toggle("coach-card--expanded", expanding);
   const btn = card.querySelector(".coach-show-btn");
@@ -746,9 +754,9 @@ function renderTokenCoachView() {
               <em>${score >= 80 ? "Well optimised" : score >= 60 ? "Room to improve" : "High waste detected"}</em>
             </div>
           ` : ""}
-            ${ml ? `<button class="ml-analytics-link" onclick="currentView='analytics';renderCurrentView()">
-              &#9685; ML Analytics →
-            </button>` : ""}
+            <button class="ml-analytics-link ${ml ? "" : "ml-analytics-link--dim"}" onclick="currentView='analytics';renderCurrentView()">
+              &#9685; ML Analytics →${ml ? "" : " (need 3+ runs)"}
+            </button>
           </div>
         </div>
         ${ml ? `
@@ -965,6 +973,15 @@ function renderTokenCoachView() {
       </article>
     </section>
   `;
+  // Restore expanded state after re-render
+  expandedCoachCards.forEach(cardId => {
+    const card = document.getElementById(cardId);
+    if (card) {
+      card.classList.add("coach-card--expanded");
+      const btn = card.querySelector(".coach-show-btn");
+      if (btn) btn.innerHTML = "Hide &#9652;";
+    }
+  });
 }
 
 function formatDate(value) {

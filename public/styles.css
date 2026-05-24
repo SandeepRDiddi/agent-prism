@@ -1377,10 +1377,9 @@ canvas {
 }
 
 .coach-card {
-  display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 12px;
-  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
 
 /* ── Token Coach: accordion rows + savings banner ──────── */
@@ -1599,6 +1598,11 @@ canvas {
 .ml-analytics-link:hover {
   background: linear-gradient(135deg, rgba(168,190,255,0.22), rgba(94,227,163,0.14));
   border-color: rgba(168,190,255,0.55);
+}
+
+.ml-analytics-link--dim {
+  opacity: 0.45;
+  cursor: default;
 }
 
 /* ── ML Analytics view ────────────────────────────────── */
