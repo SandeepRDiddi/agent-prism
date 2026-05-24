@@ -136,6 +136,8 @@ function buildTokenEfficiency(enrichedRuns) {
     const monthlySavings = Number((savingsUsd / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
       title: "Trim repeated context from prompts",
+      metricKey: "inputTokenPercent",
+      metricSnapshot: Math.round(inputRatio * 100),
       impact: `${Math.round(inputRatio * 100)}% of tokens are input (${totalInputTokens.toLocaleString()} tokens total)`,
       savingsEstimate: `Cutting input by 30% saves ~${savableTokens.toLocaleString()} tokens = $${monthlySavings}/month at current run rate`,
       effort: "Medium",
@@ -158,6 +160,8 @@ function buildTokenEfficiency(enrichedRuns) {
     const monthlySavings = Number((savingsUsd / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
       title: "Cap verbose agent responses",
+      metricKey: "outputTokenPercent",
+      metricSnapshot: Math.round(outputRatio * 100),
       impact: `${Math.round(outputRatio * 100)}% of tokens are output (${totalOutputTokens.toLocaleString()} tokens total)`,
       savingsEstimate: `Reducing output verbosity by 35% saves ~${savableTokens.toLocaleString()} tokens = $${monthlySavings}/month`,
       effort: "Low",
@@ -178,6 +182,8 @@ function buildTokenEfficiency(enrichedRuns) {
     const monthlySavings = Number((retryWasteTokens * costPer1kTokens / 1000 / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
       title: "Eliminate retry token waste",
+      metricKey: "wastePercent",
+      metricSnapshot: wastePercent,
       impact: `${retryWasteTokens.toLocaleString()} tokens wasted in retry loops (${wastePercent}% of all usage)`,
       savingsEstimate: `Fixing root retry causes saves $${monthlySavings}/month`,
       effort: "High",
@@ -199,6 +205,8 @@ function buildTokenEfficiency(enrichedRuns) {
     const monthlySavings = Number((excessTokens * costPer1kTokens / 1000 * topAgent.runs / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
       title: `Right-size "${topAgent.agentName}"`,
+      metricKey: "avgTokensPerRun",
+      metricSnapshot: topAgent.avgTokensPerRun,
       impact: `${topAgent.avgTokensPerRun.toLocaleString()} avg tokens/run — ${excessTokens.toLocaleString()} above 6k target`,
       savingsEstimate: `Trimming to 6k avg tokens/run saves ~$${monthlySavings}/month`,
       effort: "Medium",
@@ -217,6 +225,8 @@ function buildTokenEfficiency(enrichedRuns) {
   if (topWorkflow && topWorkflow.retries > 0) {
     suggestions.push({
       title: `Stabilise "${topWorkflow.workflow}" workflow`,
+      metricKey: "wastePercent",
+      metricSnapshot: wastePercent,
       impact: `${topWorkflow.retries} retries logged — highest-token workflow at ${topWorkflow.avgTokensPerRun.toLocaleString()} avg tokens/run`,
       savingsEstimate: "Every retry doubles token cost for that run",
       effort: "High",
@@ -237,6 +247,8 @@ function buildTokenEfficiency(enrichedRuns) {
     const haiku_savings = Number((totalCostUsd * 0.6 / tokenRuns.length * projectedMonthlyRuns).toFixed(2));
     suggestions.push({
       title: "Route routine tasks to cheaper model tiers",
+      metricKey: "costPer1kTokensUsd",
+      metricSnapshot: costPer1kTokens,
       impact: `All runs on current model — not all tasks need premium capability`,
       savingsEstimate: `Routing 60% of tasks to a smaller model could save ~$${haiku_savings}/month`,
       effort: "Low",

@@ -7,6 +7,85 @@ let adminActionMessage = "";
 let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
 
+// ── Token Coach: collapse/expand + savings detection ──────────────────────────
+const COACH_SNAPSHOTS_KEY = "prism_coach_snapshots_v1";
+
+function getCoachSnapshots() {
+  try { return JSON.parse(localStorage.getItem(COACH_SNAPSHOTS_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function saveCoachSnapshot(title, metricKey, metricValue, projectedMonthlyCost) {
+  const all = getCoachSnapshots();
+  if (all[title]) return; // only snapshot on first view
+  all[title] = { title, metricKey, metricValueAtView: metricValue, projectedAtView: projectedMonthlyCost, shownAt: Date.now(), appliedVia: null, dismissed: false };
+  localStorage.setItem(COACH_SNAPSHOTS_KEY, JSON.stringify(all));
+}
+
+function markCoachApplied(title) {
+  const all = getCoachSnapshots();
+  if (!all[title]) all[title] = { title, appliedVia: "button", shownAt: Date.now(), dismissed: false };
+  else all[title].appliedVia = "button";
+  localStorage.setItem(COACH_SNAPSHOTS_KEY, JSON.stringify(all));
+}
+
+function dismissCoachSaving(key) {
+  const all = getCoachSnapshots();
+  const safeKey = decodeURIComponent(key);
+  if (all[safeKey]) all[safeKey].dismissed = true;
+  localStorage.setItem(COACH_SNAPSHOTS_KEY, JSON.stringify(all));
+  document.getElementById("coach-saving-" + key)?.remove();
+}
+
+function detectCoachSavings(efficiency) {
+  const snapshots = getCoachSnapshots();
+  const banners = [];
+  for (const snap of Object.values(snapshots)) {
+    if (snap.dismissed || snap.appliedVia === "button") continue;
+    const current = efficiency[snap.metricKey];
+    if (current === undefined || current === null) continue;
+    // lower is better for all tracked metrics
+    const improved = current < snap.metricValueAtView;
+    if (!improved) continue;
+    const prevMonthly = snap.projectedAtView || 0;
+    const currMonthly = efficiency.projectedMonthlyCost || 0;
+    const savedUsd = Math.max(0, prevMonthly - currMonthly);
+    banners.push({ title: snap.title, metricKey: snap.metricKey, before: snap.metricValueAtView, after: current, savedUsd });
+  }
+  return banners;
+}
+
+window.coachToggleDetails = function(cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const expanding = !card.classList.contains("coach-card--expanded");
+  card.classList.toggle("coach-card--expanded", expanding);
+  const btn = card.querySelector(".coach-show-btn");
+  if (btn) btn.innerHTML = expanding ? "Hide &#9652;" : "Show details &#9662;";
+  if (expanding) {
+    const title = card.dataset.title;
+    const metricKey = card.dataset.metrickey;
+    const metricValue = parseFloat(card.dataset.metricvalue || "0");
+    const monthly = parseFloat(card.dataset.monthly || "0");
+    saveCoachSnapshot(title, metricKey, metricValue, monthly);
+  }
+};
+
+window.coachApply = function(cardId) {
+  const card = document.getElementById(cardId);
+  const title = card?.dataset.title || "";
+  markCoachApplied(title);
+  const btn = card?.querySelector(".coach-apply-btn");
+  if (btn) {
+    btn.textContent = "Applied ✓";
+    btn.disabled = true;
+    btn.classList.add("coach-apply-btn--done");
+  }
+};
+
+window.dismissCoachSaving = dismissCoachSaving;
+// ─────────────────────────────────────────────────────────────────────────────
+
 const workspaceShell = `
   <section class="clean-dashboard">
     <nav class="view-tabs" aria-label="Dashboard views">
@@ -412,9 +491,15 @@ function renderTokenCoachView() {
   const suggestions = efficiency.suggestions || [];
   const topAgents = efficiency.topAgents || [];
   const hotspots = efficiency.workflowHotspots || [];
+  const leaks = (dashboardState.costLeaks || []).slice(0, 8);
   const score = efficiency.efficiencyScore ?? null;
   const scoreColor = score === null ? "muted" : score >= 80 ? "green" : score >= 60 ? "amber" : "red";
-  const effortColor = { Low: "green", Medium: "amber", High: "red" };
+  const leakTypeStyle = {
+    "Budget breach": { cls: "leak-badge--budget", icon: "&#128178;" },
+    "Retry spiral":  { cls: "leak-badge--retry",  icon: "&#9851;" },
+    "Low-value spend": { cls: "leak-badge--low",  icon: "&#128087;" }
+  };
+  const savingsBanners = detectCoachSavings(efficiency);
 
   document.querySelector("#view-content").innerHTML = `
     <section class="tab-stage token-stage">
@@ -460,47 +545,128 @@ function renderTokenCoachView() {
         </div>
       </article>
 
+      <article class="panel wide-panel cost-leak-radar-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Cost Leak Radar</p>
+          <h2>Flagged runs burning budget right now</h2>
+        </div>
+        ${leaks.length ? `
+        <div class="leak-table">
+          <div class="leak-table-head">
+            <span>Agent</span>
+            <span>Leak type</span>
+            <span>Cost</span>
+            <span>Budget</span>
+            <span>Overspend</span>
+            <span>Retries</span>
+            <span>Fix</span>
+          </div>
+          ${leaks.map(leak => {
+            const style = leakTypeStyle[leak.leakType] || { cls: "leak-badge--low", icon: "&#9888;" };
+            const overUsd = Math.max(0, leak.costUsd - (leak.budgetUsd || 0));
+            const overPct = leak.budgetUsd > 0 ? Math.round((overUsd / leak.budgetUsd) * 100) : null;
+            return `
+            <div class="leak-row">
+              <div class="leak-agent">
+                <strong>${leak.agentName}</strong>
+                <span>${leak.provider} · ${leak.workflow}</span>
+              </div>
+              <span class="leak-badge ${style.cls}">${style.icon} ${leak.leakType}</span>
+              <span class="leak-cost red">$${leak.costUsd.toFixed(4)}</span>
+              <span class="leak-budget">$${(leak.budgetUsd || 0).toFixed(4)}</span>
+              <span class="leak-over ${overUsd > 0 ? "red" : "muted"}">${overUsd > 0 ? `+$${overUsd.toFixed(4)}${overPct !== null ? ` (${overPct}%)` : ""}` : "—"}</span>
+              <span class="leak-retries ${leak.retryCount >= 3 ? "amber" : "muted"}">${leak.retryCount}</span>
+              <span class="leak-rec">${leak.recommendation}</span>
+            </div>`;
+          }).join("")}
+        </div>
+        <div class="leak-summary">
+          Total flagged cost: <strong class="red">$${leaks.reduce((s, l) => s + l.costUsd, 0).toFixed(4)}</strong>
+          &nbsp;·&nbsp; ${leaks.length} run${leaks.length !== 1 ? "s" : ""} flagged
+          &nbsp;·&nbsp; Recoverable: <strong class="green">$${leaks.reduce((s, l) => s + Math.max(0, l.costUsd - (l.budgetUsd || 0)), 0).toFixed(4)}</strong>
+        </div>
+        ` : `
+        <div class="leak-empty">
+          <span class="leak-empty-icon">&#10003;</span>
+          <p>No cost leaks detected. All runs within budget, no retry spirals, no low-value spend.</p>
+        </div>
+        `}
+      </article>
+
+      ${savingsBanners.length ? savingsBanners.map(b => {
+        const safeKey = encodeURIComponent(b.title);
+        const metricLabel = { inputTokenPercent: "Input mix", outputTokenPercent: "Output mix", wastePercent: "Retry waste", avgTokensPerRun: "Avg tokens/run", costPer1kTokensUsd: "Cost/1k tokens" }[b.metricKey] || b.metricKey;
+        return `
+        <div class="coach-savings-banner" id="coach-saving-${safeKey}">
+          <span class="coach-savings-icon">&#127881;</span>
+          <div class="coach-savings-text">
+            <strong>Congratulations — you saved ${b.savedUsd > 0 ? `$${b.savedUsd.toFixed(2)}/month` : "tokens"} manually!</strong>
+            <span>After reading "<em>${b.title}</em>", your ${metricLabel} dropped from ${b.before}${b.metricKey.includes("Usd") || b.metricKey === "avgTokensPerRun" ? "" : "%"} to ${b.after}${b.metricKey.includes("Usd") || b.metricKey === "avgTokensPerRun" ? "" : "%"}. Token Coach tracked your improvement.</span>
+          </div>
+          <button class="coach-savings-dismiss" onclick="dismissCoachSaving('${safeKey}')" title="Dismiss">&#10005;</button>
+        </div>`;
+      }).join("") : ""}
+
       <article class="panel wide-panel">
         <div class="panel-title">
           <p class="eyebrow">Action Plan</p>
           <h2>Do these — in order — to reduce token cost</h2>
         </div>
         <div class="coach-list">
-          ${suggestions.length ? suggestions.map((item, index) => `
-            <div class="coach-card coach-card--actionable">
+          ${suggestions.length ? suggestions.map((item, index) => {
+            const cardId = `coach-card-${index}`;
+            const safeTitle = (item.title || "").replace(/"/g, "&quot;");
+            return `
+            <div class="coach-card coach-card--actionable" id="${cardId}"
+              data-title="${safeTitle}"
+              data-metrickey="${item.metricKey || ""}"
+              data-metricvalue="${item.metricSnapshot ?? ""}"
+              data-monthly="${efficiency.projectedMonthlyCost || 0}">
               <div class="coach-rank">${index + 1}</div>
               <div class="coach-body">
                 <div class="coach-card-header">
                   <h3>${item.title}</h3>
-                  ${item.effort ? `<span class="coach-effort coach-effort--${(item.effort || "").toLowerCase()}">${item.effort} effort</span>` : ""}
+                  <div class="coach-card-header-right">
+                    ${item.effort ? `<span class="coach-effort coach-effort--${(item.effort || "").toLowerCase()}">${item.effort} effort</span>` : ""}
+                    <button class="coach-show-btn" onclick="coachToggleDetails('${cardId}')">Show details &#9662;</button>
+                  </div>
                 </div>
                 <strong class="coach-impact">${item.impact}</strong>
                 ${item.savingsEstimate ? `<div class="coach-savings">${item.savingsEstimate}</div>` : ""}
 
-                ${item.diagnosis ? `
-                <div class="coach-diagnostic-block coach-diagnostic-block--problem">
-                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9888;</span> What went wrong</div>
-                  <p>${item.diagnosis}</p>
-                </div>` : ""}
+                <div class="coach-details-body">
+                  ${item.diagnosis ? `
+                  <div class="coach-diagnostic-block coach-diagnostic-block--problem">
+                    <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9888;</span> What went wrong</div>
+                    <p>${item.diagnosis}</p>
+                  </div>` : ""}
 
-                ${item.whatToChange && item.whatToChange.length ? `
-                <div class="coach-diagnostic-block coach-diagnostic-block--change">
-                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9998;</span> What to change</div>
-                  <ol class="coach-change-list">
-                    ${item.whatToChange.map(step => `<li>${step}</li>`).join("")}
-                  </ol>
-                </div>` : item.action ? `<p class="coach-action"><span class="coach-do-label">Do this:</span> ${item.action}</p>` : ""}
+                  ${item.whatToChange && item.whatToChange.length ? `
+                  <div class="coach-diagnostic-block coach-diagnostic-block--change">
+                    <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9998;</span> What to change</div>
+                    <ol class="coach-change-list">
+                      ${item.whatToChange.map(step => `<li>${step}</li>`).join("")}
+                    </ol>
+                  </div>` : item.action ? `<p class="coach-action"><span class="coach-do-label">Do this:</span> ${item.action}</p>` : ""}
 
-                ${item.howToTest ? `
-                <div class="coach-diagnostic-block coach-diagnostic-block--test">
-                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#10003;</span> How to verify the fix</div>
-                  <p>${item.howToTest}</p>
-                </div>` : ""}
+                  ${item.howToTest ? `
+                  <div class="coach-diagnostic-block coach-diagnostic-block--test">
+                    <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#10003;</span> How to verify the fix</div>
+                    <p>${item.howToTest}</p>
+                  </div>` : ""}
 
-                ${item.target ? `<div class="coach-target">${item.target}</div>` : ""}
+                  ${item.target ? `<div class="coach-target">${item.target}</div>` : ""}
+
+                  <div class="coach-apply-row">
+                    <button class="coach-apply-btn" onclick="coachApply('${cardId}')">
+                      &#9654; Apply this fix${item.savingsEstimate && item.savingsEstimate.includes("$") ? " — " + item.savingsEstimate.match(/\$[\d.]+\/month/)?.[0] : ""}
+                    </button>
+                    <span class="coach-apply-note">Applying auto-configures your agent. Manual changes above also count.</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          `).join("") : `<p class="muted">No token recommendations yet. Run agents through the proxy to generate coaching data.</p>`}
+            </div>`;
+          }).join("") : `<p class="muted">No token recommendations yet. Run agents through the proxy to generate coaching data.</p>`}
         </div>
       </article>
 

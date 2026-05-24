@@ -1383,6 +1383,260 @@ canvas {
   padding: 12px;
 }
 
+/* ── Token Coach: collapse/expand + savings banner ───── */
+.coach-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.coach-show-btn {
+  background: rgba(168, 190, 255, 0.10);
+  border: 1px solid rgba(168, 190, 255, 0.25);
+  color: #a8beff;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.coach-show-btn:hover {
+  background: rgba(168, 190, 255, 0.18);
+  border-color: rgba(168, 190, 255, 0.45);
+}
+
+.coach-details-body {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.coach-card--expanded .coach-details-body {
+  display: flex;
+}
+
+.coach-apply-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+
+.coach-apply-btn {
+  background: linear-gradient(135deg, #3b5bdb 0%, #5c7cfa 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s, transform 0.1s;
+  box-shadow: 0 2px 12px rgba(59, 91, 219, 0.4);
+}
+
+.coach-apply-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.coach-apply-btn:disabled,
+.coach-apply-btn--done {
+  background: rgba(94, 227, 163, 0.15) !important;
+  color: #5ee3a3 !important;
+  box-shadow: none !important;
+  cursor: default;
+  transform: none !important;
+}
+
+.coach-apply-note {
+  font-size: 0.76rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* Savings congratulations banner */
+.coach-savings-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, rgba(32, 194, 119, 0.10) 0%, rgba(32, 194, 119, 0.05) 100%);
+  border: 1px solid rgba(32, 194, 119, 0.35);
+  border-radius: 10px;
+  margin-bottom: 2px;
+}
+
+.coach-savings-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.coach-savings-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coach-savings-text strong {
+  color: #5ee3a3;
+  font-size: 0.95rem;
+}
+
+.coach-savings-text span {
+  font-size: 0.84rem;
+  color: #a8d9c0;
+  line-height: 1.45;
+}
+
+.coach-savings-dismiss {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 4px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.coach-savings-dismiss:hover { color: #fff; }
+/* ─────────────────────────────────────────────────────── */
+
+/* ── Cost Leak Radar ──────────────────────────────────── */
+.cost-leak-radar-panel {
+  overflow-x: auto;
+}
+
+.leak-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 4px;
+}
+
+.leak-table-head,
+.leak-row {
+  display: grid;
+  grid-template-columns: 2fr 1.4fr 0.9fr 0.9fr 1.1fr 0.6fr 2.2fr;
+  gap: 0 12px;
+  align-items: center;
+  padding: 10px 12px;
+}
+
+.leak-table-head {
+  background: rgba(255,255,255,0.04);
+  border-radius: 7px 7px 0 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.leak-row {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 0.84rem;
+}
+
+.leak-row:last-child {
+  border-bottom: none;
+}
+
+.leak-row:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.leak-agent strong {
+  display: block;
+  color: #c8d6ff;
+  font-size: 0.88rem;
+}
+
+.leak-agent span {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.leak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.leak-badge--budget {
+  background: rgba(255, 80, 80, 0.12);
+  color: #ff9a9a;
+  border: 1px solid rgba(255, 80, 80, 0.3);
+}
+
+.leak-badge--retry {
+  background: rgba(255, 180, 50, 0.12);
+  color: #ffd580;
+  border: 1px solid rgba(255, 180, 50, 0.3);
+}
+
+.leak-badge--low {
+  background: rgba(168, 190, 255, 0.10);
+  color: #a8beff;
+  border: 1px solid rgba(168, 190, 255, 0.25);
+}
+
+.leak-cost { font-weight: 700; }
+.leak-budget { color: var(--muted); }
+.leak-over { font-weight: 600; font-size: 0.82rem; }
+.leak-retries { text-align: center; font-weight: 600; }
+
+.leak-rec {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.leak-summary {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 0 0 8px 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.leak-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  color: var(--muted);
+}
+
+.leak-empty-icon {
+  font-size: 1.4rem;
+  color: #5ee3a3;
+}
+
+.leak-empty p {
+  margin: 0;
+  font-size: 0.88rem;
+}
+/* ─────────────────────────────────────────────────────── */
+
 .coach-card--actionable {
   padding: 16px;
   border-color: rgba(122, 145, 255, 0.18);
@@ -1396,8 +1650,14 @@ canvas {
 .coach-card-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.coach-card-header h3 {
+  flex: 1;
+  min-width: 0;
 }
 
 .coach-rank {
