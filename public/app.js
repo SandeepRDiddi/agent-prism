@@ -59,15 +59,22 @@ window.coachToggleDetails = function(cardId) {
   const card = document.getElementById(cardId);
   if (!card) return;
   const expanding = !card.classList.contains("coach-card--expanded");
+  // Accordion — close all others first
+  if (expanding) {
+    document.querySelectorAll(".coach-card--expanded").forEach(c => {
+      if (c.id !== cardId) {
+        c.classList.remove("coach-card--expanded");
+        const b = c.querySelector(".coach-show-btn");
+        if (b) b.innerHTML = "Show &#9662;";
+      }
+    });
+  }
   card.classList.toggle("coach-card--expanded", expanding);
   const btn = card.querySelector(".coach-show-btn");
-  if (btn) btn.innerHTML = expanding ? "Hide &#9652;" : "Show details &#9662;";
+  if (btn) btn.innerHTML = expanding ? "Hide &#9652;" : "Show &#9662;";
   if (expanding) {
-    const title = card.dataset.title;
-    const metricKey = card.dataset.metrickey;
-    const metricValue = parseFloat(card.dataset.metricvalue || "0");
-    const monthly = parseFloat(card.dataset.monthly || "0");
-    saveCoachSnapshot(title, metricKey, metricValue, monthly);
+    saveCoachSnapshot(card.dataset.title, card.dataset.metrickey,
+      parseFloat(card.dataset.metricvalue || "0"), parseFloat(card.dataset.monthly || "0"));
   }
 };
 
@@ -486,12 +493,234 @@ function renderProviderScorecard(providers) {
   `;
 }
 
+// ── SVG chart helpers ─────────────────────────────────────────────────────────
+function svgLineChart({ id, data, xKey = "i", yKey, y2Key = null, anomalyKey = null,
+  color = "#a8beff", color2 = "rgba(255,180,50,0.8)", W = 560, H = 170,
+  yFmt = v => v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)) }) {
+  if (!data.length) return `<svg viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" fill="#4a5568" text-anchor="middle" font-size="12">No data yet</text></svg>`;
+  const pad = { t: 12, r: 16, b: 28, l: 48 };
+  const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+  const xs = data.map(d => d[xKey]);
+  const ys = data.map(d => d[yKey]);
+  const allY = [...ys, ...(y2Key ? data.map(d => d[y2Key]) : [])].filter(v => v != null);
+  const minX = Math.min(...xs), maxX = Math.max(...xs) || 1;
+  const maxY = Math.max(...allY) * 1.12 || 1;
+  const sx = v => pad.l + ((v - minX) / (maxX - minX)) * cw;
+  const sy = v => pad.t + (1 - Math.min(1, Math.max(0, v / maxY))) * ch;
+  const pts = data.map(d => `${sx(d[xKey])},${sy(d[yKey])}`).join(" ");
+  const last = data[data.length - 1];
+  const areaD = `M ${sx(xs[0])},${sy(0)} L ${pts.replace(/,/g, " ").split(" ").reduce((a, v, i) => i % 2 === 0 ? a + `${v},` : a + `${v} `, "")}L ${sx(last[xKey])},${sy(0)} Z`;
+  const trendPts = y2Key ? data.map(d => `${sx(d[xKey])},${sy(Math.max(0, d[y2Key]))}`).join(" ") : null;
+  const yTicks = [0, 0.33, 0.66, 1].map(t => {
+    const v = t * maxY;
+    return `<line x1="${pad.l}" y1="${sy(v)}" x2="${pad.l+cw}" y2="${sy(v)}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+            <text x="${pad.l-4}" y="${sy(v)+4}" fill="#4a5568" font-size="10" text-anchor="end" font-family="monospace">${yFmt(v)}</text>`;
+  }).join("");
+  const anomDots = anomalyKey ? data.filter(d => d[anomalyKey]).map(d =>
+    `<circle cx="${sx(d[xKey])}" cy="${sy(d[yKey])}" r="6" fill="none" stroke="#ff6b6b" stroke-width="2"/>
+     <circle cx="${sx(d[xKey])}" cy="${sy(d[yKey])}" r="2.5" fill="#ff6b6b"/>`
+  ).join("") : "";
+  const axisLine = `<line x1="${pad.l}" y1="${pad.t+ch}" x2="${pad.l+cw}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">
+    <defs><linearGradient id="ag-${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${color}" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="${color}" stop-opacity="0.01"/>
+    </linearGradient></defs>
+    ${yTicks}${axisLine}
+    <path d="${areaD}" fill="url(#ag-${id})"/>
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${trendPts ? `<polyline points="${trendPts}" fill="none" stroke="${color2}" stroke-width="1.5" stroke-dasharray="5,3"/>` : ""}
+    ${anomDots}
+  </svg>`;
+}
+
+function svgScatter({ data, xKey, yKey, nameKey, clusterKey, W = 420, H = 260 }) {
+  if (!data.length) return `<svg viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" fill="#4a5568" text-anchor="middle" font-size="12">No agents yet</text></svg>`;
+  const pad = { t: 20, r: 20, b: 36, l: 56 };
+  const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+  const xs = data.map(d => d[xKey]), ys = data.map(d => d[yKey]);
+  const maxX = Math.max(...xs) * 1.15 || 1;
+  const maxY = Math.max(...ys) * 1.15 || 0.001;
+  const sx = v => pad.l + (v / maxX) * cw;
+  const sy = v => pad.t + (1 - v / maxY) * ch;
+  const clrMap = { Efficient: "#5ee3a3", Moderate: "#ffd580", Wasteful: "#ff9a9a" };
+  const dots = data.map(d => {
+    const c = clrMap[d[clusterKey]] || "#a8beff";
+    const r = Math.max(7, Math.min(18, 5 + d.runs * 2));
+    const lbl = (d[nameKey] || "").length > 13 ? d[nameKey].slice(0, 12) + "…" : d[nameKey];
+    return `<circle cx="${sx(d[xKey])}" cy="${sy(d[yKey])}" r="${r}" fill="${c}" fill-opacity="0.2" stroke="${c}" stroke-width="1.5"/>
+            <text x="${sx(d[xKey])}" y="${sy(d[yKey]) - r - 3}" fill="${c}" font-size="9" text-anchor="middle" font-family="monospace">${lbl}</text>`;
+  }).join("");
+  const grid = [0, 0.5, 1].map(t => {
+    const vy = t * maxY, vx = t * maxX;
+    const lx = vx >= 1000 ? `${Math.round(vx / 1000)}k` : Math.round(vx);
+    return `<line x1="${pad.l}" y1="${sy(vy)}" x2="${pad.l+cw}" y2="${sy(vy)}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+            <text x="${pad.l-4}" y="${sy(vy)+4}" fill="#4a5568" font-size="10" text-anchor="end" font-family="monospace">$${vy.toFixed(4)}</text>
+            <line x1="${sx(vx)}" y1="${pad.t}" x2="${sx(vx)}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+            <text x="${sx(vx)}" y="${pad.t+ch+14}" fill="#4a5568" font-size="10" text-anchor="middle" font-family="monospace">${lx}</text>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">
+    <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+    <line x1="${pad.l}" y1="${pad.t+ch}" x2="${pad.l+cw}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+    <text x="${pad.l+cw/2}" y="${H-2}" fill="#4a5568" font-size="10" text-anchor="middle">avg tokens / run →</text>
+    ${grid}${dots}
+  </svg>`;
+}
+
+function svgMixBars({ data, W = 540 }) {
+  if (!data.length) return "";
+  const barH = 22, gap = 8, padL = 144, padR = 16, padT = 8, padB = 28;
+  const bw = W - padL - padR;
+  const totalH = data.length * (barH + gap) + padT + padB;
+  const bars = data.map((d, i) => {
+    const y = padT + i * (barH + gap);
+    const inW = (d.inputPct / 100) * bw;
+    const outW = ((100 - d.inputPct) / 100) * bw;
+    const inC = d.inputPct > 70 ? "#ff9a9a" : d.inputPct > 65 ? "#ffd580" : "#5ee3a3";
+    const lbl = (d.name || "").length > 18 ? d.name.slice(0, 17) + "…" : d.name;
+    return `<text x="${padL - 6}" y="${y + barH/2 + 4}" fill="#8898b0" font-size="10" text-anchor="end" font-family="monospace">${lbl}</text>
+            <rect x="${padL}" y="${y}" width="${inW}" height="${barH}" fill="${inC}" opacity="0.75" rx="2"/>
+            <rect x="${padL+inW}" y="${y}" width="${outW}" height="${barH}" fill="#a8beff" opacity="0.4" rx="2"/>
+            <text x="${padL+4}" y="${y+barH/2+4}" fill="#0a1628" font-size="9" font-weight="700">${d.inputPct}% in</text>
+            <text x="${padL+inW+4}" y="${y+barH/2+4}" fill="#0a1628" font-size="9" font-weight="700">${100-d.inputPct}% out</text>`;
+  }).join("");
+  const leg = `<rect x="${padL}" y="${totalH-20}" width="9" height="9" fill="#5ee3a3" opacity="0.75"/>
+               <text x="${padL+13}" y="${totalH-12}" fill="#4a5568" font-size="9">Input (healthy &lt; 65%)</text>
+               <rect x="${padL+140}" y="${totalH-20}" width="9" height="9" fill="#a8beff" opacity="0.4"/>
+               <text x="${padL+153}" y="${totalH-12}" fill="#4a5568" font-size="9">Output (healthy &lt; 35%)</text>`;
+  return `<svg viewBox="0 0 ${W} ${totalH}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">${bars}${leg}</svg>`;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderAnalyticsView() {
+  const ml = dashboardState?.mlAnalytics;
+  if (!ml) {
+    document.querySelector("#view-content").innerHTML = `
+      <section class="tab-stage analytics-stage">
+        <div class="analytics-empty">
+          <p>Need at least 3 agent runs for ML analysis.</p>
+          <button class="analytics-back-btn" onclick="currentView='tokens';renderCurrentView()">← Back to Token Coach</button>
+        </div>
+      </section>`;
+    return;
+  }
+
+  const trendIcon = { rising: "↑", falling: "↓", stable: "→" }[ml.trendDirection] || "→";
+  const trendClr = { rising: "red", falling: "green", stable: "muted" }[ml.trendDirection] || "muted";
+  const wasteful = ml.clusteredAgents.filter(a => a.cluster === "Wasteful").length;
+  const efficient = ml.clusteredAgents.filter(a => a.cluster === "Efficient").length;
+
+  document.querySelector("#view-content").innerHTML = `
+    <section class="tab-stage analytics-stage">
+      <div class="analytics-header">
+        <button class="analytics-back-btn" onclick="currentView='tokens';renderCurrentView()">← Token Coach</button>
+        <div>
+          <h2 class="analytics-title">ML Token Analytics</h2>
+          <p class="analytics-subtitle">${ml.totalRuns} runs analysed — linear regression · z-score anomaly detection · percentile clustering</p>
+        </div>
+      </div>
+
+      <div class="ml-stat-strip">
+        <div class="ml-stat-item">
+          <span>Cost trend</span>
+          <strong class="${trendClr}">${trendIcon} ${ml.trendDirection.charAt(0).toUpperCase() + ml.trendDirection.slice(1)}</strong>
+          <em>${ml.costSlopePerRun >= 0 ? "+" : ""}$${ml.costSlopePerRun}/run &nbsp; R²=${ml.costR2}</em>
+        </div>
+        <div class="ml-stat-item">
+          <span>Anomalies (z &gt; 2)</span>
+          <strong class="${ml.anomalyCount > 0 ? "red" : "green"}">${ml.anomalyCount} run${ml.anomalyCount !== 1 ? "s" : ""}</strong>
+          <em>σ=${ml.tokenStd.toLocaleString()} tokens std dev</em>
+        </div>
+        <div class="ml-stat-item">
+          <span>30-day forecast</span>
+          <strong class="amber">$${ml.forecast30d}</strong>
+          <em>regression extrapolation</em>
+        </div>
+        <div class="ml-stat-item">
+          <span>Mean tokens/run</span>
+          <strong>${ml.tokenMean.toLocaleString()}</strong>
+          <em>σ=${ml.tokenStd.toLocaleString()}</em>
+        </div>
+        <div class="ml-stat-item">
+          <span>Efficiency clusters</span>
+          <strong class="${wasteful > 0 ? "red" : "green"}">${wasteful} wasteful</strong>
+          <em>${efficient} efficient · ${ml.clusteredAgents.length - wasteful - efficient} moderate</em>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-panel">
+          <div class="chart-panel-header">
+            <h3>Token Burn Rate</h3>
+            <div class="chart-legend">
+              <span><em style="background:#a8beff"></em> tokens/run</span>
+              <span style="color:rgba(255,180,50,0.9)">— — trend</span>
+              <span style="color:#ff6b6b">○ anomaly (z&gt;2)</span>
+            </div>
+          </div>
+          <p class="chart-subtitle">Tokens consumed per run · dashed = linear regression · red = statistical outlier</p>
+          <div class="chart-svg-wrap">${svgLineChart({ id:"burn", data:ml.burnTimeline, yKey:"tokens", y2Key:"tokenTrend", anomalyKey:"isAnomaly", color:"#a8beff", yFmt: v => v >= 1000 ? `${Math.round(v/1000)}k` : String(Math.round(v)) })}</div>
+        </div>
+
+        <div class="chart-panel">
+          <div class="chart-panel-header">
+            <h3>Cost per Run</h3>
+            <div class="chart-legend">
+              <span><em style="background:#5ee3a3"></em> cost/run</span>
+              <span style="color:rgba(255,80,80,0.8)">— — regression</span>
+            </div>
+          </div>
+          <p class="chart-subtitle">Actual cost per run · regression slope: ${ml.costSlopePerRun >= 0 ? "+" : ""}$${ml.costSlopePerRun}/run · confidence R²=${ml.costR2}</p>
+          <div class="chart-svg-wrap">${svgLineChart({ id:"cost", data:ml.burnTimeline, yKey:"cost", y2Key:"costTrend", color:"#5ee3a3", color2:"rgba(255,80,80,0.7)", yFmt: v => `$${v.toFixed(4)}` })}</div>
+        </div>
+
+        <div class="chart-panel">
+          <div class="chart-panel-header">
+            <h3>Agent Efficiency Scatter</h3>
+            <div class="chart-legend">
+              <span style="color:#5ee3a3">● Efficient</span>
+              <span style="color:#ffd580">● Moderate</span>
+              <span style="color:#ff9a9a">● Wasteful</span>
+            </div>
+          </div>
+          <p class="chart-subtitle">X = avg tokens/run · Y = avg cost/run · dot size = run count · colour = percentile cluster</p>
+          <div class="chart-svg-wrap">${svgScatter({ data:ml.clusteredAgents, xKey:"avgTokens", yKey:"avgCost", nameKey:"name", clusterKey:"cluster" })}</div>
+        </div>
+
+        <div class="chart-panel">
+          <div class="chart-panel-header">
+            <h3>Input / Output Mix</h3>
+          </div>
+          <p class="chart-subtitle">Input% (red if &gt; 65%) vs output% per agent — imbalanced = prompt optimisation opportunity</p>
+          <div class="chart-svg-wrap">${svgMixBars({ data:ml.clusteredAgents })}</div>
+        </div>
+      </div>
+
+      ${ml.anomalyCount > 0 ? `
+      <div class="anomaly-panel">
+        <h3>Anomalous Runs — z-score &gt; 2.0</h3>
+        <div class="anomaly-list">
+          ${ml.anomalyRuns.map(r => `
+          <div class="anomaly-row">
+            <span class="anomaly-dot"></span>
+            <strong>${r.agentName}</strong>
+            <span>${r.tokens.toLocaleString()} tokens</span>
+            <span class="anomaly-z">z=${r.zScore}</span>
+            <span class="muted">${new Date(r.time).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" })}</span>
+          </div>`).join("")}
+        </div>
+      </div>` : ""}
+    </section>
+  `;
+}
+
 function renderTokenCoachView() {
   const efficiency = dashboardState.tokenEfficiency || {};
   const suggestions = efficiency.suggestions || [];
   const topAgents = efficiency.topAgents || [];
   const hotspots = efficiency.workflowHotspots || [];
   const leaks = (dashboardState.costLeaks || []).slice(0, 8);
+  const ml = dashboardState.mlAnalytics || null;
   const score = efficiency.efficiencyScore ?? null;
   const scoreColor = score === null ? "muted" : score >= 80 ? "green" : score >= 60 ? "amber" : "red";
   const leakTypeStyle = {
@@ -509,14 +738,30 @@ function renderTokenCoachView() {
             <p class="eyebrow">Token Coach</p>
             <h2>Usage efficiency — act on these to reduce cost</h2>
           </div>
-          ${score !== null ? `
+          <div style="display:flex;align-items:center;gap:16px;flex-shrink:0">
+            ${score !== null ? `
             <div class="efficiency-score-badge">
               <span>Efficiency Score</span>
               <strong class="${scoreColor}">${score}/100</strong>
               <em>${score >= 80 ? "Well optimised" : score >= 60 ? "Room to improve" : "High waste detected"}</em>
             </div>
           ` : ""}
+            ${ml ? `<button class="ml-analytics-link" onclick="currentView='analytics';renderCurrentView()">
+              &#9685; ML Analytics →
+            </button>` : ""}
+          </div>
         </div>
+        ${ml ? `
+        <div class="ml-mini-strip">
+          <span class="ml-mini-item ${ml.trendDirection === "rising" ? "red" : ml.trendDirection === "falling" ? "green" : ""}">
+            ${{ rising:"↑", falling:"↓", stable:"→" }[ml.trendDirection]} Cost ${ml.trendDirection} &nbsp;<em>R²=${ml.costR2}</em>
+          </span>
+          <span class="ml-mini-item ${ml.anomalyCount > 0 ? "red" : "green"}">
+            ${ml.anomalyCount > 0 ? "&#9888;" : "&#10003;"} ${ml.anomalyCount} anomal${ml.anomalyCount !== 1 ? "ies" : "y"} detected
+          </span>
+          <span class="ml-mini-item amber">&#9685; 30d forecast $${ml.forecast30d}</span>
+          <span class="ml-mini-item">${ml.clusteredAgents.filter(a => a.cluster === "Wasteful").length} wasteful / ${ml.clusteredAgents.filter(a => a.cluster === "Efficient").length} efficient agents</span>
+        </div>` : ""}
         <div class="token-summary">
           <div>
             <span>Total tokens</span>
@@ -616,53 +861,57 @@ function renderTokenCoachView() {
           ${suggestions.length ? suggestions.map((item, index) => {
             const cardId = `coach-card-${index}`;
             const safeTitle = (item.title || "").replace(/"/g, "&quot;");
+            const savingsShort = item.savingsEstimate
+              ? (item.savingsEstimate.match(/\$[\d.]+\/month/) || [])[0] || ""
+              : "";
             return `
             <div class="coach-card coach-card--actionable" id="${cardId}"
               data-title="${safeTitle}"
               data-metrickey="${item.metricKey || ""}"
               data-metricvalue="${item.metricSnapshot ?? ""}"
               data-monthly="${efficiency.projectedMonthlyCost || 0}">
-              <div class="coach-rank">${index + 1}</div>
-              <div class="coach-body">
-                <div class="coach-card-header">
-                  <h3>${item.title}</h3>
-                  <div class="coach-card-header-right">
-                    ${item.effort ? `<span class="coach-effort coach-effort--${(item.effort || "").toLowerCase()}">${item.effort} effort</span>` : ""}
-                    <button class="coach-show-btn" onclick="coachToggleDetails('${cardId}')">Show details &#9662;</button>
-                  </div>
+
+              <div class="coach-row-summary" onclick="coachToggleDetails('${cardId}')">
+                <span class="coach-rank">${index + 1}</span>
+                <span class="coach-row-title">${item.title}</span>
+                <div class="coach-row-meta">
+                  ${item.effort ? `<span class="coach-effort coach-effort--${(item.effort || "").toLowerCase()}">${item.effort}</span>` : ""}
+                  ${savingsShort ? `<span class="coach-savings-pill">${savingsShort}</span>` : ""}
+                  <button class="coach-show-btn" onclick="event.stopPropagation();coachToggleDetails('${cardId}')">Show &#9662;</button>
                 </div>
+              </div>
+
+              <div class="coach-details-body">
                 <strong class="coach-impact">${item.impact}</strong>
                 ${item.savingsEstimate ? `<div class="coach-savings">${item.savingsEstimate}</div>` : ""}
 
-                <div class="coach-details-body">
-                  ${item.diagnosis ? `
-                  <div class="coach-diagnostic-block coach-diagnostic-block--problem">
-                    <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9888;</span> What went wrong</div>
-                    <p>${item.diagnosis}</p>
-                  </div>` : ""}
+                ${item.diagnosis ? `
+                <div class="coach-diagnostic-block coach-diagnostic-block--problem">
+                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9888;</span> What went wrong</div>
+                  <p>${item.diagnosis}</p>
+                </div>` : ""}
 
-                  ${item.whatToChange && item.whatToChange.length ? `
-                  <div class="coach-diagnostic-block coach-diagnostic-block--change">
-                    <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9998;</span> What to change</div>
-                    <ol class="coach-change-list">
-                      ${item.whatToChange.map(step => `<li>${step}</li>`).join("")}
-                    </ol>
-                  </div>` : item.action ? `<p class="coach-action"><span class="coach-do-label">Do this:</span> ${item.action}</p>` : ""}
+                ${item.whatToChange && item.whatToChange.length ? `
+                <div class="coach-diagnostic-block coach-diagnostic-block--change">
+                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#9998;</span> What to change</div>
+                  <ol class="coach-change-list">
+                    ${item.whatToChange.map(step => `<li>${step}</li>`).join("")}
+                  </ol>
+                </div>` : item.action ? `<p class="coach-action"><span class="coach-do-label">Do this:</span> ${item.action}</p>` : ""}
 
-                  ${item.howToTest ? `
-                  <div class="coach-diagnostic-block coach-diagnostic-block--test">
-                    <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#10003;</span> How to verify the fix</div>
-                    <p>${item.howToTest}</p>
-                  </div>` : ""}
+                ${item.howToTest ? `
+                <div class="coach-diagnostic-block coach-diagnostic-block--test">
+                  <div class="coach-diagnostic-label"><span class="coach-diagnostic-icon">&#10003;</span> How to verify the fix</div>
+                  <p>${item.howToTest}</p>
+                </div>` : ""}
 
-                  ${item.target ? `<div class="coach-target">${item.target}</div>` : ""}
+                ${item.target ? `<div class="coach-target">${item.target}</div>` : ""}
 
-                  <div class="coach-apply-row">
-                    <button class="coach-apply-btn" onclick="coachApply('${cardId}')">
-                      &#9654; Apply this fix${item.savingsEstimate && item.savingsEstimate.includes("$") ? " — " + item.savingsEstimate.match(/\$[\d.]+\/month/)?.[0] : ""}
-                    </button>
-                    <span class="coach-apply-note">Applying auto-configures your agent. Manual changes above also count.</span>
-                  </div>
+                <div class="coach-apply-row">
+                  <button class="coach-apply-btn" onclick="coachApply('${cardId}')">
+                    &#9654; Apply this fix${savingsShort ? " — " + savingsShort : ""}
+                  </button>
+                  <p class="coach-apply-note">Applying auto-configures your agent. Making the changes manually above also counts — Token Coach will detect the improvement on your next run.</p>
                 </div>
               </div>
             </div>`;
@@ -1010,7 +1259,7 @@ function renderCurrentView() {
 
   const workspace = document.querySelector(".workspace");
   if (workspace) {
-    const needsScroll = currentView === "admin" || currentView === "tokens";
+    const needsScroll = currentView === "admin" || currentView === "tokens" || currentView === "analytics";
     workspace.classList.toggle("admin-scroll", needsScroll);
   }
 
@@ -1018,6 +1267,8 @@ function renderCurrentView() {
     renderActivityView();
   } else if (currentView === "tokens") {
     renderTokenCoachView();
+  } else if (currentView === "analytics") {
+    renderAnalyticsView();
   } else if (currentView === "governance") {
     renderGovernanceView();
   } else if (currentView === "admin") {

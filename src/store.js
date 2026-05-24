@@ -282,6 +282,113 @@ function buildTokenEfficiency(enrichedRuns) {
   };
 }
 
+function linearRegression(points) {
+  const n = points.length;
+  if (n < 2) return { slope: 0, intercept: points[0]?.y || 0, r2: 0 };
+  const sumX = points.reduce((s, p) => s + p.x, 0);
+  const sumY = points.reduce((s, p) => s + p.y, 0);
+  const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
+  const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0);
+  const denom = n * sumX2 - sumX * sumX;
+  const slope = denom ? (n * sumXY - sumX * sumY) / denom : 0;
+  const intercept = (sumY - slope * sumX) / n;
+  const yMean = sumY / n;
+  const ssTot = points.reduce((s, p) => s + (p.y - yMean) ** 2, 0);
+  const ssRes = points.reduce((s, p) => s + (p.y - (slope * p.x + intercept)) ** 2, 0);
+  const r2 = ssTot > 0 ? Math.max(0, 1 - ssRes / ssTot) : 0;
+  return { slope, intercept, r2 };
+}
+
+function buildMLAnalytics(runs) {
+  const sorted = [...runs]
+    .filter(r => (r.tokensIn || 0) + (r.tokensOut || 0) > 0)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  if (sorted.length < 3) return null;
+
+  const tokenCounts = sorted.map(r => (r.tokensIn || 0) + (r.tokensOut || 0));
+  const costs = sorted.map(r => r.costUsd || 0);
+
+  // Linear regression on cost and tokens over run index
+  const costReg = linearRegression(costs.map((y, x) => ({ x, y })));
+  const tokenReg = linearRegression(tokenCounts.map((y, x) => ({ x, y })));
+  const trendDirection = costReg.slope > 0.0005 ? "rising" : costReg.slope < -0.0005 ? "falling" : "stable";
+
+  // Z-score anomaly detection on token counts
+  const n = tokenCounts.length;
+  const tokenMean = tokenCounts.reduce((s, t) => s + t, 0) / n;
+  const tokenStd = Math.sqrt(tokenCounts.reduce((s, t) => s + (t - tokenMean) ** 2, 0) / n) || 1;
+  const anomalySet = new Set(
+    tokenCounts.map((t, i) => ({ z: Math.abs((t - tokenMean) / tokenStd), i }))
+      .filter(({ z }) => z > 2).map(({ i }) => i)
+  );
+
+  // Moving average (window 3)
+  const movingAvg = tokenCounts.map((_, i) => {
+    const w = tokenCounts.slice(Math.max(0, i - 2), i + 1);
+    return w.reduce((s, t) => s + t, 0) / w.length;
+  });
+
+  // Burn timeline for charts
+  const burnTimeline = sorted.map((r, i) => ({
+    i,
+    tokens: tokenCounts[i],
+    cost: costs[i],
+    movingAvg: Math.round(movingAvg[i]),
+    costTrend: Number((costReg.slope * i + costReg.intercept).toFixed(6)),
+    tokenTrend: Math.round(tokenReg.slope * i + tokenReg.intercept),
+    isAnomaly: anomalySet.has(i),
+    agentName: r.agentName,
+    time: r.startTime
+  }));
+
+  // Agent efficiency clustering (percentile-based)
+  const agentStats = Object.entries(groupBy(sorted, r => r.agentName)).map(([name, agentRuns]) => {
+    const tIn = agentRuns.reduce((s, r) => s + (r.tokensIn || 0), 0);
+    const tOut = agentRuns.reduce((s, r) => s + (r.tokensOut || 0), 0);
+    const total = tIn + tOut;
+    return {
+      name,
+      avgTokens: Math.round(total / agentRuns.length),
+      avgCost: Number((agentRuns.reduce((s, r) => s + (r.costUsd || 0), 0) / agentRuns.length).toFixed(6)),
+      inputPct: total ? Math.round((tIn / total) * 100) : 0,
+      runs: agentRuns.length,
+      provider: agentRuns[0]?.provider || ""
+    };
+  }).sort((a, b) => b.avgTokens - a.avgTokens);
+
+  const tokenVals = [...agentStats.map(a => a.avgTokens)].sort((a, b) => a - b);
+  const p33 = tokenVals[Math.floor(tokenVals.length * 0.33)] ?? 0;
+  const p66 = tokenVals[Math.floor(tokenVals.length * 0.66)] ?? 0;
+  const clusteredAgents = agentStats.map(a => ({
+    ...a,
+    cluster: a.avgTokens <= p33 ? "Efficient" : a.avgTokens <= p66 ? "Moderate" : "Wasteful"
+  }));
+
+  // 30-day forecast from regression slope
+  const lastIdx = sorted.length - 1;
+  const forecast30d = Number(Math.max(0, (costReg.slope * (lastIdx + 30) + costReg.intercept) * 30).toFixed(4));
+
+  return {
+    trendDirection,
+    costSlopePerRun: Number(costReg.slope.toFixed(6)),
+    costR2: Number(costReg.r2.toFixed(3)),
+    anomalyCount: anomalySet.size,
+    anomalyRuns: sorted.filter((_, i) => anomalySet.has(i)).slice(0, 5).map((r, idx) => ({
+      agentName: r.agentName,
+      tokens: tokenCounts[sorted.indexOf(r)],
+      zScore: Number(Math.abs((tokenCounts[sorted.indexOf(r)] - tokenMean) / tokenStd).toFixed(2)),
+      time: r.startTime
+    })),
+    clusteredAgents,
+    burnTimeline,
+    forecast30d,
+    tokenMean: Math.round(tokenMean),
+    tokenStd: Math.round(tokenStd),
+    totalRuns: sorted.length
+  };
+}
+
 function groupBy(items, getKey) {
   return items.reduce((groups, item) => {
     const key = getKey(item);
@@ -474,6 +581,7 @@ export function buildDashboardSnapshot(runs) {
     workflowInsights: byWorkflow.sort((left, right) => right.costUsd - left.costUsd),
     costLeaks: detectCostLeaks(enrichedRuns),
     tokenEfficiency: buildTokenEfficiency(enrichedRuns),
+    mlAnalytics: buildMLAnalytics(enrichedRuns),
     agentProfiles,
     selectedAgent,
     activityFeed,

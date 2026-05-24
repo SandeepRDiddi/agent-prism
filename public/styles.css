@@ -1383,58 +1383,102 @@ canvas {
   padding: 12px;
 }
 
-/* ── Token Coach: collapse/expand + savings banner ───── */
-.coach-card-header-right {
+/* ── Token Coach: accordion rows + savings banner ──────── */
+
+/* Each recommendation = single compact row when collapsed */
+.coach-row-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.12s;
+  user-select: none;
+}
+
+.coach-row-summary:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.coach-card--expanded .coach-row-summary {
+  background: rgba(168,190,255,0.06);
+  border-radius: 8px 8px 0 0;
+}
+
+.coach-row-title {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #c8d6ff;
+  min-width: 0;
+}
+
+.coach-row-meta {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
 }
 
+.coach-savings-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #5ee3a3;
+  background: rgba(32, 194, 119, 0.10);
+  border: 1px solid rgba(32, 194, 119, 0.25);
+  border-radius: 20px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
 .coach-show-btn {
   background: rgba(168, 190, 255, 0.10);
-  border: 1px solid rgba(168, 190, 255, 0.25);
+  border: 1px solid rgba(168, 190, 255, 0.22);
   color: #a8beff;
   border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 0.78rem;
+  padding: 3px 9px;
+  font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.12s;
   white-space: nowrap;
 }
 
 .coach-show-btn:hover {
-  background: rgba(168, 190, 255, 0.18);
-  border-color: rgba(168, 190, 255, 0.45);
+  background: rgba(168, 190, 255, 0.20);
 }
 
+/* Detail body — hidden until expanded */
 .coach-details-body {
   display: none;
   flex-direction: column;
   gap: 10px;
-  margin-top: 10px;
+  padding: 14px 14px 16px;
+  border-top: 1px solid rgba(255,255,255,0.06);
 }
 
 .coach-card--expanded .coach-details-body {
   display: flex;
 }
 
+/* Apply row — stacked so note never overflows */
 .coach-apply-row {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  flex-direction: column;
+  gap: 8px;
   margin-top: 6px;
   padding-top: 14px;
   border-top: 1px solid rgba(255,255,255,0.07);
 }
 
 .coach-apply-btn {
+  align-self: flex-start;
   background: linear-gradient(135deg, #3b5bdb 0%, #5c7cfa 100%);
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 10px 20px;
+  padding: 10px 22px;
   font-size: 0.88rem;
   font-weight: 700;
   cursor: pointer;
@@ -1460,7 +1504,9 @@ canvas {
 .coach-apply-note {
   font-size: 0.76rem;
   color: var(--muted);
-  line-height: 1.4;
+  line-height: 1.45;
+  margin: 0;
+  max-width: 520px;
 }
 
 /* Savings congratulations banner */
@@ -1511,6 +1557,256 @@ canvas {
 }
 
 .coach-savings-dismiss:hover { color: #fff; }
+
+/* ML mini strip inside Token Coach hero */
+.ml-mini-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.ml-mini-item {
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ml-mini-item em {
+  font-style: normal;
+  opacity: 0.6;
+  font-size: 0.72rem;
+}
+
+.ml-analytics-link {
+  background: linear-gradient(135deg, rgba(168,190,255,0.12), rgba(94,227,163,0.08));
+  border: 1px solid rgba(168,190,255,0.3);
+  color: #a8beff;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+  letter-spacing: 0.02em;
+}
+
+.ml-analytics-link:hover {
+  background: linear-gradient(135deg, rgba(168,190,255,0.22), rgba(94,227,163,0.14));
+  border-color: rgba(168,190,255,0.55);
+}
+
+/* ── ML Analytics view ────────────────────────────────── */
+.analytics-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 32px;
+}
+
+.analytics-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.analytics-back-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-top: 4px;
+  transition: background 0.12s;
+}
+
+.analytics-back-btn:hover { background: rgba(255,255,255,0.09); color: #fff; }
+
+.analytics-title {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+  color: #c8d6ff;
+}
+
+.analytics-subtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: monospace;
+}
+
+/* ML stat strip */
+.ml-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 1120px) {
+  .ml-stat-strip { grid-template-columns: repeat(3, 1fr); }
+}
+
+.ml-stat-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ml-stat-item > span:first-child {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ml-stat-item > strong {
+  font-size: 1.1rem;
+  color: #c8d6ff;
+}
+
+.ml-stat-item > em {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: #4a5568;
+  font-family: monospace;
+}
+
+/* Charts grid */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 1120px) {
+  .charts-grid { grid-template-columns: 1fr; }
+}
+
+.chart-panel {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chart-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-panel-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #c8d6ff;
+  flex: 1;
+  min-width: 0;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.74rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.chart-legend em {
+  display: inline-block;
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 4px;
+  font-style: normal;
+}
+
+.chart-subtitle {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #4a5568;
+  font-family: monospace;
+  line-height: 1.4;
+}
+
+.chart-svg-wrap {
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.15);
+  padding: 8px 4px 4px;
+}
+
+/* Anomaly panel */
+.anomaly-panel {
+  background: rgba(255, 99, 99, 0.05);
+  border: 1px solid rgba(255, 99, 99, 0.18);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.anomaly-panel h3 {
+  margin: 0 0 14px;
+  font-size: 0.9rem;
+  color: #ff9a9a;
+}
+
+.anomaly-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.anomaly-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0.84rem;
+}
+
+.anomaly-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  flex-shrink: 0;
+}
+
+.anomaly-z {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: #ff9a9a;
+  background: rgba(255,80,80,0.10);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.analytics-empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
 /* ─────────────────────────────────────────────────────── */
 
 /* ── Cost Leak Radar ──────────────────────────────────── */
@@ -1638,8 +1934,13 @@ canvas {
 /* ─────────────────────────────────────────────────────── */
 
 .coach-card--actionable {
-  padding: 16px;
-  border-color: rgba(122, 145, 255, 0.18);
+  padding: 0;
+  border-color: rgba(122, 145, 255, 0.14);
+  overflow: hidden;
+}
+
+.coach-card--expanded {
+  border-color: rgba(122, 145, 255, 0.35);
 }
 
 .coach-body {
