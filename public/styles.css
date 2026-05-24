@@ -1386,10 +1386,11 @@ canvas {
 
 /* Each recommendation = single compact row when collapsed */
 .coach-row-summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 11px 14px;
   cursor: pointer;
   border-radius: 8px;
   transition: background 0.12s;
@@ -1406,11 +1407,13 @@ canvas {
 }
 
 .coach-row-title {
-  flex: 1;
   font-size: 0.9rem;
   font-weight: 600;
   color: #c8d6ff;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .coach-row-meta {
@@ -1418,6 +1421,7 @@ canvas {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .coach-savings-pill {
@@ -1753,7 +1757,7 @@ canvas {
 
 .chart-svg-wrap {
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible;
   background: rgba(0,0,0,0.15);
   padding: 8px 4px 4px;
 }

@@ -542,36 +542,43 @@ function svgLineChart({ id, data, xKey = "i", yKey, y2Key = null, anomalyKey = n
   </svg>`;
 }
 
-function svgScatter({ data, xKey, yKey, nameKey, clusterKey, W = 420, H = 260 }) {
+function svgScatter({ data, xKey, yKey, nameKey, clusterKey, W = 420, H = 280 }) {
   if (!data.length) return `<svg viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" fill="#4a5568" text-anchor="middle" font-size="12">No agents yet</text></svg>`;
-  const pad = { t: 20, r: 20, b: 36, l: 56 };
+  const pad = { t: 28, r: 20, b: 44, l: 60 };
   const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
   const xs = data.map(d => d[xKey]), ys = data.map(d => d[yKey]);
-  const maxX = Math.max(...xs) * 1.15 || 1;
-  const maxY = Math.max(...ys) * 1.15 || 0.001;
+  const maxX = Math.max(...xs) * 1.2 || 1;
+  const maxY = Math.max(...ys) * 1.25 || 0.001;
   const sx = v => pad.l + (v / maxX) * cw;
   const sy = v => pad.t + (1 - v / maxY) * ch;
   const clrMap = { Efficient: "#5ee3a3", Moderate: "#ffd580", Wasteful: "#ff9a9a" };
   const dots = data.map(d => {
     const c = clrMap[d[clusterKey]] || "#a8beff";
-    const r = Math.max(7, Math.min(18, 5 + d.runs * 2));
-    const lbl = (d[nameKey] || "").length > 13 ? d[nameKey].slice(0, 12) + "…" : d[nameKey];
-    return `<circle cx="${sx(d[xKey])}" cy="${sy(d[yKey])}" r="${r}" fill="${c}" fill-opacity="0.2" stroke="${c}" stroke-width="1.5"/>
-            <text x="${sx(d[xKey])}" y="${sy(d[yKey]) - r - 3}" fill="${c}" font-size="9" text-anchor="middle" font-family="monospace">${lbl}</text>`;
+    const r = Math.max(8, Math.min(18, 6 + d.runs * 2));
+    const cx = sx(d[xKey]), cy = sy(d[yKey]);
+    const lbl = (d[nameKey] || "").length > 14 ? d[nameKey].slice(0, 13) + "…" : d[nameKey];
+    // flip label below dot when near top, above when near bottom
+    const nearTop = cy < pad.t + 20;
+    const lblY = nearTop ? cy + r + 12 : cy - r - 5;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${c}" fill-opacity="0.18" stroke="${c}" stroke-width="1.5"/>
+            <text x="${cx}" y="${lblY}" fill="${c}" font-size="9" text-anchor="middle" font-family="monospace">${lbl}</text>`;
   }).join("");
-  const grid = [0, 0.5, 1].map(t => {
-    const vy = t * maxY, vx = t * maxX;
-    const lx = vx >= 1000 ? `${Math.round(vx / 1000)}k` : Math.round(vx);
+  const yTicks = [0, 0.33, 0.66, 1].map(t => {
+    const vy = t * maxY;
     return `<line x1="${pad.l}" y1="${sy(vy)}" x2="${pad.l+cw}" y2="${sy(vy)}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-            <text x="${pad.l-4}" y="${sy(vy)+4}" fill="#4a5568" font-size="10" text-anchor="end" font-family="monospace">$${vy.toFixed(4)}</text>
-            <line x1="${sx(vx)}" y1="${pad.t}" x2="${sx(vx)}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
-            <text x="${sx(vx)}" y="${pad.t+ch+14}" fill="#4a5568" font-size="10" text-anchor="middle" font-family="monospace">${lx}</text>`;
+            <text x="${pad.l-5}" y="${sy(vy)+4}" fill="#4a5568" font-size="10" text-anchor="end" font-family="monospace">$${vy.toFixed(3)}</text>`;
+  }).join("");
+  const xTicks = [0, 0.33, 0.66, 1].map(t => {
+    const vx = t * maxX;
+    const lx = vx >= 1000 ? `${Math.round(vx / 1000)}k` : Math.round(vx);
+    return `<line x1="${sx(vx)}" y1="${pad.t}" x2="${sx(vx)}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+            <text x="${sx(vx)}" y="${pad.t+ch+16}" fill="#4a5568" font-size="10" text-anchor="middle" font-family="monospace">${lx}</text>`;
   }).join("");
   return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">
-    <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
-    <line x1="${pad.l}" y1="${pad.t+ch}" x2="${pad.l+cw}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
-    <text x="${pad.l+cw/2}" y="${H-2}" fill="#4a5568" font-size="10" text-anchor="middle">avg tokens / run →</text>
-    ${grid}${dots}
+    <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+    <line x1="${pad.l}" y1="${pad.t+ch}" x2="${pad.l+cw}" y2="${pad.t+ch}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+    <text x="${pad.l+cw/2}" y="${H-4}" fill="#4a5568" font-size="10" text-anchor="middle">avg tokens / run →</text>
+    ${yTicks}${xTicks}${dots}
   </svg>`;
 }
 
