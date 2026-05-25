@@ -4,7 +4,7 @@
 
 AI agents are moving from experiments into production, but most teams have zero visibility into which agents are working, which providers are worth scaling, and where budget is being wasted. Agent Prism sits between your agents and the AI providers, capturing every call, scoring every run, and surfacing exactly what to fix.
 
-Live product: **[https://agent-prism.onrender.com](https://agent-prism.onrender.com)**
+
 
 ---
 
