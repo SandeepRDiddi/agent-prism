@@ -1,316 +1,247 @@
 # Agent Prism
 
-**Agent Prism is a SaaS control plane for teams running AI agents across Claude, OpenAI, Copilot, and internal automation workflows.**
+**Agent Prism is the control plane for enterprise AI agents — one dashboard to compare providers, catch cost leaks, and prove your agents are working correctly, without touching your existing code.**
 
-AI agents are moving from experiments into production, but most teams still do not have one trusted view of agent cost, quality, reliability, and governance. Agent Prism gives leadership, platform teams, and operators a clean way to understand which agents are creating value, which providers are performing, and where autonomous workflows are leaking budget or risk.
+AI agents are moving from experiments into production, but most teams have zero visibility into which agents are working, which providers are worth scaling, and where budget is being wasted. Agent Prism sits between your agents and the AI providers, capturing every call, scoring every run, and surfacing exactly what to fix.
 
-Live product demo:
+Live product: **[https://agent-prism.onrender.com](https://agent-prism.onrender.com)**
 
-[https://agent-prism.onrender.com](https://agent-prism.onrender.com)
+---
 
-## Product Promise
+## The One-Paragraph Pitch
 
-Agent Prism helps companies answer four business-critical questions:
+Companies spend millions on AI agents across Copilot, Claude, and OpenAI — and have no idea if the money is being used efficiently or safely. Agent Prism sits between your agents and the AI providers, capturing every call. It scores each agent on cost, speed, quality, and compliance in a single number. It tells you which provider wins for your specific workloads. And it finds the exact prompts and workflows wasting your budget — with step-by-step instructions to fix them. Setup takes 5 minutes. No code changes.
 
-- Which AI agents are actually working?
-- Which providers are worth scaling?
-- Where is agent spend being wasted?
-- Which workflows need governance before they expand?
+---
 
-The product turns fragmented agent activity into a single decision layer for engineering, finance, security, and AI platform leadership.
-
-## Core Differentiator
+## See. Compare. Control.
 
 ### Control Score
-
-Every agent run is normalized into a common operational score. The score blends success rate, latency, cost efficiency, retries, autonomy, and policy posture so teams can compare agents across providers instead of relying on anecdotes.
+Every agent run is normalized into a 0–100 blended score across success rate, latency, cost efficiency, retries, autonomy, and policy posture. Compare agents across providers on one number instead of anecdotes.
 
 ### Cost Leak Radar
+Not just spend visibility — specific flagged runs. Budget breaches, retry spirals, and low-value spend are surfaced with the exact agent, dollar amount overspent, and a one-line fix.
 
-Agent Prism does not only show spend. It highlights low-value spend: retry loops, budget breaches, slow workflows, failed runs, and expensive actions that do not produce value.
+### Token Coach
+Actionable optimization recommendations backed by your own data. Each recommendation shows what went wrong (with specific metrics), what to change (numbered steps), and how to verify the fix. Savings estimates are calculated from your actual run rate and projected monthly cost.
 
-### Provider-Agnostic Governance
+### ML Token Analytics
+Statistical analysis across all runs: linear regression on cost and token trends, z-score anomaly detection (flags outlier runs at z > 2.0), percentile-based efficiency clustering (Efficient / Moderate / Wasteful), and 30-day cost forecasting. Visualized with four developer-focused SVG charts — no external dependencies.
 
-Claude, OpenAI, Copilot, and custom agents can all be measured through the same lens. Agent Prism sits above the tools a company already uses rather than replacing them.
+### Provider Scorecard
+Head-to-head comparison across all connected providers on 8 metrics: runs, success rate, Control Score, avg latency, tokens/run, cost/run, cost/1k tokens, and retries. Winner highlighted per metric with an overall winner banner.
 
-## Current SaaS Capabilities
+---
 
-The current product foundation includes:
+## Dashboard Views
 
-- Multi-tenant workspace bootstrap
-- Tenant-scoped API key access
-- Browser key generation for dashboard access
-- OAuth-style token issuance for SDK and gateway flows
-- Basic Auth protection for the dashboard when configured
-- Provider connector setup for Claude and OpenAI
-- Real Claude gateway demo agent
-- Real OpenAI gateway demo agent
-- Copilot demo telemetry agent for live product demos
-- Normalized ingest API for custom agents
-- Control Score analytics
-- Cost Leak Radar
-- Token Coach recommendations for efficient prompt and token usage
-- Provider comparison
-- Workflow reliability signals
-- Audit trail for key actions
-- Tenant admin view for workspace, keys, connectors, and audit evidence
-- Tenant-scoped API key creation, listing, and revocation
-- Connector marketplace for OpenAI, Claude, Copilot, LiteLLM, LangChain/LangGraph, CrewAI, OpenAI Agents SDK, and generic webhooks
-- One-click connector test events that populate the dashboard without writing code
-- Audit CSV export for customer evidence reviews
-- Session tracking and timeout handling
-- Cost, ROI, and active-agent metrics APIs
-- Slack budget alert webhook support
-- Executive overview dashboard
-- Activity and governance drill-down views
-- File and Postgres storage backends
-- Render deployment support
+| Tab | Purpose |
+|-----|---------|
+| **Overview** | KPI strip, primary agent signal, Control Score, provider mix, risk posture |
+| **Activity** | Real-time execution trail and agent event log |
+| **Token Coach** | Cost Leak Radar · ML mini-strip · accordion Action Plan · Top Agents · Workflow Hotspots |
+| **ML Analytics** | Token burn rate chart · cost regression · efficiency scatter · input/output mix bars |
+| **Governance** | Provider scorecard · audit trail · cost leak detail |
+| **Admin** | Workspace setup · connector marketplace · API key management · developer integration guides |
 
-## Dashboard Experience
+---
 
-The main dashboard is designed as a clean SaaS overview, not a noisy log viewer.
+## Token Coach — How It Works
 
-Default view:
+Token Coach analyzes every run through the proxy and generates ranked recommendations. Each card in the Action Plan:
 
-- KPI strip
-- Primary agent signal
-- Control Score
-- Provider mix
-- Risk posture
-- Latest business signals
+- Shows collapsed by default (title + effort level + monthly savings estimate)
+- Expands on click to reveal: **What went wrong** (specific data), **What to change** (numbered steps), **How to verify the fix** (exact metric threshold to watch)
+- Has an **Apply** button (paid feature) that marks the fix as applied and tracks it
+- **Automatically detects manual fixes** — if you follow the steps yourself and re-run your agents, Token Coach compares the new metrics to the snapshot taken when you read the card and shows a congratulations banner with the dollar amount saved
 
-Secondary views:
+### ML-powered signals shown in Token Coach hero:
+- Cost trend direction with regression confidence (R²)
+- Anomaly count (z-score threshold)
+- 30-day cost forecast
+- Efficiency cluster summary (wasteful / efficient agents)
 
-- **Activity**: execution trail and recent agent events
-- **Token Coach**: token mix, retry waste, workflow hotspots, and usage-efficiency suggestions
-- **Governance**: provider performance, leak radar, and audit trail
+---
 
-The goal is simple: customers should understand the product value in the first screen without scrolling through operational noise.
+## Supported Integrations
 
-## Target Buyers
+### Provider Gateways (zero-code — just change the endpoint)
 
-Agent Prism is built for teams that are adopting multiple AI agents and need governance before usage spreads across the company.
+| Provider | Endpoint | What gets captured |
+|----------|----------|-------------------|
+| Claude (Anthropic) | `POST /v1/messages` | Tokens in/out, model, latency, cost |
+| OpenAI Chat | `POST /v1/chat/completions` | Tokens in/out, model, latency, cost |
+| OpenAI Responses API | `POST /v1/responses` | Tokens in/out, model, latency, cost |
 
-Best-fit buyers:
+Change your agent's base URL to `https://agent-prism.onrender.com` and pass your `acp_...` key as the Bearer token. Your existing code is unchanged.
 
-- AI platform teams
-- Engineering leadership
-- Security and governance leaders
-- Finance and operations teams managing AI spend
-- Enterprise transformation teams
-- Product teams deploying agentic workflows
-
-## Use Cases
-
-### AI Agent Governance
-
-Create one control plane for agents running across multiple providers and teams.
-
-### Provider Benchmarking
-
-Compare Claude, OpenAI, Copilot, and internal agents on cost, speed, reliability, and business impact.
-
-### Cost Control
-
-Identify where retries, failures, or inefficient workflows are wasting AI budget.
-
-### Executive Reporting
-
-Give leadership a clear view of agent adoption, ROI, and risk posture.
-
-### Enterprise Readiness
-
-Prepare agent programs for auditability, policy enforcement, and operational scale.
-
-## Demo Flow
-
-### 1. Open the product
-
-[https://agent-prism.onrender.com](https://agent-prism.onrender.com)
-
-If the browser does not have a tenant key saved, use the dashboard access flow to connect or generate a key.
-
-### 2. Run the Claude demo agent
+### Direct Ingest
 
 ```bash
-node setup_gateway.js
-node real_demo_agent.js
+curl -X POST https://agent-prism.onrender.com/api/ingest \
+  -H "x-api-key: acp_your_key" \
+  -H "Content-Type: application/json" \
+  -d '{"source":"generic","payload":{
+    "agentName":"My Agent","provider":"Anthropic","model":"claude-haiku-3",
+    "status":"success","tokensIn":1200,"tokensOut":340,"costUsd":0.0008,
+    "budgetUsd":0.005,"latencyMs":1800,"workflow":"my-workflow"
+  }}'
 ```
 
-This saves an Anthropic connector, routes a Claude request through Agent Prism, and records the agent run.
+### Connector Marketplace
 
-### 3. Run the OpenAI demo agent
+Admin tab includes one-click connectors for: Claude, OpenAI, GitHub Copilot, LiteLLM, LangChain/LangGraph, CrewAI, OpenAI Agents SDK, and generic webhooks.
+
+---
+
+## Quick Test
+
+**Seed the dashboard with varied test data (covers all Token Coach scenarios):**
 
 ```bash
-node setup_openai_gateway.js
-node real_demo_openai_agent.js
+export PRISM_KEY=acp_your_key_here
+export PRISM_URL=https://agent-prism.onrender.com
+
+node seed_dashboard.js
 ```
 
-This saves an OpenAI connector, routes an OpenAI Responses API request through Agent Prism, and records the agent run.
+This posts 9 runs covering: high input ratio, high output ratio, retry waste, oversized agent, budget breach, and a healthy baseline — triggering all Token Coach recommendations, Cost Leak Radar entries, and enough data for ML Analytics.
 
-### 4. Refresh the dashboard
-
-The dashboard should show provider activity from both Claude and OpenAI, with normalized scoring and cost/risk signals.
-
-### 5. Run the Copilot demo telemetry agent
+**Test OpenAI via proxy:**
 
 ```bash
-node real_demo_copilot_agent.js
+PRISM_KEY=acp_your_key node public/test_openai_via_prism.sh
 ```
 
-This pushes realistic Copilot coding-agent telemetry into Agent Prism. Open the **Token Coach** tab to show token mix, retry waste, token-heavy agents, workflow hotspots, and suggestions for using tokens more effectively.
-
-If your saved CLI credential is stale, pass a fresh tenant key directly:
-
-```bash
-AGENT_PRISM_ENDPOINT=https://agent-prism.onrender.com \
-AGENT_PRISM_API_KEY=acp_your_tenant_key \
-node real_demo_copilot_agent.js
-```
-
-## Product Architecture
-
-Agent Prism is structured around a simple SaaS control-plane model:
-
-```text
-AI Agents
-  -> Provider Gateway or Ingest API
-  -> Normalization Layer
-  -> Tenant Store
-  -> Scoring and Cost Analytics
-  -> Dashboard and Governance Views
-```
-
-Supported paths today:
-
-- Claude gateway: `/v1/messages`
-- OpenAI gateway: `/v1/responses`
-- Generic ingest: `/api/ingest`
-- Dashboard API: `/api/dashboard`
-- Tenant API: `/api/tenant`
-- Audit API: `/api/audit`
-
-## Product Modules
-
-### Ingestion Layer
-
-Receives events from provider gateways or direct telemetry submissions.
-
-### Normalization Layer
-
-Maps provider-specific data into one common agent run schema.
-
-### Scoring Layer
-
-Calculates Control Score and related performance signals.
-
-### Cost Intelligence
-
-Tracks cost per agent, provider, workflow, and tenant.
-
-### Governance Layer
-
-Surfaces audit events, provider comparison, risk posture, and cost leaks.
-
-### Dashboard Layer
-
-Provides a clean executive overview with drill-down views for activity and governance.
-
-## Why This Can Become a SaaS Product
-
-Companies will not run one AI agent from one vendor. They will run many agents across many tools. As that happens, leadership needs a vendor-neutral operating layer.
-
-Agent Prism can become that layer by combining:
-
-- cross-provider visibility
-- normalized agent scoring
-- AI spend governance
-- workflow-level reliability analytics
-- auditability for enterprise adoption
-
-This is not another prompt tool. It is a control plane for agent operations.
-
-## Roadmap
-
-The foundations above are already implemented in this repo. The roadmap is focused on SaaS packaging, enterprise controls, and buyer-ready workflows that build on the current product.
-
-Near-term product upgrades:
-
-- Hosted onboarding wizard for company setup, provider connection, first test run, and dashboard activation
-- Self-serve connector management UI for adding, rotating, disabling, and validating provider keys
-- Production user accounts and session UX beyond the current API-key and Basic Auth flows
-- Team and workflow budget policy builder using the existing cost and leak signals
-- Managed provider pricing configuration, including model-level OpenAI pricing controls
-- Alert rules UI with alert history, escalation targets, email, and PagerDuty destinations
-- Executive reporting exports and scheduled weekly business summaries
-
-Enterprise roadmap:
-
-- SSO / SAML / OIDC for enterprise identity providers
-- Role-based access control with role-aware views and admin actions
-- Dedicated tenant environments and data residency options
-- Audit export, retention, and legal hold controls
-- Policy templates and approval workflows for agent rollout
-- SOC 2-ready control evidence and compliance reporting
-- Analytics warehouse support for high-volume telemetry
+---
 
 ## Running Locally
 
 ```bash
+cp .env.example .env   # set ACP_ADMIN_SECRET and optionally DATABASE_URL
 npm install
-npm start
+npm start              # server at http://localhost:3000
+npm test               # run all tests
 ```
 
-Open:
+For Postgres: set `STORAGE_BACKEND=postgres` and `DATABASE_URL` in `.env`, then run `db/schema.sql`.
 
-[http://127.0.0.1:3000](http://127.0.0.1:3000)
+---
 
-Run tests:
+## Architecture
 
-```bash
-npm test
+Single-process Node.js server (`server.js`). No framework — raw `node:http`. ESM throughout.
+
+```
+Agent / SDK / CI workflow
+  ↓
+Provider Gateway  (/v1/messages · /v1/chat/completions · /v1/responses)
+  or Direct Ingest  (/api/ingest)
+  ↓
+Normalization  (src/connectors.js)
+  ↓
+Tenant Store  (src/saas-store.js → file-store or postgres-store)
+  ↓
+Analytics  (src/store.js → Control Score · Cost Leaks · Token Efficiency · ML Analytics)
+  ↓
+Dashboard API  (/api/dashboard)
+  ↓
+SPA  (public/app.js)
 ```
 
-## Environment Notes
+### Key modules
 
-Important production variables:
+| File | Role |
+|------|------|
+| `server.js` | HTTP entrypoint, auth middleware, all route handlers |
+| `src/store.js` | `buildDashboardSnapshot` · `buildTokenEfficiency` · `buildMLAnalytics` · `detectCostLeaks` |
+| `src/scoring.js` | `computeControlScore` — 0–100 blended score |
+| `src/connectors.js` | `normalizeClaudeRun` · `normalizeGenericRun` · `normalizeCopilotRun` |
+| `src/saas-store.js` | Storage facade — lazily loads file or Postgres backend |
+| `src/pricing.js` | Token cost lookup table per model |
+| `public/app.js` | Dashboard SPA — all views, SVG charts, accordion logic |
+| `public/styles.css` | UI system — dark theme, responsive grid |
+| `seed_dashboard.js` | Quick test data seeder |
 
-- `PORT`
-- `HOST`
-- `ACP_ADMIN_SECRET`
-- `DASHBOARD_USERNAME`
-- `DASHBOARD_PASSWORD`
-- `STORAGE_BACKEND`
-- `DATABASE_URL`
-- `JWT_SECRET`
+### ML Analytics implementation (zero dependencies)
 
-Optional OpenAI cost estimates:
+- **Linear regression** — `linearRegression()` in `store.js`, computes slope/intercept/R² on cost and token sequences
+- **Z-score anomaly detection** — flags runs where `|tokens - mean| / σ > 2.0`
+- **Moving average** — window-3 smoothing on token counts
+- **Percentile clustering** — p33/p66 thresholds classify agents as Efficient / Moderate / Wasteful
+- **SVG charts** — `svgLineChart`, `svgScatter`, `svgMixBars` generate inline SVG strings, no canvas, no chart library
 
-- `OPENAI_INPUT_USD_PER_1M_TOKENS`
-- `OPENAI_OUTPUT_USD_PER_1M_TOKENS`
-- `OPENAI_DEMO_BUDGET_USD`
+---
 
-## Repository Highlights
+## API Reference
 
-Key product files:
+| Path | Auth | Purpose |
+|------|------|---------|
+| `POST /api/bootstrap` | Admin | Create tenant |
+| `POST /api/admin/api-keys` | Admin | Issue browser key |
+| `POST /v1/messages` | Tenant | Claude gateway proxy |
+| `POST /v1/chat/completions` | Tenant | OpenAI Chat API proxy |
+| `POST /v1/responses` | Tenant | OpenAI Responses API proxy |
+| `POST /api/ingest` | Tenant | Generic run ingest |
+| `GET /api/dashboard` | Tenant | Full analytics snapshot (includes ML) |
+| `GET /api/runs` | Tenant | Raw run list |
+| `GET /api/leaks` | Tenant | Cost leak signals |
+| `POST /api/connectors` | Tenant | Save connector config |
+| `GET /api/audit` | Tenant | Audit log |
+| `GET /api/audit/export` | Tenant | CSV export |
+| `POST /api/sessions` | Tenant | Record agent session |
+| `GET /api/tenant` | Tenant | Workspace context |
+| `POST /api/oauth/token` | Public | JWT issuance for SDK flows |
 
-- `server.js` - SaaS API, provider gateways, dashboard routes
-- `public/app.js` - main dashboard experience
-- `public/styles.css` - product UI system
-- `src/store.js` - dashboard analytics
-- `src/scoring.js` - Control Score logic
-- `src/connectors.js` - provider normalization
-- `src/saas-store.js` - storage abstraction
-- `src/stores/file-store.js` - demo storage
-- `src/stores/postgres-store.js` - Postgres storage
-- `real_demo_agent.js` - Claude demo agent
-- `real_demo_openai_agent.js` - OpenAI demo agent
-- `setup_gateway.js` - Anthropic connector setup
-- `setup_openai_gateway.js` - OpenAI connector setup
-- `db/schema.sql` - production-oriented schema
+---
 
-## Positioning Statement
+## Environment Variables
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `PORT` | No | Server port (default 3000) |
+| `ACP_ADMIN_SECRET` | Yes (prod) | Admin endpoint protection |
+| `DASHBOARD_USERNAME` | No | Basic auth username |
+| `DASHBOARD_PASSWORD` | No | Basic auth password |
+| `JWT_SECRET` | No | JWT signing key |
+| `STORAGE_BACKEND` | No | `file` (default) or `postgres` |
+| `DATABASE_URL` | Postgres only | Postgres connection string |
+| `OPENAI_INPUT_USD_PER_1M_TOKENS` | No | Override OpenAI input pricing |
+| `OPENAI_OUTPUT_USD_PER_1M_TOKENS` | No | Override OpenAI output pricing |
+
+---
+
+## Target Buyers
+
+| Buyer | Pain solved |
+|-------|------------|
+| Engineering leadership | Unified view across Claude, OpenAI, Copilot without building internal tooling |
+| Finance / operations | Exact dollar amounts per agent, per workflow, with overspend alerts |
+| AI platform teams | Provider benchmarking with real workload data, not vendor benchmarks |
+| Security / governance | Audit trail, policy violation tracking, compliance export |
+| Product teams | Which agents are producing value vs burning budget |
+
+---
+
+## Roadmap
+
+**Near-term:**
+- Onboarding wizard (provider connection → first test run → dashboard activation)
+- Budget policy builder with alert rules UI
+- Executive reporting exports and weekly summaries
+- Self-serve connector management
+
+**Enterprise:**
+- SSO / SAML / OIDC
+- Role-based access control
+- Data residency options
+- SOC 2-ready compliance reporting
+- Analytics warehouse support for high-volume telemetry
+
+---
+
+## Positioning
 
 **Agent Prism is the operating layer for enterprise AI agents.**
 
-It helps teams govern agent performance, provider choice, cost, and risk from one SaaS control plane.
+It helps teams govern agent performance, provider choice, cost, and risk from one SaaS control plane — without replacing any tool they already use.
