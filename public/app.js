@@ -744,10 +744,29 @@ function renderAiAdvisorPanel() {
     status: "loading",
     provider: "ollama",
     model: "llama3.1",
-    message: "Loading the Local Llama advisor..."
+    message: "Loading the AI Advisor..."
   };
-  const providerLabel = `${escapeHtml(advisor.provider || "ollama")} · ${escapeHtml(advisor.model || "llama3.1")}`;
+  const provider = advisor.provider || "ollama";
+  const model = advisor.model || "llama3.1";
+  const isOpenRouter = provider === "openrouter";
+  const providerName = isOpenRouter ? "OpenRouter" : provider === "ollama" ? "Local Llama" : provider;
+  const providerLabel = `${escapeHtml(provider)} · ${escapeHtml(model)}`;
   const generatedAt = advisor.generatedAt ? formatDate(advisor.generatedAt) : "not generated yet";
+  const setupEnv = advisor.setup?.env || {};
+  const setupCommands = Object.entries(setupEnv).length
+    ? Object.entries(setupEnv).map(([key, value]) => `${key}=${value}`)
+    : isOpenRouter
+      ? [
+          "AI_ADVISOR_PROVIDER=openrouter",
+          "AI_ADVISOR_MODEL=openrouter/free",
+          "OPENROUTER_API_KEY=set in Render environment"
+        ]
+      : [
+          "ollama pull llama3.1",
+          "ollama serve",
+          "AI_ADVISOR_PROVIDER=ollama",
+          "OLLAMA_BASE_URL=http://127.0.0.1:11434"
+        ];
 
   if (advisor.status === "ready") {
     const recommendations = advisor.recommendations || [];
@@ -756,7 +775,7 @@ function renderAiAdvisorPanel() {
         <div class="ai-advisor-head">
           <div class="panel-title">
             <p class="eyebrow">AI Advisor</p>
-            <h2>Local Llama recommendations for this tenant</h2>
+            <h2>${escapeHtml(providerName)} recommendations for this tenant</h2>
           </div>
           <div class="ai-advisor-meta">
             <span>${providerLabel}</span>
@@ -766,7 +785,7 @@ function renderAiAdvisorPanel() {
         </div>
         <div class="ai-advisor-summary">
           <strong>${escapeHtml(advisor.summary)}</strong>
-          <span>Generated ${generatedAt}. Llama reads Agent Prism telemetry and writes the advisor output; raw metrics below stay visible as evidence.</span>
+          <span>Generated ${generatedAt}. ${escapeHtml(providerName)} reads Agent Prism telemetry and writes the advisor output; raw metrics below stay visible as evidence.</span>
         </div>
         <div class="ai-advisor-grid">
           ${recommendations.length ? recommendations.map((item, index) => `
@@ -797,7 +816,7 @@ function renderAiAdvisorPanel() {
       <div class="ai-advisor-head">
         <div class="panel-title">
           <p class="eyebrow">AI Advisor</p>
-          <h2>${isWaiting ? "Waiting for agent telemetry" : "Local Llama advisor not connected"}</h2>
+          <h2>${isWaiting ? "Waiting for agent telemetry" : `${escapeHtml(providerName)} advisor not connected`}</h2>
         </div>
         <div class="ai-advisor-meta">
           <span>${providerLabel}</span>
@@ -805,15 +824,12 @@ function renderAiAdvisorPanel() {
         </div>
       </div>
       <div class="ai-advisor-empty">
-        <p>${escapeHtml(advisor.message || "Start Ollama where the Agent Prism server can reach it, then refresh Token Coach.")}</p>
+        <p>${escapeHtml(advisor.message || "Check the advisor provider settings, then refresh Token Coach.")}</p>
         ${isWaiting ? "" : `
         <div class="advisor-command-grid">
-          <code>ollama pull llama3.1</code>
-          <code>ollama serve</code>
-          <code>AI_ADVISOR_PROVIDER=ollama</code>
-          <code>OLLAMA_BASE_URL=http://127.0.0.1:11434</code>
+          ${setupCommands.map(command => `<code>${escapeHtml(command)}</code>`).join("")}
         </div>
-        <span>For Render, this endpoint must be reachable from the Render service. Your laptop Ollama is only reachable when Agent Prism runs locally.</span>`}
+        <span>${isOpenRouter ? "For OpenRouter on Render, confirm the API key is saved, redeploy completed, and timeout is at least 30000 ms." : "For Render, this endpoint must be reachable from the Render service. Your laptop Ollama is only reachable when Agent Prism runs locally."}</span>`}
       </div>
     </article>
   `;
