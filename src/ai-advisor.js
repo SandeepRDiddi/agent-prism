@@ -242,7 +242,7 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
       ? {
           env: {
             AI_ADVISOR_PROVIDER: "openrouter",
-            AI_ADVISOR_MODEL: "openrouter/free",
+            AI_ADVISOR_MODEL: model,
             OPENROUTER_API_KEY: "set in Render environment"
           }
         }
