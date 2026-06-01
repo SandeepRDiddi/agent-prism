@@ -3,6 +3,7 @@ let dashboardAuditLogs = [];
 let tenantSummary = null;
 let tenantApiKeys = [];
 let connectorCatalog = [];
+let aiAdvisorState = null;
 let adminActionMessage = "";
 let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
@@ -147,6 +148,15 @@ function compactNumber(value) {
     notation: "compact",
     maximumFractionDigits: 1
   }).format(value);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function levelClass(level) {
@@ -729,6 +739,86 @@ function renderAnalyticsView() {
   `;
 }
 
+function renderAiAdvisorPanel() {
+  const advisor = aiAdvisorState || {
+    status: "loading",
+    provider: "ollama",
+    model: "llama3.1",
+    message: "Loading the Local Llama advisor..."
+  };
+  const providerLabel = `${escapeHtml(advisor.provider || "ollama")} · ${escapeHtml(advisor.model || "llama3.1")}`;
+  const generatedAt = advisor.generatedAt ? formatDate(advisor.generatedAt) : "not generated yet";
+
+  if (advisor.status === "ready") {
+    const recommendations = advisor.recommendations || [];
+    return `
+      <article class="panel wide-panel ai-advisor-panel ai-advisor-panel--ready">
+        <div class="ai-advisor-head">
+          <div class="panel-title">
+            <p class="eyebrow">AI Advisor</p>
+            <h2>Local Llama recommendations for this tenant</h2>
+          </div>
+          <div class="ai-advisor-meta">
+            <span>${providerLabel}</span>
+            <span>${escapeHtml(advisor.confidence || "medium")} confidence</span>
+            <span>${escapeHtml(advisor.priority || "quality")} priority</span>
+          </div>
+        </div>
+        <div class="ai-advisor-summary">
+          <strong>${escapeHtml(advisor.summary)}</strong>
+          <span>Generated ${generatedAt}. Llama reads Agent Prism telemetry and writes the advisor output; raw metrics below stay visible as evidence.</span>
+        </div>
+        <div class="ai-advisor-grid">
+          ${recommendations.length ? recommendations.map((item, index) => `
+            <div class="ai-advisor-card">
+              <span class="advisor-step">${index + 1}</span>
+              <h3>${escapeHtml(item.title)}</h3>
+              <p>${escapeHtml(item.why)}</p>
+              <div class="advisor-action">${escapeHtml(item.action)}</div>
+              <div class="advisor-impact">
+                <span>${escapeHtml(item.expectedImpact)}</span>
+                <em>${escapeHtml(item.owner)} · ${escapeHtml(item.nextCheck)}</em>
+              </div>
+            </div>
+          `).join("") : `<p class="muted">The advisor did not return recommendations. Refresh after another run.</p>`}
+        </div>
+        ${(advisor.questions || []).length ? `
+        <div class="ai-advisor-questions">
+          <span>Advisor needs business context</span>
+          ${(advisor.questions || []).map(q => `<p>${escapeHtml(q)}</p>`).join("")}
+        </div>` : ""}
+      </article>
+    `;
+  }
+
+  const isWaiting = advisor.status === "waiting_for_telemetry";
+  return `
+    <article class="panel wide-panel ai-advisor-panel ai-advisor-panel--setup">
+      <div class="ai-advisor-head">
+        <div class="panel-title">
+          <p class="eyebrow">AI Advisor</p>
+          <h2>${isWaiting ? "Waiting for agent telemetry" : "Local Llama advisor not connected"}</h2>
+        </div>
+        <div class="ai-advisor-meta">
+          <span>${providerLabel}</span>
+          <span>${escapeHtml(advisor.status || "unavailable")}</span>
+        </div>
+      </div>
+      <div class="ai-advisor-empty">
+        <p>${escapeHtml(advisor.message || "Start Ollama where the Agent Prism server can reach it, then refresh Token Coach.")}</p>
+        ${isWaiting ? "" : `
+        <div class="advisor-command-grid">
+          <code>ollama pull llama3.1</code>
+          <code>ollama serve</code>
+          <code>AI_ADVISOR_PROVIDER=ollama</code>
+          <code>OLLAMA_BASE_URL=http://127.0.0.1:11434</code>
+        </div>
+        <span>For Render, this endpoint must be reachable from the Render service. Your laptop Ollama is only reachable when Agent Prism runs locally.</span>`}
+      </div>
+    </article>
+  `;
+}
+
 function renderTokenCoachView() {
   const efficiency = dashboardState.tokenEfficiency || {};
   const suggestions = efficiency.suggestions || [];
@@ -804,6 +894,8 @@ function renderTokenCoachView() {
           </div>
         </div>
       </article>
+
+      ${renderAiAdvisorPanel()}
 
       <article class="panel wide-panel cost-leak-radar-panel">
         <div class="panel-title">
@@ -1506,15 +1598,22 @@ async function loadTenantSummary() {
 }
 
 async function loadDashboard() {
-  const [data, auditData, keysData, catalogData] = await Promise.all([
+  const [data, auditData, keysData, catalogData, advisorData] = await Promise.all([
     request("/api/dashboard"),
     request("/api/audit").catch(() => ({ auditLogs: [] })),
     request("/api/tenant/api-keys").catch(() => ({ keys: [] })),
-    request("/api/connectors/catalog").catch(() => ({ connectors: [] }))
+    request("/api/connectors/catalog").catch(() => ({ connectors: [] })),
+    request("/api/ai-advisor").catch((error) => ({
+      status: "unavailable",
+      provider: "ollama",
+      model: "llama3.1",
+      message: error.message || "AI Advisor is unavailable."
+    }))
   ]);
   dashboardAuditLogs = auditData.auditLogs || [];
   tenantApiKeys = keysData.keys || [];
   connectorCatalog = catalogData.connectors || [];
+  aiAdvisorState = advisorData;
   renderDashboard(data);
 }
 

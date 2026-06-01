@@ -25,6 +25,9 @@ Not just spend visibility — specific flagged runs. Budget breaches, retry spir
 ### Token Coach
 Actionable optimization recommendations backed by your own data. Each recommendation shows what went wrong (with specific metrics), what to change (numbered steps), and how to verify the fix. Savings estimates are calculated from your actual run rate and projected monthly cost.
 
+### AI Advisor
+An LLM reasoning layer on top of tenant telemetry. Start with a local Llama model through Ollama, then switch the provider layer later to OpenAI or Claude without changing how agents send telemetry. The advisor produces business-readable actions, owners, expected impact, and follow-up checks. If the model is not reachable, Agent Prism shows that clearly instead of generating fake advice.
+
 ### ML Token Analytics
 Statistical analysis across all runs: linear regression on cost and token trends, z-score anomaly detection (flags outlier runs at z > 2.0), percentile-based efficiency clustering (Efficient / Moderate / Wasteful), and 30-day cost forecasting. Visualized with four developer-focused SVG charts — no external dependencies.
 
@@ -39,7 +42,7 @@ Head-to-head comparison across all connected providers on 8 metrics: runs, succe
 |-----|---------|
 | **Overview** | KPI strip, primary agent signal, Control Score, provider mix, risk posture |
 | **Activity** | Real-time execution trail and agent event log |
-| **Token Coach** | Cost Leak Radar · ML mini-strip · accordion Action Plan · Top Agents · Workflow Hotspots |
+| **Token Coach** | AI Advisor · Cost Leak Radar · ML mini-strip · Action Plan · Top Agents · Workflow Hotspots |
 | **ML Analytics** | Token burn rate chart · cost regression · efficiency scatter · input/output mix bars |
 | **Governance** | Provider scorecard · audit trail · cost leak detail |
 | **Admin** | Workspace setup · connector marketplace · API key management · developer integration guides |
@@ -48,7 +51,7 @@ Head-to-head comparison across all connected providers on 8 metrics: runs, succe
 
 ## Token Coach — How It Works
 
-Token Coach analyzes every run through the proxy and generates ranked recommendations. Each card in the Action Plan:
+Token Coach analyzes every run through the proxy and keeps the raw operational evidence visible. The AI Advisor panel uses a local Llama model to turn that evidence into executive-ready recommendations. The Action Plan below remains available as deterministic backup evidence for operators. Each card in the Action Plan:
 
 - Shows collapsed by default (title + effort level + monthly savings estimate)
 - Expands on click to reveal: **What went wrong** (specific data), **What to change** (numbered steps), **How to verify the fix** (exact metric threshold to watch)
@@ -60,6 +63,23 @@ Token Coach analyzes every run through the proxy and generates ranked recommenda
 - Anomaly count (z-score threshold)
 - 30-day cost forecast
 - Efficiency cluster summary (wasteful / efficient agents)
+
+### Local Llama AI Advisor
+
+Run the advisor locally first:
+
+```bash
+ollama pull llama3.1
+ollama serve
+
+export AI_ADVISOR_PROVIDER=ollama
+export AI_ADVISOR_MODEL=llama3.1
+export OLLAMA_BASE_URL=http://127.0.0.1:11434
+
+npm start
+```
+
+The advisor is server-side. On Render, `127.0.0.1` means the Render container, not your laptop. For a hosted demo, either run a reachable model endpoint for Render or later set the advisor provider to a hosted LLM.
 
 ---
 
@@ -155,6 +175,7 @@ SPA  (public/app.js)
 |------|------|
 | `server.js` | HTTP entrypoint, auth middleware, all route handlers |
 | `src/store.js` | `buildDashboardSnapshot` · `buildTokenEfficiency` · `buildMLAnalytics` · `detectCostLeaks` |
+| `src/ai-advisor.js` | Local Llama/Ollama advisor prompt, telemetry redaction, strict JSON parsing |
 | `src/scoring.js` | `computeControlScore` — 0–100 blended score |
 | `src/connectors.js` | `normalizeClaudeRun` · `normalizeGenericRun` · `normalizeCopilotRun` |
 | `src/saas-store.js` | Storage facade — lazily loads file or Postgres backend |

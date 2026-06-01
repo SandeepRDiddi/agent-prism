@@ -4,6 +4,7 @@ import { dirname, extname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDashboardSnapshot, detectCostLeaks } from "./src/store.js";
 import { config } from "./src/config.js";
+import { generateAiAdvisor } from "./src/ai-advisor.js";
 import { createId } from "./src/auth.js";
 import {
   normalizeClaudeRun,
@@ -920,6 +921,21 @@ const server = createServer(async (req, res) => {
         tenant: context.tenant,
         runs: context.runs
       });
+    }
+
+    if (req.method === "GET" && req.url === "/api/ai-advisor") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) {
+        return;
+      }
+      const context = await listTenantContext(auth.tenant.id);
+      const snapshot = buildDashboardSnapshot(context.runs);
+      const advisor = await generateAiAdvisor({
+        tenant: context.tenant,
+        snapshot,
+        runs: context.runs
+      });
+      return sendJson(res, 200, advisor);
     }
 
     if (req.method === "GET" && req.url === "/api/runs") {

@@ -36,5 +36,5 @@ test("dashboard snapshot includes token efficiency recommendations", () => {
   assert.equal(snapshot.tokenEfficiency.inputTokenPercent, 83);
   assert.equal(snapshot.tokenEfficiency.topAgents[0].agentName, "GitHub Copilot Coding Agent");
   assert.ok(snapshot.tokenEfficiency.retryWasteTokens > 0);
-  assert.ok(snapshot.tokenEfficiency.suggestions.some((item) => item.title.includes("Reduce repeated context")));
+  assert.ok(snapshot.tokenEfficiency.suggestions.some((item) => item.title.includes("Trim repeated context")));
 });
