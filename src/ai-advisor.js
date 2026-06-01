@@ -172,12 +172,12 @@ async function callOpenRouter(prompt) {
       signal: controller.signal,
       body: JSON.stringify({
         model: config.aiAdvisor.model,
-        response_format: { type: "json_object" },
         messages: [
           { role: "system", content: "You produce concise enterprise AI operations advice as valid JSON only." },
           { role: "user", content: prompt }
         ],
-        temperature: 0.2
+        temperature: 0.2,
+        max_tokens: 900
       })
     });
 
@@ -187,7 +187,16 @@ async function callOpenRouter(prompt) {
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || "";
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content === "string") {
+      return content;
+    }
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => typeof part === "string" ? part : part?.text || "")
+        .join("");
+    }
+    return "";
   } finally {
     clearTimeout(timeout);
   }
