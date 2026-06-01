@@ -153,6 +153,46 @@ async function callOllama(prompt) {
   }
 }
 
+async function callOpenRouter(prompt) {
+  if (!config.aiAdvisor.openRouterApiKey) {
+    throw new Error("OPENROUTER_API_KEY is not set");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.aiAdvisor.timeoutMs);
+  try {
+    const response = await fetch(`${config.aiAdvisor.openRouterBaseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${config.aiAdvisor.openRouterApiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.APP_URL || "https://agent-prism.onrender.com",
+        "X-Title": "Agent Prism AI Advisor"
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: config.aiAdvisor.model,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: "You produce concise enterprise AI operations advice as valid JSON only." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.2
+      })
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`OpenRouter returned HTTP ${response.status}${detail ? `: ${detail.slice(0, 180)}` : ""}`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || "";
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function generateAiAdvisor({ tenant, snapshot, runs }) {
   const provider = config.aiAdvisor.provider;
   const model = config.aiAdvisor.model;
@@ -169,21 +209,22 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
     };
   }
 
-  if (provider !== "ollama") {
+  if (!["ollama", "openrouter"].includes(provider)) {
     return {
       status: "unavailable",
       source: "llm",
       provider,
       model,
       generatedAt: new Date().toISOString(),
-      message: `AI Advisor provider "${provider}" is configured, but this build currently enables the local Ollama/Llama path first.`,
+      message: `AI Advisor provider "${provider}" is not enabled in this build. Use "ollama" or "openrouter".`,
       recommendations: []
     };
   }
 
   const telemetry = buildAdvisorTelemetry({ tenant, snapshot, runs });
   try {
-    const content = await callOllama(advisorPrompt(telemetry));
+    const prompt = advisorPrompt(telemetry);
+    const content = provider === "openrouter" ? await callOpenRouter(prompt) : await callOllama(prompt);
     return {
       status: "ready",
       source: "llm",
@@ -197,22 +238,31 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
       ...parseAdvisorJson(content)
     };
   } catch (error) {
+    const setup = provider === "openrouter"
+      ? {
+          env: {
+            AI_ADVISOR_PROVIDER: "openrouter",
+            AI_ADVISOR_MODEL: "openrouter/free",
+            OPENROUTER_API_KEY: "set in Render environment"
+          }
+        }
+      : {
+          install: "Install Ollama, then run: ollama pull llama3.1",
+          run: "ollama serve",
+          env: {
+            AI_ADVISOR_PROVIDER: "ollama",
+            AI_ADVISOR_MODEL: "llama3.1",
+            OLLAMA_BASE_URL: "http://127.0.0.1:11434"
+          }
+        };
     return {
       status: "unavailable",
       source: "llm",
       provider,
       model,
       generatedAt: new Date().toISOString(),
-      message: `Local Llama advisor is unavailable: ${error.message}. Start Ollama where the Agent Prism server can reach it, then refresh Token Coach.`,
-      setup: {
-        install: "Install Ollama, then run: ollama pull llama3.1",
-        run: "ollama serve",
-        env: {
-          AI_ADVISOR_PROVIDER: "ollama",
-          AI_ADVISOR_MODEL: "llama3.1",
-          OLLAMA_BASE_URL: "http://127.0.0.1:11434"
-        }
-      },
+      message: `${provider === "openrouter" ? "OpenRouter advisor" : "Local Llama advisor"} is unavailable: ${error.message}. Check the provider key/settings, then refresh Token Coach.`,
+      setup,
       recommendations: []
     };
   }

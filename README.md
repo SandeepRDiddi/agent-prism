@@ -81,6 +81,16 @@ npm start
 
 The advisor is server-side. On Render, `127.0.0.1` means the Render container, not your laptop. For a hosted demo, either run a reachable model endpoint for Render or later set the advisor provider to a hosted LLM.
 
+For a hosted website demo without pulling a local model, use OpenRouter:
+
+```bash
+export AI_ADVISOR_PROVIDER=openrouter
+export AI_ADVISOR_MODEL=openrouter/free
+export OPENROUTER_API_KEY=your_openrouter_key
+```
+
+Set those values as Render environment variables, redeploy, then seed the dashboard and refresh Token Coach.
+
 ---
 
 ## Supported Integrations
