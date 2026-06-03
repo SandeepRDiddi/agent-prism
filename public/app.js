@@ -228,7 +228,7 @@ function renderSetupScreen(type, message = "") {
   if (type === "login") {
     workspace.innerHTML = `
       <section class="setup-screen">
-        <article class="panel setup-card">
+        <article class="panel setup-card setup-card--login">
           <p class="eyebrow">Enterprise Login</p>
           <h2>Sign in to your tenant workspace</h2>
           <p class="usp-summary">Use your company admin account. Agent API keys remain available for SDKs and automation.</p>
@@ -239,20 +239,20 @@ function renderSetupScreen(type, message = "") {
               <button type="submit">Sign in</button>
             </div>
           </form>
-          <form id="api-key-form" class="field-stack">
-            <p class="usp-summary">Developer fallback: paste a tenant API key.</p>
-            <input name="apiKey" placeholder="acp_..." />
-            <div class="setup-actions">
-              <button type="submit">Connect with API key</button>
-            </div>
-          </form>
-          <form id="generate-api-key-form" class="field-stack">
-            <p class="usp-summary">Existing tenant without a password? Generate a browser key using the admin secret.</p>
-            <input name="adminSecret" type="password" placeholder="Admin secret" required />
-            <div class="setup-actions">
+          <details class="setup-secondary">
+            <summary>Developer API key access</summary>
+            <form id="api-key-form" class="compact-auth-form">
+              <input name="apiKey" placeholder="Paste tenant API key, acp_..." />
+              <button type="submit">Connect</button>
+            </form>
+          </details>
+          <details class="setup-secondary">
+            <summary>Generate browser key with admin secret</summary>
+            <form id="generate-api-key-form" class="compact-auth-form">
+              <input name="adminSecret" type="password" placeholder="Admin secret" required />
               <button type="submit">Generate key</button>
-            </div>
-          </form>
+            </form>
+          </details>
           ${message ? `<p class="usp-summary">${message}</p>` : ""}
         </article>
       </section>
