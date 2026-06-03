@@ -1,0 +1,318 @@
+{
+  "info": {
+    "name": "Agent Prism API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "noauth" },
+  "variable": [
+    { "key": "base_url", "value": "https://agent-prism.onrender.com" },
+    { "key": "admin_secret", "value": "paste_ACP_ADMIN_SECRET" },
+    { "key": "api_key", "value": "paste_acp_key" },
+    { "key": "key_id", "value": "paste_key_id_for_revoke" },
+    { "key": "session_id", "value": "paste_session_id" }
+  ],
+  "item": [
+    {
+      "name": "01 Setup and Admin",
+      "item": [
+        {
+          "name": "Health",
+          "request": { "method": "GET", "url": "{{base_url}}/api/health" }
+        },
+        {
+          "name": "Bootstrap Status",
+          "request": { "method": "GET", "url": "{{base_url}}/api/bootstrap/status" }
+        },
+        {
+          "name": "Bootstrap Tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-admin-secret", "value": "{{admin_secret}}" }
+            ],
+            "url": "{{base_url}}/api/bootstrap",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Agent Prism Demo\",\n  \"adminName\": \"Sandeep\",\n  \"adminEmail\": \"sandeep@example.com\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Admin Create Browser API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-admin-secret", "value": "{{admin_secret}}" }
+            ],
+            "url": "{{base_url}}/api/admin/api-keys",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Browser dashboard key\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Tenant Dashboard",
+      "item": [
+        {
+          "name": "Tenant Summary",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/tenant" }
+        },
+        {
+          "name": "Dashboard Snapshot",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/dashboard" }
+        },
+        {
+          "name": "AI Advisor",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/ai-advisor" }
+        },
+        {
+          "name": "Runs",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/runs" }
+        },
+        {
+          "name": "Cost Leaks",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/leaks" }
+        },
+        {
+          "name": "Audit Logs",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/audit" }
+        },
+        {
+          "name": "Audit Export",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/audit/export" }
+        },
+        {
+          "name": "Reset Tenant Runs",
+          "request": { "method": "POST", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/reset" }
+        }
+      ]
+    },
+    {
+      "name": "03 API Keys",
+      "item": [
+        {
+          "name": "List Tenant API Keys",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/tenant/api-keys" }
+        },
+        {
+          "name": "Create Tenant API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/tenant/api-keys",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman ingest key\"\n}" }
+          }
+        },
+        {
+          "name": "Revoke Tenant API Key",
+          "request": { "method": "DELETE", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/tenant/api-keys/{{key_id}}" }
+        }
+      ]
+    },
+    {
+      "name": "04 Connectors",
+      "item": [
+        {
+          "name": "Connector Catalog",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/connectors/catalog" }
+        },
+        {
+          "name": "Create OpenAI Connector",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/connectors",
+            "body": { "mode": "raw", "raw": "{\n  \"provider\": \"openai\",\n  \"name\": \"OpenAI\",\n  \"mode\": \"gateway\",\n  \"apiKey\": \"sk-your-openai-key\",\n  \"setupMethod\": \"postman\"\n}" }
+          }
+        },
+        {
+          "name": "Create Claude Connector",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/connectors",
+            "body": { "mode": "raw", "raw": "{\n  \"provider\": \"anthropic\",\n  \"name\": \"Claude\",\n  \"mode\": \"gateway\",\n  \"apiKey\": \"sk-ant-your-claude-key\",\n  \"setupMethod\": \"postman\"\n}" }
+          }
+        },
+        {
+          "name": "Send Connector Test Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/connectors/test",
+            "body": { "mode": "raw", "raw": "{\n  \"provider\": \"openai\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Ingest Telemetry",
+      "item": [
+        {
+          "name": "Generic Ingest",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/ingest",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"generic\",\n  \"payload\": {\n    \"agentName\": \"Postman Demo Agent\",\n    \"provider\": \"OpenAI\",\n    \"model\": \"gpt-4o-mini\",\n    \"taskType\": \"demo-review\",\n    \"status\": \"success\",\n    \"latencyMs\": 1800,\n    \"tokensIn\": 2200,\n    \"tokensOut\": 420,\n    \"costUsd\": 0.004,\n    \"budgetUsd\": 0.01,\n    \"autonomyLevel\": 3,\n    \"retryCount\": 0,\n    \"toolCalls\": 2,\n    \"policyViolations\": 0,\n    \"userSatisfaction\": 4,\n    \"environment\": \"demo\",\n    \"workflow\": \"postman-smoke-test\",\n    \"team\": \"engineering\",\n    \"tags\": [\"postman\"],\n    \"breadcrumbs\": [\"received task\", \"called model\", \"returned result\"],\n    \"notes\": \"Postman generated telemetry.\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Generic Ingest Alias",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/ingest/generic",
+            "body": { "mode": "raw", "raw": "{\n  \"agentName\": \"Generic Alias Agent\",\n  \"provider\": \"Custom\",\n  \"model\": \"internal-agent\",\n  \"taskType\": \"classification\",\n  \"status\": \"success\",\n  \"tokensIn\": 500,\n  \"tokensOut\": 80,\n  \"costUsd\": 0.001,\n  \"budgetUsd\": 0.005,\n  \"latencyMs\": 900,\n  \"workflow\": \"generic-alias\"\n}" }
+          }
+        },
+        {
+          "name": "Claude Webhook Ingest",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/ingest/claude",
+            "body": { "mode": "raw", "raw": "{\n  \"agentName\": \"Claude Review Agent\",\n  \"model\": \"claude-3-haiku\",\n  \"status\": \"success\",\n  \"usage\": { \"input_tokens\": 1200, \"output_tokens\": 220 },\n  \"latencyMs\": 1400,\n  \"workflow\": \"claude-webhook\"\n}" }
+          }
+        },
+        {
+          "name": "Copilot Webhook Ingest",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/ingest/copilot",
+            "body": { "mode": "raw", "raw": "{\n  \"agentName\": \"GitHub Copilot Agent\",\n  \"status\": \"success\",\n  \"latencyMs\": 2400,\n  \"tokensIn\": 3000,\n  \"tokensOut\": 700,\n  \"workflow\": \"github-copilot-pr-build\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Gateway Proxy",
+      "item": [
+        {
+          "name": "OpenAI Chat Completions via Prism",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{api_key}}" }
+            ],
+            "url": "{{base_url}}/v1/chat/completions",
+            "body": { "mode": "raw", "raw": "{\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"Write a one-sentence Agent Prism demo summary.\" }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "OpenAI Responses via Prism",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{api_key}}" }
+            ],
+            "url": "{{base_url}}/v1/responses",
+            "body": { "mode": "raw", "raw": "{\n  \"model\": \"gpt-4.1-mini\",\n  \"input\": \"Give one token-saving suggestion for AI agents.\"\n}" }
+          }
+        },
+        {
+          "name": "Claude Messages via Prism",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" },
+              { "key": "anthropic-version", "value": "2023-06-01" }
+            ],
+            "url": "{{base_url}}/v1/messages",
+            "body": { "mode": "raw", "raw": "{\n  \"model\": \"claude-3-haiku-20240307\",\n  \"max_tokens\": 128,\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"Write a one-sentence Agent Prism demo summary.\" }\n  ]\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Sessions and Metrics",
+      "item": [
+        {
+          "name": "Create Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/sessions",
+            "body": { "mode": "raw", "raw": "{\n  \"agentName\": \"Session Demo Agent\",\n  \"workflow\": \"postman-session\",\n  \"model\": \"gpt-4o-mini\"\n}" }
+          }
+        },
+        {
+          "name": "Update Session",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/sessions/{{session_id}}",
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"completed\",\n  \"tokensIn\": 800,\n  \"tokensOut\": 160,\n  \"costDelta\": 0.002\n}" }
+          }
+        },
+        {
+          "name": "Active Sessions",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/sessions/active" }
+        },
+        {
+          "name": "Usage Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-api-key", "value": "{{api_key}}" }
+            ],
+            "url": "{{base_url}}/api/usage",
+            "body": { "mode": "raw", "raw": "{\n  \"agentName\": \"Usage Demo Agent\",\n  \"provider\": \"OpenAI\",\n  \"model\": \"gpt-4o-mini\",\n  \"inputTokens\": 900,\n  \"outputTokens\": 140,\n  \"costUsd\": 0.002,\n  \"latencyMs\": 1200,\n  \"workflow\": \"usage-metering\"\n}" }
+          }
+        },
+        {
+          "name": "Cost Metrics",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/metrics/cost" }
+        },
+        {
+          "name": "ROI Metrics",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/metrics/roi" }
+        },
+        {
+          "name": "Metrics Summary",
+          "request": { "method": "GET", "header": [{ "key": "x-api-key", "value": "{{api_key}}" }], "url": "{{base_url}}/api/metrics/summary" }
+        }
+      ]
+    }
+  ]
+}
