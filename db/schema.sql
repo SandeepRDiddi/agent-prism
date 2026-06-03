@@ -13,8 +13,11 @@ CREATE TABLE users (
   email TEXT NOT NULL,
   name TEXT NOT NULL,
   role TEXT NOT NULL,
+  password_hash TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX idx_users_tenant_email ON users (tenant_id, lower(email));
 
 CREATE TABLE api_keys (
   id TEXT PRIMARY KEY,
@@ -84,3 +87,16 @@ CREATE TABLE audit_logs (
 );
 
 CREATE INDEX idx_audit_logs_tenant_time ON audit_logs (tenant_id, timestamp DESC);
+
+CREATE TABLE dashboard_sessions (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_dashboard_sessions_token ON dashboard_sessions (token_hash);
+CREATE INDEX idx_dashboard_sessions_tenant ON dashboard_sessions (tenant_id);

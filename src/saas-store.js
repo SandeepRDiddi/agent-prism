@@ -53,6 +53,31 @@ export async function authenticateTenantApiKey(apiKeyValue) {
   return backend.authenticateTenantApiKey(apiKeyValue);
 }
 
+export async function authenticateUser(email, password) {
+  const backend = await getBackend();
+  return backend.authenticateUser ? backend.authenticateUser(email, password) : null;
+}
+
+export async function createDashboardSession(tenantId, userId) {
+  const backend = await getBackend();
+  return backend.createDashboardSession ? backend.createDashboardSession(tenantId, userId) : null;
+}
+
+export async function authenticateDashboardSession(token) {
+  const backend = await getBackend();
+  return backend.authenticateDashboardSession ? backend.authenticateDashboardSession(token) : null;
+}
+
+export async function revokeDashboardSession(token) {
+  const backend = await getBackend();
+  return backend.revokeDashboardSession ? backend.revokeDashboardSession(token) : null;
+}
+
+export async function setUserPassword({ tenantId, email, password }) {
+  const backend = await getBackend();
+  return backend.setUserPassword ? backend.setUserPassword({ tenantId, email, password }) : null;
+}
+
 export async function listTenantContext(tenantId) {
   const backend = await getBackend();
   return backend.listTenantContext(tenantId);

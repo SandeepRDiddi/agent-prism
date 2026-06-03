@@ -1,4 +1,5 @@
-import { createApiKey, createId, verifyApiKey } from "../auth.js";
+import { createApiKey, createId, createSessionToken, hashPassword, verifyApiKey, verifyPassword } from "../auth.js";
+import { createHash } from "node:crypto";
 import { config } from "../config.js";
 
 let poolPromise;
@@ -41,6 +42,19 @@ function mapUser(row) {
     role: row.role,
     createdAt: row.created_at?.toISOString?.() || row.created_at
   };
+}
+
+function sanitizeUser(row) {
+  return row
+    ? {
+        id: row.id,
+        tenantId: row.tenant_id,
+        email: row.email,
+        name: row.name,
+        role: row.role,
+        createdAt: row.created_at?.toISOString?.() || row.created_at
+      }
+    : null;
 }
 
 function mapConnector(row) {
@@ -96,7 +110,7 @@ export async function getBootstrapStatus() {
   };
 }
 
-export async function bootstrapSaas({ companyName, adminEmail, adminName }) {
+export async function bootstrapSaas({ companyName, adminEmail, adminName, adminPassword }) {
   const pool = await getPool();
   const existing = await getBootstrapStatus();
 
@@ -122,8 +136,8 @@ export async function bootstrapSaas({ companyName, adminEmail, adminName }) {
       [tenantId, companyName, slug || tenantId, "enterprise-trial", "active", now()]
     );
     await client.query(
-      "insert into users (id, tenant_id, email, name, role, created_at) values ($1, $2, $3, $4, $5, $6)",
-      [userId, tenantId, adminEmail, adminName || adminEmail, "owner", now()]
+      "insert into users (id, tenant_id, email, name, role, password_hash, created_at) values ($1, $2, $3, $4, $5, $6, $7)",
+      [userId, tenantId, adminEmail, adminName || adminEmail, "owner", adminPassword ? hashPassword(adminPassword) : null, now()]
     );
     await client.query(
       "insert into api_keys (id, tenant_id, name, prefix, key_hash, status, created_at) values ($1, $2, $3, $4, $5, $6, $7)",
@@ -279,6 +293,111 @@ export async function authenticateTenantApiKey(apiKeyValue) {
       lastUsedAt: keyRecord.last_used_at?.toISOString?.() || keyRecord.last_used_at
     }
   };
+}
+
+export async function authenticateUser(email, password) {
+  const pool = await getPool();
+  const normalized = String(email || "").trim().toLowerCase();
+  const users = await pool.query("select * from users where lower(email) = $1", [normalized]);
+  const user = users.rows.find((row) => verifyPassword(password, row.password_hash));
+  if (!user) return null;
+
+  const tenant = await pool.query("select * from tenants where id = $1 and status = 'active'", [user.tenant_id]);
+  if (!tenant.rows[0]) return null;
+
+  return {
+    tenant: mapTenant(tenant.rows[0]),
+    user: sanitizeUser(user)
+  };
+}
+
+export async function createDashboardSession(tenantId, userId) {
+  const pool = await getPool();
+  const token = createSessionToken();
+  const id = createId("dashsess");
+  const createdAt = now();
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+  await pool.query(
+    "insert into dashboard_sessions (id, tenant_id, user_id, token_hash, created_at, expires_at) values ($1, $2, $3, $4, $5, $6)",
+    [id, tenantId, userId, token.hash, createdAt, expiresAt]
+  );
+  return {
+    session: { id, tenantId, userId, createdAt, expiresAt, revokedAt: null },
+    token: token.plainText
+  };
+}
+
+export async function authenticateDashboardSession(tokenValue) {
+  if (!tokenValue) return null;
+  const pool = await getPool();
+  const tokenHash = createSessionTokenHash(tokenValue);
+  const result = await pool.query(
+    `select
+       s.id as session_id, s.tenant_id, s.user_id, s.created_at as session_created_at, s.expires_at,
+       t.id as tenant_id, t.name as tenant_name, t.slug as tenant_slug, t.plan, t.status as tenant_status, t.created_at as tenant_created_at,
+       u.id as user_id, u.email, u.name as user_name, u.role, u.created_at as user_created_at
+     from dashboard_sessions s
+     join tenants t on t.id = s.tenant_id
+     join users u on u.id = s.user_id and u.tenant_id = s.tenant_id
+     where s.token_hash = $1 and s.revoked_at is null and s.expires_at > now() and t.status = 'active'
+     limit 1`,
+    [tokenHash]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    tenant: mapTenant({
+      id: row.tenant_id,
+      name: row.tenant_name,
+      slug: row.tenant_slug,
+      plan: row.plan,
+      status: row.tenant_status,
+      created_at: row.tenant_created_at
+    }),
+    user: {
+      id: row.user_id,
+      tenantId: row.tenant_id,
+      email: row.email,
+      name: row.user_name,
+      role: row.role,
+      createdAt: row.user_created_at?.toISOString?.() || row.user_created_at
+    },
+    session: {
+      id: row.session_id,
+      tenantId: row.tenant_id,
+      userId: row.user_id,
+      createdAt: row.session_created_at?.toISOString?.() || row.session_created_at,
+      expiresAt: row.expires_at?.toISOString?.() || row.expires_at
+    }
+  };
+}
+
+export async function revokeDashboardSession(tokenValue) {
+  if (!tokenValue) return null;
+  const pool = await getPool();
+  const tokenHash = createSessionTokenHash(tokenValue);
+  const result = await pool.query(
+    "update dashboard_sessions set revoked_at = now() where token_hash = $1 and revoked_at is null returning id, tenant_id, user_id",
+    [tokenHash]
+  );
+  return result.rows[0] || null;
+}
+
+export async function setUserPassword({ tenantId, email, password }) {
+  const pool = await getPool();
+  const normalized = String(email || "").trim().toLowerCase();
+  const result = await pool.query(
+    `update users
+     set password_hash = $1
+     where lower(email) = $2 and ($3::text is null or tenant_id = $3)
+     returning id, tenant_id, email, name, role, created_at`,
+    [hashPassword(password), normalized, tenantId || null]
+  );
+  return sanitizeUser(result.rows[0]);
+}
+
+function createSessionTokenHash(token) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 export async function listTenantContext(tenantId) {

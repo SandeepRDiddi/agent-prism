@@ -17,6 +17,11 @@ import {
   createTenantApiKey,
   listTenantApiKeys,
   revokeTenantApiKey,
+  authenticateUser,
+  createDashboardSession,
+  authenticateDashboardSession,
+  revokeDashboardSession,
+  setUserPassword,
   createConnector,
   getBootstrapStatus,
   listTenantContext,
@@ -49,6 +54,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const publicDir = join(__dirname, "public");
 const { port, host, adminSecret, storageBackend } = config;
+const SESSION_COOKIE = "aps_session";
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -62,6 +68,31 @@ function sendJson(res, statusCode, payload) {
   setSecurityHeaders(res);
   res.writeHead(statusCode, { "Content-Type": contentTypes[".json"] });
   res.end(JSON.stringify(payload, null, 2));
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  return Object.fromEntries(
+    header
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const index = part.indexOf("=");
+        if (index === -1) return [part, ""];
+        return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+      })
+  );
+}
+
+function setSessionCookie(res, token) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 7}${secure}`);
+}
+
+function clearSessionCookie(res) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`);
 }
 
 function sendText(res, statusCode, message) {
@@ -190,6 +221,19 @@ async function requireTenant(req, res, setTenantId) {
 
   if (!auth) {
     auth = await authenticateTenantApiKey(token);
+  }
+
+  if (!auth) {
+    const sessionToken = parseCookies(req)[SESSION_COOKIE];
+    const sessionAuth = await authenticateDashboardSession(sessionToken);
+    if (sessionAuth?.tenant) {
+      auth = {
+        tenant: sessionAuth.tenant,
+        user: sessionAuth.user,
+        session: sessionAuth.session,
+        apiKey: { id: "dashboard-session", prefix: `User ${sessionAuth.user.email}` }
+      };
+    }
   }
 
   if (!auth?.tenant) {
@@ -556,8 +600,69 @@ const server = createServer(async (req, res) => {
         details: { companyName: body.companyName },
         ip
       });
+
+      if (body.adminPassword && result.user?.id) {
+        const session = await createDashboardSession(result.tenant.id, result.user.id);
+        setSessionCookie(res, session.token);
+      }
       
       return sendJson(res, 201, result);
+    }
+
+    if (req.method === "POST" && req.url === "/api/auth/login") {
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const errors = validate(SCHEMAS.login, body);
+      if (errors) return sendValidationError(res, errors);
+
+      const auth = await authenticateUser(body.email, body.password);
+      if (!auth?.tenant || !auth?.user) {
+        return sendJson(res, 401, {
+          error: "unauthorized",
+          message: "Invalid email or password."
+        });
+      }
+
+      const session = await createDashboardSession(auth.tenant.id, auth.user.id);
+      setSessionCookie(res, session.token);
+      await logAuditEvent(auth.tenant.id, {
+        actor: auth.user.email,
+        action: "Dashboard Login",
+        resource: "Dashboard Session",
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
+      return sendJson(res, 200, {
+        tenant: auth.tenant,
+        user: auth.user,
+        session: { id: session.session.id, expiresAt: session.session.expiresAt }
+      });
+    }
+
+    if (req.method === "POST" && req.url === "/api/auth/logout") {
+      const token = parseCookies(req)[SESSION_COOKIE];
+      const sessionAuth = await authenticateDashboardSession(token);
+      await revokeDashboardSession(token);
+      clearSessionCookie(res);
+      if (sessionAuth?.tenant) {
+        await logAuditEvent(sessionAuth.tenant.id, {
+          actor: sessionAuth.user.email,
+          action: "Dashboard Logout",
+          resource: "Dashboard Session",
+          ip: req.socket?.remoteAddress || "unknown"
+        });
+      }
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (req.method === "GET" && req.url === "/api/me") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      return sendJson(res, 200, {
+        tenant: auth.tenant,
+        user: auth.user || null,
+        authType: auth.user ? "session" : "api_key"
+      });
     }
 
     if (req.method === "POST" && req.url === "/api/admin/api-keys") {
@@ -578,6 +683,29 @@ const server = createServer(async (req, res) => {
       });
 
       return sendJson(res, 201, result);
+    }
+
+    if (req.method === "POST" && req.url === "/api/admin/users/password") {
+      if (!requireAdmin(req, res)) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const errors = validate(SCHEMAS.setUserPassword, body);
+      if (errors) return sendValidationError(res, errors);
+      const user = await setUserPassword({
+        tenantId: body.tenantId,
+        email: body.email,
+        password: body.password
+      });
+      if (!user) {
+        return sendJson(res, 404, { error: "not_found", message: "User not found." });
+      }
+      await logAuditEvent(user.tenantId, {
+        actor: "Admin",
+        action: "User Password Set",
+        resource: user.email,
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+      return sendJson(res, 200, { user });
     }
 
     if (req.method === "GET" && req.url === "/api/connectors/catalog") {

@@ -4,6 +4,7 @@ let tenantSummary = null;
 let tenantApiKeys = [];
 let connectorCatalog = [];
 let aiAdvisorState = null;
+let currentUser = null;
 let adminActionMessage = "";
 let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
@@ -119,6 +120,7 @@ const workspaceShell = `
 async function request(path, options) {
   const response = await fetch(path, {
     ...options,
+    credentials: "same-origin",
     headers: {
       ...(options?.headers || {}),
       ...(tenantApiKey ? { "x-api-key": tenantApiKey } : {})
@@ -181,6 +183,7 @@ function renderSetupScreen(type, message = "") {
             <input name="companyName" placeholder="Company name" required />
             <input name="adminName" placeholder="Admin name" required />
             <input name="adminEmail" type="email" placeholder="Admin email" required />
+            <input name="adminPassword" type="password" placeholder="Owner login password" minlength="8" required />
             <input name="adminSecret" type="password" placeholder="Admin secret" required />
             <div class="setup-actions">
               <button type="submit">Bootstrap tenant</button>
@@ -206,7 +209,8 @@ function renderSetupScreen(type, message = "") {
           body: JSON.stringify({
             companyName: form.get("companyName"),
             adminName: form.get("adminName"),
-            adminEmail: form.get("adminEmail")
+            adminEmail: form.get("adminEmail"),
+            adminPassword: form.get("adminPassword")
           })
         });
 
@@ -218,6 +222,63 @@ function renderSetupScreen(type, message = "") {
       }
     });
 
+    return;
+  }
+
+  if (type === "login") {
+    workspace.innerHTML = `
+      <section class="setup-screen">
+        <article class="panel setup-card">
+          <p class="eyebrow">Enterprise Login</p>
+          <h2>Sign in to your tenant workspace</h2>
+          <p class="usp-summary">Use your company admin account. Agent API keys remain available for SDKs and automation.</p>
+          <form id="login-form" class="field-stack">
+            <input name="email" type="email" placeholder="Work email" required />
+            <input name="password" type="password" placeholder="Password" minlength="8" required />
+            <div class="setup-actions">
+              <button type="submit">Sign in</button>
+            </div>
+          </form>
+          <form id="api-key-form" class="field-stack">
+            <p class="usp-summary">Developer fallback: paste a tenant API key.</p>
+            <input name="apiKey" placeholder="acp_..." />
+            <div class="setup-actions">
+              <button type="submit">Connect with API key</button>
+            </div>
+          </form>
+          <form id="generate-api-key-form" class="field-stack">
+            <p class="usp-summary">Existing tenant without a password? Generate a browser key using the admin secret.</p>
+            <input name="adminSecret" type="password" placeholder="Admin secret" required />
+            <div class="setup-actions">
+              <button type="submit">Generate key</button>
+            </div>
+          </form>
+          ${message ? `<p class="usp-summary">${message}</p>` : ""}
+        </article>
+      </section>
+    `;
+
+    document.querySelector("#login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      try {
+        await request("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: form.get("email"),
+            password: form.get("password")
+          })
+        });
+        tenantApiKey = "";
+        localStorage.removeItem("acp_api_key");
+        await initializeApp();
+      } catch (error) {
+        renderSetupScreen("login", error.message);
+      }
+    });
+
+    attachApiKeySetupForms("login");
     return;
   }
 
@@ -245,6 +306,10 @@ function renderSetupScreen(type, message = "") {
     </section>
   `;
 
+  attachApiKeySetupForms("api-key");
+}
+
+function attachApiKeySetupForms(screenType) {
   document.querySelector("#api-key-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -261,6 +326,7 @@ function renderSetupScreen(type, message = "") {
     try {
       const result = await fetch("/api/admin/api-keys", {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
           "x-admin-secret": adminSecret
@@ -278,7 +344,7 @@ function renderSetupScreen(type, message = "") {
       localStorage.setItem("acp_api_key", tenantApiKey);
       await initializeApp();
     } catch (error) {
-      renderSetupScreen("api-key", error.message);
+      renderSetupScreen(screenType, error.message);
     }
   });
 }
@@ -1610,7 +1676,8 @@ function renderDashboard(data) {
 async function loadTenantSummary() {
   const data = await request("/api/tenant");
   tenantSummary = data;
-  document.querySelector("#active-agents").textContent = `${data.tenant.name} · ${data.connectors.length} connectors`;
+  const userLabel = currentUser ? `${currentUser.name || currentUser.email} · ` : "";
+  document.querySelector("#active-agents").textContent = `${userLabel}${data.tenant.name} · ${data.connectors.length} connectors`;
 }
 
 async function loadDashboard() {
@@ -1775,8 +1842,13 @@ async function initializeApp() {
     }
 
     if (!tenantApiKey) {
-      renderSetupScreen("api-key");
-      return;
+      try {
+        const me = await request("/api/me");
+        currentUser = me.user;
+      } catch {
+        renderSetupScreen("login");
+        return;
+      }
     }
 
     document.querySelector("#workspace").innerHTML = workspaceShell;
@@ -1788,7 +1860,8 @@ async function initializeApp() {
     if (error.status === 401) {
       tenantApiKey = "";
       localStorage.removeItem("acp_api_key");
-      renderSetupScreen("api-key", error.message);
+      currentUser = null;
+      renderSetupScreen("login", error.message);
       return;
     }
 
@@ -1801,12 +1874,20 @@ document.querySelector("#save-api-key").addEventListener("click", () => {
 });
 
 document.querySelector("#reset-data").addEventListener("click", async () => {
-  if (!tenantApiKey) {
-    renderSetupScreen("api-key", "Connect a tenant before resetting data.");
+  if (!tenantApiKey && !currentUser) {
+    renderSetupScreen("login", "Sign in before resetting data.");
     return;
   }
 
   await postAction("/api/reset");
+});
+
+document.querySelector("#logout").addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
+  tenantApiKey = "";
+  currentUser = null;
+  localStorage.removeItem("acp_api_key");
+  renderSetupScreen("login");
 });
 
 initializeApp();

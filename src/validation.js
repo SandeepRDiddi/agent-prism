@@ -97,6 +97,17 @@ export const SCHEMAS = {
     companyName: { required: true, type: "string", minLength: 1, maxLength: 128 },
     adminEmail: { required: true, type: "string", minLength: 3, maxLength: 256 },
     adminName: { type: "string", maxLength: 128 },
+    adminPassword: { type: "string", minLength: 8, maxLength: 256 },
+  },
+
+  login: {
+    email: { required: true, type: "string", minLength: 3, maxLength: 256 },
+    password: { required: true, type: "string", minLength: 8, maxLength: 256 },
+  },
+
+  setUserPassword: {
+    email: { required: true, type: "string", minLength: 3, maxLength: 256 },
+    password: { required: true, type: "string", minLength: 8, maxLength: 256 },
   },
 
   createConnector: {

@@ -1,7 +1,8 @@
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { createApiKey, createId, verifyApiKey } from "../auth.js";
+import { createHash } from "node:crypto";
+import { createApiKey, createId, createSessionToken, hashPassword, verifyApiKey, verifyPassword } from "../auth.js";
 
 const dataDir = join(process.cwd(), "data");
 const appStatePath = join(dataDir, "app-state.json");
@@ -13,6 +14,7 @@ const emptyState = {
   connectors: [],
   runs: [],
   sessions: [],
+  dashboardSessions: [],
   auditLogs: []
 };
 
@@ -49,7 +51,7 @@ export async function getBootstrapStatus() {
   };
 }
 
-export async function bootstrapSaas({ companyName, adminEmail, adminName }) {
+export async function bootstrapSaas({ companyName, adminEmail, adminName, adminPassword }) {
   const state = await readState();
 
   if (state.tenants.length > 0) {
@@ -80,6 +82,7 @@ export async function bootstrapSaas({ companyName, adminEmail, adminName }) {
     email: adminEmail,
     name: adminName || adminEmail,
     role: "owner",
+    passwordHash: adminPassword ? hashPassword(adminPassword) : null,
     createdAt: now()
   };
 
@@ -219,6 +222,86 @@ export async function authenticateTenantApiKey(apiKeyValue) {
   return {
     tenant,
     apiKey: keyRecord
+  };
+}
+
+export async function authenticateUser(email, password) {
+  const state = await readState();
+  const normalized = String(email || "").trim().toLowerCase();
+  const user = state.users.find((item) => item.email.toLowerCase() === normalized);
+  if (!user || !verifyPassword(password, user.passwordHash)) return null;
+  const tenant = state.tenants.find((item) => item.id === user.tenantId && item.status === "active");
+  if (!tenant) return null;
+  return { tenant, user: sanitizeUser(user) };
+}
+
+export async function createDashboardSession(tenantId, userId) {
+  const state = await readState();
+  if (!state.dashboardSessions) state.dashboardSessions = [];
+  const token = createSessionToken();
+  const session = {
+    id: createId("dashsess"),
+    tenantId,
+    userId,
+    tokenHash: token.hash,
+    createdAt: now(),
+    expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
+    revokedAt: null
+  };
+  state.dashboardSessions.push(session);
+  await writeState(state);
+  return { session, token: token.plainText };
+}
+
+export async function authenticateDashboardSession(token) {
+  if (!token) return null;
+  const state = await readState();
+  const tokenHash = createHashForSession(token);
+  const session = (state.dashboardSessions || []).find((item) =>
+    item.tokenHash === tokenHash && !item.revokedAt && item.expiresAt > now()
+  );
+  if (!session) return null;
+  const tenant = state.tenants.find((item) => item.id === session.tenantId && item.status === "active");
+  const user = state.users.find((item) => item.id === session.userId && item.tenantId === session.tenantId);
+  if (!tenant || !user) return null;
+  return { tenant, user: sanitizeUser(user), session };
+}
+
+export async function revokeDashboardSession(token) {
+  if (!token) return null;
+  const state = await readState();
+  const tokenHash = createHashForSession(token);
+  const session = (state.dashboardSessions || []).find((item) => item.tokenHash === tokenHash && !item.revokedAt);
+  if (!session) return null;
+  session.revokedAt = now();
+  await writeState(state);
+  return session;
+}
+
+export async function setUserPassword({ tenantId, email, password }) {
+  const state = await readState();
+  const normalized = String(email || "").trim().toLowerCase();
+  const user = state.users.find((item) =>
+    (!tenantId || item.tenantId === tenantId) && item.email.toLowerCase() === normalized
+  );
+  if (!user) return null;
+  user.passwordHash = hashPassword(password);
+  await writeState(state);
+  return sanitizeUser(user);
+}
+
+function createHashForSession(token) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function sanitizeUser(user) {
+  return {
+    id: user.id,
+    tenantId: user.tenantId,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    createdAt: user.createdAt
   };
 }
 
