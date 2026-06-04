@@ -901,6 +901,94 @@ function renderAiAdvisorPanel() {
   `;
 }
 
+function renderPromptBurnPanel(efficiency) {
+  const topAgents = efficiency.topAgents || [];
+  const totalPromptTokens = efficiency.totalInputTokens || topAgents.reduce((sum, agent) => sum + (agent.tokensIn || 0), 0);
+  const totalCompletionTokens = efficiency.totalOutputTokens || topAgents.reduce((sum, agent) => sum + (agent.tokensOut || 0), 0);
+  const totalTokens = totalPromptTokens + totalCompletionTokens;
+  const promptPercent = totalTokens > 0 ? Math.round((totalPromptTokens / totalTokens) * 100) : 0;
+  const completionPercent = totalTokens > 0 ? 100 - promptPercent : 0;
+  const promptBurners = [...topAgents]
+    .filter((agent) => (agent.tokensIn || 0) > 0)
+    .sort((a, b) => (b.tokensIn || 0) - (a.tokensIn || 0))
+    .slice(0, 4);
+
+  const actualCaptureNote = totalTokens > 0
+    ? "Actuals from provider or SDK usage fields. Source-level prompt buckets require the next capture layer."
+    : "No actual token usage has been captured yet. Send traffic through the gateway or SDK to populate this panel.";
+
+  return `
+    <article class="panel wide-panel prompt-burn-panel">
+      <div class="panel-title">
+        <p class="eyebrow">Prompt Burn Actuals</p>
+        <h2>Where tokens are spent before the answer</h2>
+      </div>
+      <div class="prompt-burn-hero">
+        <div class="prompt-burn-meter">
+          <div class="prompt-burn-ring" style="--prompt-share:${promptPercent}%">
+            <strong>${promptPercent}%</strong>
+            <span>prompt side</span>
+          </div>
+          <p>${escapeHtml(actualCaptureNote)}</p>
+        </div>
+        <div class="prompt-burn-stats">
+          <div>
+            <span>Prompt/input tokens</span>
+            <strong>${compactNumber(totalPromptTokens)}</strong>
+            <em>Provider reported actuals</em>
+          </div>
+          <div>
+            <span>Completion/output tokens</span>
+            <strong>${compactNumber(totalCompletionTokens)}</strong>
+            <em>${completionPercent}% of total usage</em>
+          </div>
+          <div>
+            <span>Source breakdown</span>
+            <strong>${totalTokens > 0 ? "Pending" : "Waiting"}</strong>
+            <em>User, system, RAG, tools, memory</em>
+          </div>
+        </div>
+      </div>
+      <div class="prompt-source-grid">
+        ${[
+          ["User prompt", "SDK capture required"],
+          ["System prompt", "SDK capture required"],
+          ["RAG/context", "SDK capture required"],
+          ["Tool results", "SDK capture required"],
+          ["Memory/history", "SDK capture required"]
+        ].map(([label, value]) => `
+          <div class="prompt-source-card prompt-source-card--pending">
+            <span>${label}</span>
+            <strong>${value}</strong>
+            <em>No approximation shown</em>
+          </div>
+        `).join("")}
+      </div>
+      <div class="prompt-burn-list">
+        <div class="prompt-burn-list-head">
+          <span>Agent</span>
+          <span>Prompt tokens</span>
+          <span>Prompt share</span>
+        </div>
+        ${promptBurners.length ? promptBurners.map((agent) => {
+          const agentTotal = (agent.tokensIn || 0) + (agent.tokensOut || 0);
+          const agentPromptPct = agentTotal > 0 ? Math.round(((agent.tokensIn || 0) / agentTotal) * 100) : 0;
+          return `
+            <div class="prompt-burn-row">
+              <div>
+                <strong>${escapeHtml(agent.agentName)}</strong>
+                <span>${escapeHtml(agent.provider)} · ${agent.runs} runs</span>
+              </div>
+              <strong>${compactNumber(agent.tokensIn || 0)}</strong>
+              <span class="${agentPromptPct > 70 ? "amber" : ""}">${agentPromptPct}%</span>
+            </div>
+          `;
+        }).join("") : `<p class="muted">Prompt-heavy agents will appear after actual token telemetry arrives.</p>`}
+      </div>
+    </article>
+  `;
+}
+
 function renderTokenCoachView() {
   const efficiency = dashboardState.tokenEfficiency || {};
   const suggestions = efficiency.suggestions || [];
@@ -976,6 +1064,8 @@ function renderTokenCoachView() {
           </div>
         </div>
       </article>
+
+      ${renderPromptBurnPanel(efficiency)}
 
       ${renderAiAdvisorPanel()}
 
