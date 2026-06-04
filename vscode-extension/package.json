@@ -1,0 +1,91 @@
+{
+  "name": "agent-prism-vscode",
+  "displayName": "Agent Prism",
+  "description": "Capture VS Code agent prompt activity and optional actual token usage for Agent Prism.",
+  "version": "0.1.0",
+  "publisher": "agent-prism",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:agentPrism.configure",
+    "onCommand:agentPrism.capturePrompt",
+    "onCommand:agentPrism.captureRunActuals",
+    "onCommand:agentPrism.sendSampleRun"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentPrism.configure",
+        "title": "Agent Prism: Configure Workspace"
+      },
+      {
+        "command": "agentPrism.capturePrompt",
+        "title": "Agent Prism: Capture Prompt Activity"
+      },
+      {
+        "command": "agentPrism.captureRunActuals",
+        "title": "Agent Prism: Capture Run With Token Actuals"
+      },
+      {
+        "command": "agentPrism.sendSampleRun",
+        "title": "Agent Prism: Send Sample Run"
+      }
+    ],
+    "configuration": {
+      "title": "Agent Prism",
+      "properties": {
+        "agentPrism.endpoint": {
+          "type": "string",
+          "default": "https://agent-prism.onrender.com",
+          "description": "Agent Prism control plane URL."
+        },
+        "agentPrism.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Tenant API key beginning with acp_. Prefer using the Configure command so it is saved in SecretStorage."
+        },
+        "agentPrism.team": {
+          "type": "string",
+          "default": "engineering",
+          "description": "Team name to attach to captured runs."
+        },
+        "agentPrism.defaultAgentName": {
+          "type": "string",
+          "default": "VS Code Agent",
+          "description": "Default agent name for captured prompt activity."
+        }
+      }
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "agentPrism.configure"
+        },
+        {
+          "command": "agentPrism.capturePrompt"
+        },
+        {
+          "command": "agentPrism.captureRunActuals"
+        },
+        {
+          "command": "agentPrism.sendSampleRun"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "agentPrism.capturePrompt",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0"
+  }
+}
