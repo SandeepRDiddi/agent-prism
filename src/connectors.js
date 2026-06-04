@@ -2,6 +2,27 @@ function isoNow() {
   return new Date().toISOString();
 }
 
+function numberValue(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== "") {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    }
+  }
+  return 0;
+}
+
+function promptTokenBreakdown(payload = {}) {
+  const breakdown = payload.promptBreakdown || payload.prompt_breakdown || payload.tokenBreakdown || payload.token_breakdown || {};
+  return {
+    userPromptTokens: numberValue(payload.userPromptTokens, payload.user_prompt_tokens, breakdown.userPromptTokens, breakdown.user_prompt_tokens, breakdown.user),
+    systemPromptTokens: numberValue(payload.systemPromptTokens, payload.system_prompt_tokens, breakdown.systemPromptTokens, breakdown.system_prompt_tokens, breakdown.system),
+    contextTokens: numberValue(payload.contextTokens, payload.context_tokens, breakdown.contextTokens, breakdown.context_tokens, breakdown.context, breakdown.rag),
+    toolResultTokens: numberValue(payload.toolResultTokens, payload.tool_result_tokens, breakdown.toolResultTokens, breakdown.tool_result_tokens, breakdown.toolResults, breakdown.tool_results, breakdown.tools),
+    memoryTokens: numberValue(payload.memoryTokens, payload.memory_tokens, breakdown.memoryTokens, breakdown.memory_tokens, breakdown.memory, breakdown.history)
+  };
+}
+
 function baseRun(payload) {
   return {
     id: payload.id || `run_${Math.random().toString(36).slice(2, 10)}`,
@@ -16,6 +37,7 @@ function baseRun(payload) {
     latencyMs: payload.latencyMs || 0,
     tokensIn: payload.tokensIn || 0,
     tokensOut: payload.tokensOut || 0,
+    ...promptTokenBreakdown(payload),
     costUsd: payload.costUsd || 0,
     budgetUsd: payload.budgetUsd || 1,
     autonomyLevel: payload.autonomyLevel || 3,
@@ -41,6 +63,7 @@ export function normalizeGenericRun(payload) {
 
 export function normalizeCopilotRun(payload) {
   return baseRun({
+    ...payload,
     id: payload.session_id,
     source: "copilot",
     agentName: payload.agent_name || "GitHub Copilot Agent",
@@ -71,6 +94,7 @@ export function normalizeCopilotRun(payload) {
 
 export function normalizeClaudeRun(payload) {
   return baseRun({
+    ...payload,
     id: payload.runId,
     source: "claude",
     agentName: payload.agent || "Claude Agent",

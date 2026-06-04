@@ -25,43 +25,53 @@ const runs = [
   // HIGH INPUT — input 88% (triggers trim-context suggestion)
   { agentName: "Code Review Agent", provider: "Anthropic", model: "claude-haiku-3", workflow: "pr-review",
     tokensIn: 9200, tokensOut: 1300, costUsd: 0.0031, budgetUsd: 0.005, latencyMs: 3100,
+    promptBreakdown: { userPromptTokens: 600, systemPromptTokens: 900, contextTokens: 6200, toolResultTokens: 300, memoryTokens: 200 },
     status: "success", retryCount: 0, startTime: ago(50), endTime: ago(49) },
   { agentName: "Code Review Agent", provider: "Anthropic", model: "claude-haiku-3", workflow: "pr-review",
     tokensIn: 8800, tokensOut: 900, costUsd: 0.0028, budgetUsd: 0.005, latencyMs: 2900,
+    promptBreakdown: { userPromptTokens: 520, systemPromptTokens: 900, contextTokens: 5900, toolResultTokens: 260, memoryTokens: 180 },
     status: "success", retryCount: 0, startTime: ago(40), endTime: ago(39) },
 
   // HIGH OUTPUT — output 52% (triggers cap-verbose suggestion)
   { agentName: "Report Generator", provider: "OpenAI", model: "gpt-4.1-mini", workflow: "reporting",
     tokensIn: 1800, tokensOut: 1950, costUsd: 0.0022, budgetUsd: 0.004, latencyMs: 4200,
+    promptBreakdown: { userPromptTokens: 420, systemPromptTokens: 360, contextTokens: 650, toolResultTokens: 280, memoryTokens: 90 },
     status: "success", retryCount: 0, startTime: ago(35), endTime: ago(34) },
   { agentName: "Report Generator", provider: "OpenAI", model: "gpt-4.1-mini", workflow: "reporting",
     tokensIn: 1600, tokensOut: 2100, costUsd: 0.0024, budgetUsd: 0.004, latencyMs: 4800,
+    promptBreakdown: { userPromptTokens: 390, systemPromptTokens: 360, contextTokens: 520, toolResultTokens: 250, memoryTokens: 80 },
     status: "success", retryCount: 0, startTime: ago(25), endTime: ago(24) },
 
   // RETRY WASTE — 3 retries on a single run (triggers retry suggestion + cost leak)
   { agentName: "Data Pipeline Agent", provider: "Anthropic", model: "claude-sonnet-4-5", workflow: "etl",
     tokensIn: 4100, tokensOut: 800, costUsd: 1.85, budgetUsd: 1.00, latencyMs: 18000,
+    promptBreakdown: { userPromptTokens: 500, systemPromptTokens: 700, contextTokens: 1200, toolResultTokens: 1400, memoryTokens: 300 },
     status: "failed", retryCount: 3, startTime: ago(20), endTime: ago(17) },
 
   // LARGE AGENT — 14k avg tokens/run (triggers right-size suggestion)
   { agentName: "Full Codebase Scanner", provider: "Anthropic", model: "claude-sonnet-4-5", workflow: "security-scan",
     tokensIn: 11200, tokensOut: 3400, costUsd: 0.092, budgetUsd: 0.1, latencyMs: 12000,
+    promptBreakdown: { userPromptTokens: 750, systemPromptTokens: 1300, contextTokens: 7600, toolResultTokens: 1100, memoryTokens: 450 },
     status: "success", retryCount: 0, startTime: ago(15), endTime: ago(13) },
   { agentName: "Full Codebase Scanner", provider: "Anthropic", model: "claude-sonnet-4-5", workflow: "security-scan",
     tokensIn: 10800, tokensOut: 3100, costUsd: 0.085, budgetUsd: 0.1, latencyMs: 11500,
+    promptBreakdown: { userPromptTokens: 720, systemPromptTokens: 1300, contextTokens: 7200, toolResultTokens: 1080, memoryTokens: 400 },
     status: "success", retryCount: 0, startTime: ago(10), endTime: ago(8) },
 
   // BUDGET BREACH — cost > budget (triggers cost leak radar)
   { agentName: "Support Triage Bot", provider: "OpenAI", model: "gpt-4o", workflow: "support",
     tokensIn: 3200, tokensOut: 1100, costUsd: 2.40, budgetUsd: 1.00, latencyMs: 5500,
+    promptBreakdown: { userPromptTokens: 860, systemPromptTokens: 520, contextTokens: 900, toolResultTokens: 620, memoryTokens: 300 },
     status: "success", retryCount: 0, userSatisfaction: 2, startTime: ago(5), endTime: ago(4) },
 
   // HEALTHY RUN — good mix, no issues (provider comparison baseline)
   { agentName: "Classifier Agent", provider: "OpenAI", model: "gpt-4.1-mini", workflow: "classification",
     tokensIn: 800, tokensOut: 200, costUsd: 0.0004, budgetUsd: 0.002, latencyMs: 900,
+    promptBreakdown: { userPromptTokens: 220, systemPromptTokens: 240, contextTokens: 180, toolResultTokens: 80, memoryTokens: 60 },
     status: "success", retryCount: 0, startTime: ago(3), endTime: ago(2) },
   { agentName: "Classifier Agent", provider: "OpenAI", model: "gpt-4.1-mini", workflow: "classification",
     tokensIn: 750, tokensOut: 210, costUsd: 0.0004, budgetUsd: 0.002, latencyMs: 850,
+    promptBreakdown: { userPromptTokens: 210, systemPromptTokens: 240, contextTokens: 160, toolResultTokens: 80, memoryTokens: 60 },
     status: "success", retryCount: 0, startTime: ago(2), endTime: ago(1) },
 ];
 

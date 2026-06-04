@@ -16,6 +16,11 @@ test("dashboard snapshot includes token efficiency recommendations", () => {
       latencyMs: 12000,
       tokensIn: 12000,
       tokensOut: 2500,
+      userPromptTokens: 900,
+      systemPromptTokens: 1100,
+      contextTokens: 7800,
+      toolResultTokens: 1400,
+      memoryTokens: 500,
       costUsd: 0.17,
       budgetUsd: 0.25,
       autonomyLevel: 4,
@@ -34,6 +39,16 @@ test("dashboard snapshot includes token efficiency recommendations", () => {
 
   assert.equal(snapshot.tokenEfficiency.totalTokens, 14500);
   assert.equal(snapshot.tokenEfficiency.inputTokenPercent, 83);
+  assert.deepEqual(snapshot.tokenEfficiency.promptBreakdown, {
+    userPromptTokens: 900,
+    systemPromptTokens: 1100,
+    contextTokens: 7800,
+    toolResultTokens: 1400,
+    memoryTokens: 500,
+    uncategorizedPromptTokens: 300,
+    capturedPromptBucketTokens: 11700
+  });
+  assert.equal(snapshot.tokenEfficiency.topAgents[0].promptBreakdown.contextTokens, 7800);
   assert.equal(snapshot.tokenEfficiency.topAgents[0].agentName, "GitHub Copilot Coding Agent");
   assert.ok(snapshot.tokenEfficiency.retryWasteTokens > 0);
   assert.ok(snapshot.tokenEfficiency.suggestions.some((item) => item.title.includes("Trim repeated context")));

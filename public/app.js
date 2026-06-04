@@ -908,13 +908,25 @@ function renderPromptBurnPanel(efficiency) {
   const totalTokens = totalPromptTokens + totalCompletionTokens;
   const promptPercent = totalTokens > 0 ? Math.round((totalPromptTokens / totalTokens) * 100) : 0;
   const completionPercent = totalTokens > 0 ? 100 - promptPercent : 0;
+  const breakdown = efficiency.promptBreakdown || {};
+  const sourceBuckets = [
+    ["User prompt", breakdown.userPromptTokens || 0],
+    ["System prompt", breakdown.systemPromptTokens || 0],
+    ["RAG/context", breakdown.contextTokens || 0],
+    ["Tool results", breakdown.toolResultTokens || 0],
+    ["Memory/history", breakdown.memoryTokens || 0],
+    ["Unclassified prompt", breakdown.uncategorizedPromptTokens || 0]
+  ];
+  const capturedBucketTokens = breakdown.capturedPromptBucketTokens || sourceBuckets.slice(0, 5).reduce((sum, [, value]) => sum + value, 0);
   const promptBurners = [...topAgents]
     .filter((agent) => (agent.tokensIn || 0) > 0)
     .sort((a, b) => (b.tokensIn || 0) - (a.tokensIn || 0))
     .slice(0, 4);
 
   const actualCaptureNote = totalTokens > 0
-    ? "Actuals from provider or SDK usage fields. Source-level prompt buckets require the next capture layer."
+    ? capturedBucketTokens > 0
+      ? "Actuals from provider and SDK usage fields. Prompt buckets show captured source-level token burn only."
+      : "Actuals from provider or SDK usage fields. Source-level prompt buckets require the SDK capture layer."
     : "No actual token usage has been captured yet. Send traffic through the gateway or SDK to populate this panel.";
 
   return `
@@ -950,19 +962,17 @@ function renderPromptBurnPanel(efficiency) {
         </div>
       </div>
       <div class="prompt-source-grid">
-        ${[
-          ["User prompt", "SDK capture required"],
-          ["System prompt", "SDK capture required"],
-          ["RAG/context", "SDK capture required"],
-          ["Tool results", "SDK capture required"],
-          ["Memory/history", "SDK capture required"]
-        ].map(([label, value]) => `
-          <div class="prompt-source-card prompt-source-card--pending">
+        ${sourceBuckets.map(([label, value]) => {
+          const sourcePct = totalPromptTokens > 0 && value > 0 ? Math.round((value / totalPromptTokens) * 100) : 0;
+          const isCaptured = value > 0;
+          const isUnclassified = label === "Unclassified prompt";
+          return `
+          <div class="prompt-source-card ${isCaptured ? "prompt-source-card--captured" : "prompt-source-card--pending"}">
             <span>${label}</span>
-            <strong>${value}</strong>
-            <em>No approximation shown</em>
+            <strong>${isCaptured ? compactNumber(value) : "Not captured"}</strong>
+            <em>${isCaptured ? `${sourcePct}% of prompt actuals${isUnclassified ? " from provider total" : ""}` : "No approximation shown"}</em>
           </div>
-        `).join("")}
+        `}).join("")}
       </div>
       <div class="prompt-burn-list">
         <div class="prompt-burn-list-head">
@@ -1351,6 +1361,13 @@ await prism.logRun({
     duration_ms:        elapsedMs,
     prompt_tokens:      inputTokens,
     completion_tokens:  outputTokens,
+    promptBreakdown: {
+      userPromptTokens:   userPromptTokenActuals,
+      systemPromptTokens: systemPromptTokenActuals,
+      contextTokens:      ragOrRepoContextTokenActuals,
+      toolResultTokens:   toolResultTokenActuals,
+      memoryTokens:       memoryOrHistoryTokenActuals
+    },
     estimated_cost_usd: costUsd,
     workflow:           "your-workflow-name",
     team:               "engineering"

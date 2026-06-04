@@ -57,6 +57,16 @@ function buildTokenEfficiency(enrichedRuns) {
   const tokenRuns = enrichedRuns.filter((run) => (run.tokensIn || 0) + (run.tokensOut || 0) > 0);
   const totalInputTokens = tokenRuns.reduce((sum, run) => sum + (run.tokensIn || 0), 0);
   const totalOutputTokens = tokenRuns.reduce((sum, run) => sum + (run.tokensOut || 0), 0);
+  const promptBreakdown = {
+    userPromptTokens: tokenRuns.reduce((sum, run) => sum + (run.userPromptTokens || 0), 0),
+    systemPromptTokens: tokenRuns.reduce((sum, run) => sum + (run.systemPromptTokens || 0), 0),
+    contextTokens: tokenRuns.reduce((sum, run) => sum + (run.contextTokens || 0), 0),
+    toolResultTokens: tokenRuns.reduce((sum, run) => sum + (run.toolResultTokens || 0), 0),
+    memoryTokens: tokenRuns.reduce((sum, run) => sum + (run.memoryTokens || 0), 0)
+  };
+  const capturedPromptBucketTokens = Object.values(promptBreakdown).reduce((sum, value) => sum + value, 0);
+  promptBreakdown.uncategorizedPromptTokens = Math.max(0, totalInputTokens - capturedPromptBucketTokens);
+  promptBreakdown.capturedPromptBucketTokens = capturedPromptBucketTokens;
   const totalTokens = totalInputTokens + totalOutputTokens;
   const totalCostUsd = tokenRuns.reduce((sum, run) => sum + (run.costUsd || 0), 0);
   const retryRuns = tokenRuns.filter((run) => (run.retryCount || 0) > 0);
@@ -71,6 +81,15 @@ function buildTokenEfficiency(enrichedRuns) {
       const tokensIn = agentRuns.reduce((sum, run) => sum + (run.tokensIn || 0), 0);
       const tokensOut = agentRuns.reduce((sum, run) => sum + (run.tokensOut || 0), 0);
       const costUsd = agentRuns.reduce((sum, run) => sum + (run.costUsd || 0), 0);
+      const agentPromptBreakdown = {
+        userPromptTokens: agentRuns.reduce((sum, run) => sum + (run.userPromptTokens || 0), 0),
+        systemPromptTokens: agentRuns.reduce((sum, run) => sum + (run.systemPromptTokens || 0), 0),
+        contextTokens: agentRuns.reduce((sum, run) => sum + (run.contextTokens || 0), 0),
+        toolResultTokens: agentRuns.reduce((sum, run) => sum + (run.toolResultTokens || 0), 0),
+        memoryTokens: agentRuns.reduce((sum, run) => sum + (run.memoryTokens || 0), 0)
+      };
+      const agentCapturedPromptTokens = Object.values(agentPromptBreakdown).reduce((sum, value) => sum + value, 0);
+      agentPromptBreakdown.uncategorizedPromptTokens = Math.max(0, tokensIn - agentCapturedPromptTokens);
       return {
         agentName,
         provider: agentRuns[0]?.provider || "Unknown",
@@ -78,6 +97,7 @@ function buildTokenEfficiency(enrichedRuns) {
         runs: agentRuns.length,
         tokensIn,
         tokensOut,
+        promptBreakdown: agentPromptBreakdown,
         totalTokens: tokensIn + tokensOut,
         avgTokensPerRun: Math.round((tokensIn + tokensOut) / agentRuns.length),
         costUsd: Number(costUsd.toFixed(4))
@@ -268,6 +288,7 @@ function buildTokenEfficiency(enrichedRuns) {
     totalTokens,
     totalInputTokens,
     totalOutputTokens,
+    promptBreakdown,
     inputTokenPercent: totalTokens ? Math.round((totalInputTokens / totalTokens) * 100) : 0,
     outputTokenPercent: totalTokens ? Math.round((totalOutputTokens / totalTokens) * 100) : 0,
     avgTokensPerRun: tokenRuns.length ? Math.round(totalTokens / tokenRuns.length) : 0,

@@ -31,6 +31,13 @@ export function buildAdvisorTelemetry({ tenant, snapshot, runs }) {
       latencyMs: run.latencyMs,
       tokensIn: run.tokensIn || 0,
       tokensOut: run.tokensOut || 0,
+      promptBreakdown: {
+        userPromptTokens: run.userPromptTokens || 0,
+        systemPromptTokens: run.systemPromptTokens || 0,
+        contextTokens: run.contextTokens || 0,
+        toolResultTokens: run.toolResultTokens || 0,
+        memoryTokens: run.memoryTokens || 0
+      },
       costUsd: run.costUsd || 0,
       budgetUsd: run.budgetUsd || 0,
       retryCount: run.retryCount || 0,
@@ -59,6 +66,7 @@ export function buildAdvisorTelemetry({ tenant, snapshot, runs }) {
       totalTokens: snapshot.tokenEfficiency?.totalTokens,
       inputTokenPercent: snapshot.tokenEfficiency?.inputTokenPercent,
       outputTokenPercent: snapshot.tokenEfficiency?.outputTokenPercent,
+      promptBreakdown: snapshot.tokenEfficiency?.promptBreakdown,
       wastePercent: snapshot.tokenEfficiency?.wastePercent,
       projectedMonthlyCost: snapshot.tokenEfficiency?.projectedMonthlyCost,
       topAgents: snapshot.tokenEfficiency?.topAgents?.slice(0, 5) || [],

@@ -85,6 +85,11 @@ function mapRun(row) {
     latencyMs: row.latency_ms,
     tokensIn: row.tokens_in,
     tokensOut: row.tokens_out,
+    userPromptTokens: row.user_prompt_tokens || 0,
+    systemPromptTokens: row.system_prompt_tokens || 0,
+    contextTokens: row.context_tokens || 0,
+    toolResultTokens: row.tool_result_tokens || 0,
+    memoryTokens: row.memory_tokens || 0,
     costUsd: Number(row.cost_usd),
     budgetUsd: Number(row.budget_usd),
     autonomyLevel: row.autonomy_level,
@@ -429,14 +434,18 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
         `
           insert into agent_runs (
             id, tenant_id, source, agent_name, provider, model, task_type, status,
-            start_time, end_time, latency_ms, tokens_in, tokens_out, cost_usd, budget_usd,
+            start_time, end_time, latency_ms, tokens_in, tokens_out,
+            user_prompt_tokens, system_prompt_tokens, context_tokens, tool_result_tokens, memory_tokens,
+            cost_usd, budget_usd,
             autonomy_level, retry_count, tool_calls, policy_violations, user_satisfaction,
             environment, workflow, team, tags, breadcrumbs, notes
           ) values (
             $1, $2, $3, $4, $5, $6, $7, $8,
-            $9, $10, $11, $12, $13, $14, $15,
-            $16, $17, $18, $19, $20,
-            $21, $22, $23, $24::jsonb, $25::jsonb, $26
+            $9, $10, $11, $12, $13,
+            $14, $15, $16, $17, $18,
+            $19, $20,
+            $21, $22, $23, $24, $25,
+            $26, $27, $28, $29::jsonb, $30::jsonb, $31
           )
           on conflict (id) do update set
             tenant_id = excluded.tenant_id,
@@ -451,6 +460,11 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
             latency_ms = excluded.latency_ms,
             tokens_in = excluded.tokens_in,
             tokens_out = excluded.tokens_out,
+            user_prompt_tokens = excluded.user_prompt_tokens,
+            system_prompt_tokens = excluded.system_prompt_tokens,
+            context_tokens = excluded.context_tokens,
+            tool_result_tokens = excluded.tool_result_tokens,
+            memory_tokens = excluded.memory_tokens,
             cost_usd = excluded.cost_usd,
             budget_usd = excluded.budget_usd,
             autonomy_level = excluded.autonomy_level,
@@ -479,6 +493,11 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
           run.latencyMs,
           run.tokensIn,
           run.tokensOut,
+          run.userPromptTokens || 0,
+          run.systemPromptTokens || 0,
+          run.contextTokens || 0,
+          run.toolResultTokens || 0,
+          run.memoryTokens || 0,
           run.costUsd,
           run.budgetUsd,
           run.autonomyLevel,
