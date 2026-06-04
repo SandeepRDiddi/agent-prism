@@ -1564,7 +1564,7 @@ function renderCurrentView() {
 
   const workspace = document.querySelector(".workspace");
   if (workspace) {
-    const needsScroll = currentView === "admin" || currentView === "tokens" || currentView === "analytics";
+    const needsScroll = currentView === "admin" || currentView === "tokens" || currentView === "analytics" || currentView === "governance";
     workspace.classList.toggle("admin-scroll", needsScroll);
   }
 

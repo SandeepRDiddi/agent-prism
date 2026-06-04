@@ -3106,6 +3106,11 @@ strong.red   { color: #ff7f7f; }
     height: auto;
     overflow-y: auto;
   }
+
+  .workspace-business.admin-scroll .governance-stage {
+    height: auto;
+    overflow: visible;
+  }
 }
 
 @media (max-width: 1120px) {
