@@ -2017,6 +2017,7 @@ document.querySelector("#reset-data").addEventListener("click", async () => {
   }
 
   await postAction("/api/reset");
+  localStorage.removeItem(COACH_SNAPSHOTS_KEY);
 });
 
 document.querySelector("#logout").addEventListener("click", async () => {
