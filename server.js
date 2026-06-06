@@ -1075,6 +1075,47 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { runs: context.runs });
     }
 
+    if (req.method === "POST" && req.url === "/api/advisor") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const { prompt, anthropicApiKey } = body;
+      if (!prompt) return sendJson(res, 400, { error: "prompt required" });
+      const key = anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+      if (!key) return sendJson(res, 503, { error: "No Anthropic API key configured" });
+      try {
+        const upstream = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 600,
+            messages: [{
+              role: "user",
+              content: `You are a prompt engineering expert. Evaluate the following AI prompt and return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
+{"score":7,"weakness":"one concise sentence about what is weak","rewrite":"the improved prompt text"}
+
+Score 1-10 where 10 is perfect. Weakness: what's missing or vague. Rewrite: make it specific, context-rich, output-directing.
+
+Prompt to evaluate:
+${prompt}`
+            }]
+          })
+        });
+        const data = await upstream.json();
+        const text = (data.content?.[0]?.text || "{}").trim();
+        let result;
+        try { result = JSON.parse(text); }
+        catch { result = { score: 0, weakness: "Could not parse advisor response.", rewrite: "" }; }
+        return sendJson(res, 200, result);
+      } catch (err) {
+        return sendJson(res, 502, { error: err.message });
+      }
+    }
+
     if (req.method === "GET" && req.url === "/api/leaks") {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) {

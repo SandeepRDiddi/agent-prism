@@ -110,6 +110,7 @@ const workspaceShell = `
       <button class="view-tab" data-view="activity" type="button">Activity</button>
       <button class="view-tab" data-view="tokens" type="button">Token Coach</button>
       <button class="view-tab" data-view="governance" type="button">Governance</button>
+      <button class="view-tab" data-view="advisor" type="button">Prompt Advisor</button>
       <button class="view-tab" data-view="admin" type="button">Admin</button>
     </nav>
     <section class="metrics-grid cockpit-metrics" id="metrics-grid"></section>
@@ -444,6 +445,105 @@ function renderOverview() {
       </article>
     </section>
   `;
+}
+
+async function renderAdvisorView() {
+  const vc = document.querySelector("#view-content");
+  vc.innerHTML = `
+    <section class="tab-stage">
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Prompt Advisor</p>
+          <h2>AI review of every prompt you sent</h2>
+          <p class="panel-subtitle">Each prompt is scored 1–10, weaknesses identified, and a rewrite suggested.</p>
+        </div>
+        <div id="advisor-key-row" style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
+          <input id="advisor-anthropic-key" type="password" placeholder="Paste Anthropic API key (sk-ant-...)" style="flex:1;min-width:220px;padding:8px 12px;border-radius:6px;border:1px solid rgba(122,145,255,0.25);background:rgba(255,255,255,0.05);color:#e0e4ff;font-size:0.85rem;" />
+          <button id="advisor-run-btn" style="padding:8px 18px;border-radius:6px;background:#7a91ff;color:#0a0b14;font-weight:700;border:none;cursor:pointer;font-size:0.85rem;">Analyze prompts</button>
+        </div>
+        <div id="advisor-cards" style="display:grid;gap:14px;"></div>
+      </article>
+    </section>
+  `;
+
+  const storedKey = sessionStorage.getItem("prism_anthropic_key") || "";
+  if (storedKey) document.getElementById("advisor-anthropic-key").value = storedKey;
+
+  document.getElementById("advisor-run-btn").addEventListener("click", async () => {
+    const key = document.getElementById("advisor-anthropic-key").value.trim();
+    if (!key) { alert("Paste your Anthropic API key first."); return; }
+    sessionStorage.setItem("prism_anthropic_key", key);
+
+    const cardsEl = document.getElementById("advisor-cards");
+    cardsEl.innerHTML = `<p style="color:#aab;font-size:0.9rem;">Fetching runs…</p>`;
+
+    let runs = [];
+    try {
+      const r = await request("/api/runs");
+      runs = (r.runs || []).filter(run => {
+        const crumb = (run.breadcrumbs || []).find(b => typeof b === "object" ? b.type === "prompt" : false);
+        return crumb && (crumb.message || "").length > 10;
+      });
+    } catch (e) {
+      cardsEl.innerHTML = `<p style="color:#f87;">Failed to load runs: ${e.message}</p>`;
+      return;
+    }
+
+    if (!runs.length) {
+      cardsEl.innerHTML = `<p style="color:#aab;">No runs with captured prompts found. Send a prompt via the extension first.</p>`;
+      return;
+    }
+
+    cardsEl.innerHTML = runs.map((_, i) => `<div id="advisor-card-${i}" class="panel" style="padding:18px 20px;border-radius:10px;border:1px solid rgba(122,145,255,0.15);background:rgba(255,255,255,0.02);">
+      <p style="color:#aab;font-size:0.85rem;">Analyzing…</p>
+    </div>`).join("");
+
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i];
+      const crumb = (run.breadcrumbs || []).find(b => b.type === "prompt");
+      const prompt = crumb.message;
+      const cardEl = document.getElementById(`advisor-card-${i}`);
+
+      try {
+        const analysis = await request("/api/advisor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, anthropicApiKey: key })
+        });
+
+        const score = analysis.score || 0;
+        const barW = Math.round(score * 10);
+        const scoreColor = score >= 8 ? "#4ec" : score >= 5 ? "#f9c74f" : "#f87";
+
+        cardEl.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+            <div>
+              <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;opacity:0.5;margin-bottom:2px;">${run.agentName} · ${run.model} · ${(run.tokensIn||0)}→${(run.tokensOut||0)} tokens</div>
+              <div style="font-weight:600;color:#e0e4ff;font-size:0.95rem;">"${prompt.slice(0,120)}${prompt.length>120?"…":""}"</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-size:1.6rem;font-weight:800;color:${scoreColor};line-height:1;">${score}<span style="font-size:0.9rem;opacity:0.5;">/10</span></div>
+              <div style="width:60px;height:5px;border-radius:3px;background:rgba(255,255,255,0.1);margin-top:4px;overflow:hidden;">
+                <div style="width:${barW}%;height:100%;background:${scoreColor};border-radius:3px;"></div>
+              </div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px;">
+            <div style="background:rgba(255,100,100,0.07);border:1px solid rgba(255,100,100,0.15);border-radius:8px;padding:12px;">
+              <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#f87;margin-bottom:6px;">⚠ Weakness</div>
+              <div style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;">${analysis.weakness || "—"}</div>
+            </div>
+            <div style="background:rgba(78,204,163,0.07);border:1px solid rgba(78,204,163,0.15);border-radius:8px;padding:12px;">
+              <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#4ec;margin-bottom:6px;">✏ Suggested rewrite</div>
+              <div style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;">${analysis.rewrite || "—"}</div>
+            </div>
+          </div>
+        `;
+      } catch (e) {
+        cardEl.innerHTML = `<p style="color:#f87;">Analysis failed: ${e.message}</p>`;
+      }
+    }
+  });
 }
 
 function renderActivityView() {
@@ -1589,7 +1689,7 @@ function renderCurrentView() {
 
   const workspace = document.querySelector(".workspace");
   if (workspace) {
-    const needsScroll = currentView === "admin" || currentView === "tokens" || currentView === "analytics" || currentView === "governance" || currentView === "activity";
+    const needsScroll = currentView === "admin" || currentView === "tokens" || currentView === "analytics" || currentView === "governance" || currentView === "activity" || currentView === "advisor";
     workspace.classList.toggle("admin-scroll", needsScroll);
   }
 
@@ -1601,6 +1701,8 @@ function renderCurrentView() {
     renderAnalyticsView();
   } else if (currentView === "governance") {
     renderGovernanceView();
+  } else if (currentView === "advisor") {
+    renderAdvisorView();
   } else if (currentView === "admin") {
     renderAdminView();
   } else {
