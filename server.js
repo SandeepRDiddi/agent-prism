@@ -1108,10 +1108,15 @@ ${prompt}`
           })
         });
         const data = await upstream.json();
-        const text = (data.content?.[0]?.text || "{}").trim();
+        let text = (data.content?.[0]?.text || "{}").trim();
+        // strip markdown code fences Claude sometimes adds
+        text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        // extract first {...} block if extra text present
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) text = jsonMatch[0];
         let result;
         try { result = JSON.parse(text); }
-        catch { result = { score: 0, weakness: "Could not parse advisor response.", rewrite: "" }; }
+        catch { result = { score: 0, weakness: "Could not parse advisor response: " + text.slice(0, 120), rewrite: "" }; }
         return sendJson(res, 200, result);
       } catch (err) {
         return sendJson(res, 502, { error: err.message });
