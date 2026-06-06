@@ -456,18 +456,41 @@ function renderActivityView() {
           <h2>Latest execution trail</h2>
         </div>
         <div class="clean-feed">
-          ${feed.length ? feed.map((item) => `
-            <div class="clean-feed-row">
+          ${feed.length ? feed.map((item, i) => `
+            <div class="clean-feed-row expandable-row" data-idx="${i}" style="cursor:pointer;">
               <span>${new Date(item.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
               <strong>${item.agentName}</strong>
               <em class="feed-level ${levelClass(item.level)}">${item.level.toUpperCase()}</em>
               <p>${item.message}</p>
+              <span class="row-chevron" style="margin-left:auto;opacity:0.5;font-size:0.75rem;">▼</span>
+            </div>
+            <div class="feed-detail-panel" id="feed-detail-${i}" style="display:none;padding:10px 16px 12px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.07);font-size:0.8rem;color:#aab;">
+              <div style="display:flex;gap:24px;flex-wrap:wrap;">
+                <span><strong>Model</strong>&nbsp;${item.model || "—"}</span>
+                <span><strong>Provider</strong>&nbsp;${item.provider || "—"}</span>
+                <span><strong>Tokens in</strong>&nbsp;${(item.tokensIn || 0).toLocaleString()}</span>
+                <span><strong>Tokens out</strong>&nbsp;${(item.tokensOut || 0).toLocaleString()}</span>
+                <span><strong>Latency</strong>&nbsp;${item.latencyMs ? item.latencyMs + "ms" : "—"}</span>
+                <span><strong>Cost</strong>&nbsp;$${(item.costUsd || 0).toFixed(4)}</span>
+                <span><strong>Workflow</strong>&nbsp;${item.workflow || "—"}</span>
+              </div>
             </div>
           `).join("") : `<p class="muted">No activity yet.</p>`}
         </div>
       </article>
     </section>
   `;
+
+  document.querySelectorAll(".expandable-row").forEach(row => {
+    row.addEventListener("click", () => {
+      const idx = row.dataset.idx;
+      const panel = document.getElementById(`feed-detail-${idx}`);
+      const chevron = row.querySelector(".row-chevron");
+      const open = panel.style.display !== "none";
+      panel.style.display = open ? "none" : "block";
+      if (chevron) chevron.textContent = open ? "▼" : "▲";
+    });
+  });
 }
 
 function renderGovernanceView() {

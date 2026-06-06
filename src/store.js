@@ -549,17 +549,36 @@ export function buildDashboardSnapshot(runs) {
                     : run.status === "success"
                       ? "success"
                       : "tool",
-            message: text
+            message: text,
+            runId: run.id,
+            tokensIn: run.tokensIn || 0,
+            tokensOut: run.tokensOut || 0,
+            model: run.model || "unknown",
+            provider: run.provider || "",
+            latencyMs: run.latencyMs || 0,
+            costUsd: run.costUsd || 0,
+            workflow: run.workflow || ""
           };
         });
       }
       const totalTokens = (run.tokensIn || 0) + (run.tokensOut || 0);
+      const runMeta = {
+        runId: run.id,
+        tokensIn: run.tokensIn || 0,
+        tokensOut: run.tokensOut || 0,
+        model: run.model || "unknown",
+        provider: run.provider || "",
+        latencyMs: run.latencyMs || 0,
+        costUsd: run.costUsd || 0,
+        workflow: run.workflow || ""
+      };
       const events = [
         {
           time: run.startTime,
           agentName: run.agentName,
           level: "info",
-          message: `Started — model: ${run.model || "unknown"}, workflow: ${run.workflow || "default"}`
+          message: `Started — model: ${run.model || "unknown"}, workflow: ${run.workflow || "default"}`,
+          ...runMeta
         }
       ];
       if (totalTokens > 0) {
@@ -567,14 +586,16 @@ export function buildDashboardSnapshot(runs) {
           time: run.endTime || run.startTime,
           agentName: run.agentName,
           level: run.status === "success" ? "success" : "error",
-          message: `${run.status === "success" ? "Completed" : "Failed"} — ${(run.tokensIn || 0).toLocaleString()} in + ${(run.tokensOut || 0).toLocaleString()} out = ${totalTokens.toLocaleString()} tokens · $${(run.costUsd || 0).toFixed(4)} · ${run.latencyMs}ms`
+          message: `${run.status === "success" ? "Completed" : "Failed"} — ${(run.tokensIn || 0).toLocaleString()} in + ${(run.tokensOut || 0).toLocaleString()} out = ${totalTokens.toLocaleString()} tokens · $${(run.costUsd || 0).toFixed(4)} · ${run.latencyMs}ms`,
+          ...runMeta
         });
       } else {
         events.push({
           time: run.endTime || run.startTime,
           agentName: run.agentName,
           level: run.status === "success" ? "success" : "error",
-          message: `${run.status === "success" ? "Completed" : "Failed"} in ${run.latencyMs}ms`
+          message: `${run.status === "success" ? "Completed" : "Failed"} in ${run.latencyMs}ms`,
+          ...runMeta
         });
       }
       return events;
