@@ -1,4 +1,6 @@
 const vscode = require("vscode");
+const https = require("https");
+const http = require("http");
 
 const SECRET_KEY = "agentPrism.apiKey";
 
@@ -122,30 +124,51 @@ function buildRunPayload(input) {
   };
 }
 
+function httpsPost(url, body, headers) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const lib = parsed.protocol === "https:" ? https : http;
+    const bodyStr = JSON.stringify(body);
+    const req = lib.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: "POST",
+        headers: { ...headers, "Content-Length": Buffer.byteLength(bodyStr) }
+      },
+      (res) => {
+        let raw = "";
+        res.on("data", (chunk) => { raw += chunk; });
+        res.on("end", () => resolve({ status: res.statusCode, body: raw }));
+      }
+    );
+    req.on("error", reject);
+    req.write(bodyStr);
+    req.end();
+  });
+}
+
 async function sendRun(context, input) {
   const settings = await requireSettings(context);
   if (!settings) return null;
 
   const payload = buildRunPayload(input);
-  const response = await fetch(`${settings.endpoint}/api/ingest`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": settings.apiKey
-    },
-    body: JSON.stringify(payload)
-  });
+  const res = await httpsPost(
+    `${settings.endpoint}/api/ingest`,
+    payload,
+    { "Content-Type": "application/json", "x-api-key": settings.apiKey }
+  );
 
-  const text = await response.text();
   let data = {};
   try {
-    data = text ? JSON.parse(text) : {};
+    data = res.body ? JSON.parse(res.body) : {};
   } catch {
-    data = { raw: text };
+    data = { raw: res.body };
   }
 
-  if (!response.ok) {
-    throw new Error(data.message || data.error || `Agent Prism returned HTTP ${response.status}`);
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(data.message || data.error || `Agent Prism returned HTTP ${res.status}`);
   }
 
   return data;
