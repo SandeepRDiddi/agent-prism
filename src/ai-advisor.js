@@ -284,3 +284,11 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
     };
   }
 }
+
+// Generic LLM call using the same provider config as the AI Advisor.
+// Used by the Prompt Advisor endpoint.
+export async function callLlm(userContent) {
+  const provider = config.aiAdvisor.provider;
+  if (provider === "openrouter") return callOpenRouter(userContent);
+  return callOllama(userContent);
+}

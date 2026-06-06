@@ -4,7 +4,7 @@ import { dirname, extname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDashboardSnapshot, detectCostLeaks } from "./src/store.js";
 import { config } from "./src/config.js";
-import { generateAiAdvisor } from "./src/ai-advisor.js";
+import { generateAiAdvisor, callLlm } from "./src/ai-advisor.js";
 import { createId } from "./src/auth.js";
 import {
   normalizeClaudeRun,
@@ -1080,38 +1080,18 @@ const server = createServer(async (req, res) => {
       if (!auth) return;
       const body = await parseBody(req, res);
       if (body === null) return;
-      const { prompt, anthropicApiKey } = body;
+      const { prompt } = body;
       if (!prompt) return sendJson(res, 400, { error: "prompt required" });
-      const key = anthropicApiKey || process.env.ANTHROPIC_API_KEY;
-      if (!key) return sendJson(res, 503, { error: "No Anthropic API key configured" });
       try {
-        const upstream = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 600,
-            messages: [{
-              role: "user",
-              content: `You are a prompt engineering expert. Evaluate the following AI prompt and return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
+        const llmPrompt = `You are a prompt engineering expert. Evaluate the following AI prompt and return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
 {"score":7,"weakness":"one concise sentence about what is weak","rewrite":"the improved prompt text","tokenSavingsPct":25}
 
 Score 1-10 where 10 is perfect. Weakness: what is missing or vague. Rewrite: make it specific, context-rich, output-directing so the model needs fewer tokens to respond well. tokenSavingsPct: integer 0-60 estimating how many fewer input tokens the rewrite needs vs the original (tighter phrasing = higher savings).
 
 Prompt to evaluate:
-${prompt}`
-            }]
-          })
-        });
-        const data = await upstream.json();
-        let text = (data.content?.[0]?.text || "{}").trim();
-        // strip markdown code fences Claude sometimes adds
+${prompt}`;
+        let text = (await callLlm(llmPrompt) || "{}").trim();
         text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-        // extract first {...} block if extra text present
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) text = jsonMatch[0];
         let result;
