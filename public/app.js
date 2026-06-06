@@ -489,8 +489,14 @@ async function renderAdvisorView() {
       const r = await request("/api/runs");
       runs = (r.runs || [])
         .filter(run => {
-          const crumb = (run.breadcrumbs || []).find(b => typeof b === "object" ? b.type === "prompt" : false);
-          return crumb && (crumb.message || "").length > 10;
+          // Accept any breadcrumb with meaningful text, or notes field
+          const crumb = (run.breadcrumbs || []).find(b => {
+            if (typeof b === "string") return b.length > 10;
+            const msg = b.message || b.value || "";
+            return msg.length > 10;
+          });
+          const notesText = (run.notes || "").length > 10;
+          return crumb || notesText;
         })
         .slice(0, PAGE_SIZE); // cap at PAGE_SIZE — enterprise has thousands
     } catch (e) {
@@ -528,8 +534,14 @@ async function renderAdvisorView() {
       const batch = runs.slice(batchStart, batchStart + BATCH_SIZE);
       await Promise.all(batch.map(async (run, bIdx) => {
         const i = batchStart + bIdx;
-        const crumb = (run.breadcrumbs || []).find(b => b.type === "prompt");
-        const prompt = crumb.message;
+        const crumb = (run.breadcrumbs || []).find(b => {
+          if (typeof b === "string") return b.length > 10;
+          const msg = b.message || b.value || "";
+          return msg.length > 10;
+        });
+        const prompt = (crumb
+          ? (typeof crumb === "string" ? crumb : crumb.message || crumb.value || "")
+          : run.notes || "").slice(0, 600);
         const cardEl = document.getElementById(`advisor-card-${i}`);
         if (cardEl) cardEl.innerHTML = `<p style="color:#aab;font-size:0.85rem;">Analyzing…</p>`;
       try {
