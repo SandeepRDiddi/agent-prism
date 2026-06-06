@@ -1078,6 +1078,8 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/advisor") {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
       const { prompt, anthropicApiKey } = body;
       if (!prompt) return sendJson(res, 400, { error: "prompt required" });
       const key = anthropicApiKey || process.env.ANTHROPIC_API_KEY;
