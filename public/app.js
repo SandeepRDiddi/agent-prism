@@ -457,6 +457,14 @@ async function renderAdvisorView() {
           <h2>AI review of every prompt you sent</h2>
           <p class="panel-subtitle">Each prompt is scored 1–10, weaknesses identified, and a rewrite suggested.</p>
         </div>
+        <div id="advisor-savings-bar" style="display:none;align-items:center;gap:14px;padding:12px 16px;border-radius:8px;background:rgba(78,204,163,0.08);border:1px solid rgba(78,204,163,0.25);margin-bottom:16px;">
+          <span style="font-size:1.4rem;">💰</span>
+          <div>
+            <div style="font-weight:700;color:#4ec;font-size:1rem;">Total savings unlocked this session</div>
+            <div style="color:#aab;font-size:0.85rem;">Rewrites applied or copied from Prompt Advisor</div>
+          </div>
+          <div id="advisor-savings-total" style="margin-left:auto;font-size:1.5rem;font-weight:800;color:#4ec;">$0.0000<span style="font-size:0.8rem;color:#aab;">/mo</span></div>
+        </div>
         <div id="advisor-key-row" style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
           <input id="advisor-anthropic-key" type="password" placeholder="Paste Anthropic API key (sk-ant-...)" style="flex:1;min-width:220px;padding:8px 12px;border-radius:6px;border:1px solid rgba(122,145,255,0.25);background:rgba(255,255,255,0.05);color:#e0e4ff;font-size:0.85rem;" />
           <button id="advisor-run-btn" style="padding:8px 18px;border-radius:6px;background:#7a91ff;color:#0a0b14;font-weight:700;border:none;cursor:pointer;font-size:0.85rem;">Analyze prompts</button>
@@ -555,7 +563,7 @@ async function renderAdvisorView() {
             </div>
             <div style="background:rgba(78,204,163,0.07);border:1px solid rgba(78,204,163,0.15);border-radius:8px;padding:12px;">
               <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#4ec;margin-bottom:6px;">✏ Suggested rewrite</div>
-              <div style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;">${analysis.rewrite || "—"}</div>
+              <div class="advisor-rewrite-text" style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;user-select:text;cursor:text;">${analysis.rewrite || "—"}</div>
             </div>
           </div>
 
@@ -564,31 +572,41 @@ async function renderAdvisorView() {
           </div>
         `;
 
-        document.getElementById(cardKey)?.addEventListener("click", async () => {
+        let rewriteApplied = false;
+        const applyRewrite = async (trigger) => {
+          if (rewriteApplied) return;
+          rewriteApplied = true;
           const btn = document.getElementById(cardKey);
-          btn.textContent = "Applying…";
-          btn.disabled = true;
-          try {
-            await request("/api/advisor/apply", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                runId: run.id,
-                originalPrompt: prompt,
-                rewrite: analysis.rewrite,
-                tokensIn,
-                runsPerMonth: monthlyRuns,
-                tokenSavingsPct: savingsPct,
-                costUsdPerRun
-              })
-            });
-            btn.textContent = "Applied ✓";
-            btn.style.background = "#4ec";
-          } catch {
-            btn.textContent = "Apply this rewrite";
-            btn.disabled = false;
+          if (btn) { btn.textContent = "Copied + Applied ✓"; btn.style.background = "#4ec"; btn.disabled = true; }
+          if (trigger === "click") {
+            navigator.clipboard?.writeText(analysis.rewrite || "").catch(() => {});
           }
-        });
+          // update savings bar
+          const bar = document.getElementById("advisor-savings-bar");
+          const totalEl = document.getElementById("advisor-savings-total");
+          if (bar && totalEl) {
+            bar.style.display = "flex";
+            const prev = parseFloat(totalEl.dataset.raw || "0");
+            const next = prev + monthlySavings;
+            totalEl.dataset.raw = next;
+            totalEl.innerHTML = `$${next.toFixed(4)}<span style="font-size:0.8rem;color:#aab;">/mo</span>`;
+            // flash animation
+            totalEl.style.transform = "scale(1.15)";
+            setTimeout(() => { totalEl.style.transform = "scale(1)"; totalEl.style.transition = "transform 0.3s ease"; }, 200);
+          }
+          // log to server silently
+          request("/api/advisor/apply", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ runId: run.id, originalPrompt: prompt, rewrite: analysis.rewrite, tokensIn, runsPerMonth: monthlyRuns, tokenSavingsPct: savingsPct, costUsdPerRun })
+          }).catch(() => {});
+        };
+
+        document.getElementById(cardKey)?.addEventListener("click", () => applyRewrite("click"));
+
+        // detect copy from rewrite box — charge commission even without clicking Apply
+        const rewriteBox = cardEl.querySelector(".advisor-rewrite-text");
+        rewriteBox?.addEventListener("copy", () => applyRewrite("copy"));
       } catch (e) {
         cardEl.innerHTML = `<p style="color:#f87;">Analysis failed: ${e.message}</p>`;
       }
