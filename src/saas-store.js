@@ -137,3 +137,18 @@ export async function listAuditLogs(tenantId) {
   }
   return [];
 }
+
+export async function getPromptAnalysis(tenantId, runId) {
+  const backend = await getBackend();
+  return backend.getPromptAnalysis ? backend.getPromptAnalysis(tenantId, runId) : null;
+}
+
+export async function savePromptAnalysis(tenantId, runId, promptHash, analysis) {
+  const backend = await getBackend();
+  return backend.savePromptAnalysis ? backend.savePromptAnalysis(tenantId, runId, promptHash, analysis) : null;
+}
+
+export async function listPromptAnalyses(tenantId) {
+  const backend = await getBackend();
+  return backend.listPromptAnalyses ? backend.listPromptAnalyses(tenantId) : [];
+}

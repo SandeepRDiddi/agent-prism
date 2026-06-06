@@ -480,12 +480,18 @@ async function renderAdvisorView() {
     cardsEl.innerHTML = `<p style="color:#aab;font-size:0.9rem;">Fetching runs…</p>`;
 
     let runs = [];
+    const PAGE_SIZE = 20;
+    const BATCH_SIZE = 5;
+    const BATCH_DELAY_MS = 300;
+
     try {
       const r = await request("/api/runs");
-      runs = (r.runs || []).filter(run => {
-        const crumb = (run.breadcrumbs || []).find(b => typeof b === "object" ? b.type === "prompt" : false);
-        return crumb && (crumb.message || "").length > 10;
-      });
+      runs = (r.runs || [])
+        .filter(run => {
+          const crumb = (run.breadcrumbs || []).find(b => typeof b === "object" ? b.type === "prompt" : false);
+          return crumb && (crumb.message || "").length > 10;
+        })
+        .slice(0, PAGE_SIZE); // cap at PAGE_SIZE — enterprise has thousands
     } catch (e) {
       cardsEl.innerHTML = `<p style="color:#f87;">Failed to load runs: ${e.message}</p>`;
       return;
@@ -496,22 +502,35 @@ async function renderAdvisorView() {
       return;
     }
 
-    cardsEl.innerHTML = runs.map((_, i) => `<div id="advisor-card-${i}" class="panel" style="padding:18px 20px;border-radius:10px;border:1px solid rgba(122,145,255,0.15);background:rgba(255,255,255,0.02);">
-      <p style="color:#aab;font-size:0.85rem;">Analyzing…</p>
-    </div>`).join("");
+    cardsEl.innerHTML = `
+      <div id="advisor-progress" style="color:#aab;font-size:0.85rem;margin-bottom:8px;">Analyzing 0 / ${runs.length} prompts…</div>
+      ${runs.map((_, i) => `<div id="advisor-card-${i}" class="panel" style="padding:18px 20px;border-radius:10px;border:1px solid rgba(122,145,255,0.15);background:rgba(255,255,255,0.02);">
+        <p style="color:#aab;font-size:0.85rem;">Queued…</p>
+      </div>`).join("")}
+    `;
 
-    for (let i = 0; i < runs.length; i++) {
-      const run = runs[i];
-      const crumb = (run.breadcrumbs || []).find(b => b.type === "prompt");
-      const prompt = crumb.message;
-      const cardEl = document.getElementById(`advisor-card-${i}`);
+    let doneCount = 0;
+    const progressEl = () => document.getElementById("advisor-progress");
 
+    for (let batchStart = 0; batchStart < runs.length; batchStart += BATCH_SIZE) {
+      const batch = runs.slice(batchStart, batchStart + BATCH_SIZE);
+      await Promise.all(batch.map(async (run, bIdx) => {
+        const i = batchStart + bIdx;
+        const crumb = (run.breadcrumbs || []).find(b => b.type === "prompt");
+        const prompt = crumb.message;
+        const cardEl = document.getElementById(`advisor-card-${i}`);
+        if (cardEl) cardEl.innerHTML = `<p style="color:#aab;font-size:0.85rem;">Analyzing…</p>`;
       try {
         const analysis = await request("/api/advisor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt })
+          body: JSON.stringify({ prompt, runId: run.id })
         });
+        doneCount++;
+        const p = progressEl();
+        if (p) p.textContent = analysis.cached
+          ? `Loaded ${doneCount} / ${runs.length} (cached)`
+          : `Analyzed ${doneCount} / ${runs.length}`;
 
         const score = analysis.score || 0;
         const savingsPct = Math.min(Math.max(Number(analysis.tokenSavingsPct) || 0, 0), 60);
@@ -602,9 +621,17 @@ async function renderAdvisorView() {
         const rewriteBox = cardEl.querySelector(".advisor-rewrite-text");
         rewriteBox?.addEventListener("copy", () => applyRewrite("copy"));
       } catch (e) {
-        cardEl.innerHTML = `<p style="color:#f87;">Analysis failed: ${e.message}</p>`;
+        doneCount++;
+        if (cardEl) cardEl.innerHTML = `<p style="color:#f87;">Analysis failed: ${e.message}</p>`;
       }
-    }
+      })); // end batch Promise.all
+      // rate-limit: pause between batches
+      if (batchStart + BATCH_SIZE < runs.length) {
+        await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+      }
+    } // end batch loop
+    const p = progressEl();
+    if (p) p.textContent = `Done — ${runs.length} prompts analyzed. Showing top ${PAGE_SIZE}.`;
   });
 }
 

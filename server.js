@@ -32,7 +32,9 @@ import {
   listSessions,
   getActiveSessionCounts,
   logAuditEvent,
-  listAuditLogs
+  listAuditLogs,
+  getPromptAnalysis,
+  savePromptAnalysis
 } from "./src/saas-store.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -1080,8 +1082,17 @@ const server = createServer(async (req, res) => {
       if (!auth) return;
       const body = await parseBody(req, res);
       if (body === null) return;
-      const { prompt } = body;
+      const { prompt, runId } = body;
       if (!prompt) return sendJson(res, 400, { error: "prompt required" });
+      // content-addressed cache: same prompt text = same analysis
+      const { createHash } = await import("node:crypto");
+      const promptHash = createHash("sha256").update(prompt).digest("hex").slice(0, 16);
+      if (runId) {
+        const cached = await getPromptAnalysis(auth.tenant.id, runId);
+        if (cached && cached.promptHash === promptHash) {
+          return sendJson(res, 200, { ...cached, cached: true });
+        }
+      }
       try {
         const llmPrompt = `You are a prompt engineering expert. Evaluate the following AI prompt and return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
 {"score":7,"weakness":"one concise sentence about what is weak","rewrite":"the improved prompt text","tokenSavingsPct":25}
@@ -1097,6 +1108,8 @@ ${prompt}`;
         let result;
         try { result = JSON.parse(text); }
         catch { result = { score: 0, weakness: "Could not parse advisor response: " + text.slice(0, 120), rewrite: "" }; }
+        // persist so repeat visits are instant
+        if (runId) await savePromptAnalysis(auth.tenant.id, runId, promptHash, result).catch(() => {});
         return sendJson(res, 200, result);
       } catch (err) {
         return sendJson(res, 502, { error: err.message });

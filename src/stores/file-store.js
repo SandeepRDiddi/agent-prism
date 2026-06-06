@@ -15,7 +15,8 @@ const emptyState = {
   runs: [],
   sessions: [],
   dashboardSessions: [],
-  auditLogs: []
+  auditLogs: [],
+  promptAnalyses: []
 };
 
 function now() {
@@ -476,4 +477,25 @@ export async function listAuditLogs(tenantId) {
   return state.auditLogs
     .filter((log) => log.tenantId === tenantId)
     .sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+}
+
+export async function getPromptAnalysis(tenantId, runId) {
+  const state = await readState();
+  return (state.promptAnalyses || []).find(a => a.tenantId === tenantId && a.runId === runId) || null;
+}
+
+export async function savePromptAnalysis(tenantId, runId, promptHash, analysis) {
+  const state = await readState();
+  if (!state.promptAnalyses) state.promptAnalyses = [];
+  const idx = state.promptAnalyses.findIndex(a => a.tenantId === tenantId && a.runId === runId);
+  const record = { tenantId, runId, promptHash, ...analysis, analyzedAt: now() };
+  if (idx >= 0) state.promptAnalyses[idx] = record;
+  else state.promptAnalyses.push(record);
+  await writeState(state);
+  return record;
+}
+
+export async function listPromptAnalyses(tenantId) {
+  const state = await readState();
+  return (state.promptAnalyses || []).filter(a => a.tenantId === tenantId);
 }
