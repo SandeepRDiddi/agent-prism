@@ -466,7 +466,6 @@ async function renderAdvisorView() {
           <div id="advisor-savings-total" style="margin-left:auto;font-size:1.5rem;font-weight:800;color:#4ec;">$0.0000<span style="font-size:0.8rem;color:#aab;">/mo</span></div>
         </div>
         <div id="advisor-key-row" style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
-          <input id="advisor-anthropic-key" type="password" placeholder="Paste Anthropic API key (sk-ant-...)" style="flex:1;min-width:220px;padding:8px 12px;border-radius:6px;border:1px solid rgba(122,145,255,0.25);background:rgba(255,255,255,0.05);color:#e0e4ff;font-size:0.85rem;" />
           <button id="advisor-run-btn" style="padding:8px 18px;border-radius:6px;background:#7a91ff;color:#0a0b14;font-weight:700;border:none;cursor:pointer;font-size:0.85rem;">Analyze prompts</button>
         </div>
         <div id="advisor-cards" style="display:grid;gap:14px;"></div>
@@ -474,13 +473,8 @@ async function renderAdvisorView() {
     </section>
   `;
 
-  const storedKey = sessionStorage.getItem("prism_anthropic_key") || "";
-  if (storedKey) document.getElementById("advisor-anthropic-key").value = storedKey;
-
   document.getElementById("advisor-run-btn").addEventListener("click", async () => {
-    const key = document.getElementById("advisor-anthropic-key").value.trim();
-    if (!key) { alert("Paste your Anthropic API key first."); return; }
-    sessionStorage.setItem("prism_anthropic_key", key);
+    const key = "";
 
     const cardsEl = document.getElementById("advisor-cards");
     cardsEl.innerHTML = `<p style="color:#aab;font-size:0.9rem;">Fetching runs…</p>`;
@@ -516,7 +510,7 @@ async function renderAdvisorView() {
         const analysis = await request("/api/advisor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, anthropicApiKey: key })
+          body: JSON.stringify({ prompt })
         });
 
         const score = analysis.score || 0;
@@ -1976,8 +1970,26 @@ function renderAuditLogs(logs) {
 
 function renderDashboard(data) {
   dashboardState = data;
+  purgeStaleSavingsSnapshots(data.headlineMetrics);
   renderMetrics(data.headlineMetrics);
   renderCurrentView();
+}
+
+function purgeStaleSavingsSnapshots(metrics) {
+  // Snapshots saved against old data (e.g. before a tenant reset) produce
+  // absurd savings banners. Purge any snapshot whose projected monthly cost
+  // at view-time is more than 5× the current projected cost, AND current
+  // run count is tiny — that combination means the data context changed.
+  const currMonthly = metrics?.projectedMonthlyCost || 0;
+  const currRuns = metrics?.totalRuns || 0;
+  const snaps = getCoachSnapshots();
+  let changed = false;
+  for (const [key, snap] of Object.entries(snaps)) {
+    const staleHighCost = (snap.projectedAtView || 0) > Math.max(currMonthly * 5, 1);
+    const fewRunsNow = currRuns < 5;
+    if (staleHighCost && fewRunsNow) { delete snaps[key]; changed = true; }
+  }
+  if (changed) localStorage.setItem(COACH_SNAPSHOTS_KEY, JSON.stringify(snaps));
 }
 
 async function loadTenantSummary() {
