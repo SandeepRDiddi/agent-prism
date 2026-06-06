@@ -512,13 +512,22 @@ async function renderAdvisorView() {
         });
 
         const score = analysis.score || 0;
+        const savingsPct = Math.min(Math.max(Number(analysis.tokenSavingsPct) || 0, 0), 60);
+        const tokensIn = run.tokensIn || 0;
+        const costUsdPerRun = run.costUsd || 0;
+        const tokensSaved = Math.round(tokensIn * savingsPct / 100);
+        // estimate monthly runs from 30-day window (1 run seen = assume at least 1/day for demo)
+        const monthlyRuns = Math.max(dashboardState?.headlineMetrics?.totalRuns || 1, 1);
+        const costPerToken = tokensIn > 0 ? costUsdPerRun / tokensIn : 0;
+        const monthlySavings = parseFloat((tokensSaved * costPerToken * monthlyRuns).toFixed(4));
         const barW = Math.round(score * 10);
         const scoreColor = score >= 8 ? "#4ec" : score >= 5 ? "#f9c74f" : "#f87";
+        const cardKey = `advisor-apply-${i}`;
 
         cardEl.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-            <div>
-              <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;opacity:0.5;margin-bottom:2px;">${run.agentName} · ${run.model} · ${(run.tokensIn||0)}→${(run.tokensOut||0)} tokens</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;opacity:0.5;margin-bottom:2px;">${run.agentName} · ${run.model} · ${tokensIn}→${(run.tokensOut||0)} tokens</div>
               <div style="font-weight:600;color:#e0e4ff;font-size:0.95rem;">"${prompt.slice(0,120)}${prompt.length>120?"…":""}"</div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
@@ -528,6 +537,17 @@ async function renderAdvisorView() {
               </div>
             </div>
           </div>
+
+          ${savingsPct > 0 ? `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;border-radius:8px;background:rgba(122,145,255,0.07);border:1px solid rgba(122,145,255,0.2);">
+            <span style="font-size:1.2rem;">💡</span>
+            <div>
+              <span style="font-weight:700;color:#7a91ff;">~${savingsPct}% fewer input tokens</span>
+              <span style="color:#aab;font-size:0.85rem;"> · saves ~${tokensSaved} tokens/run</span>
+              ${monthlySavings > 0 ? `<span style="color:#4ec;font-size:0.85rem;font-weight:600;"> · ~$${monthlySavings}/month at your volume</span>` : ""}
+            </div>
+          </div>` : ""}
+
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px;">
             <div style="background:rgba(255,100,100,0.07);border:1px solid rgba(255,100,100,0.15);border-radius:8px;padding:12px;">
               <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#f87;margin-bottom:6px;">⚠ Weakness</div>
@@ -538,7 +558,37 @@ async function renderAdvisorView() {
               <div style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;">${analysis.rewrite || "—"}</div>
             </div>
           </div>
+
+          <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+            <button id="${cardKey}" style="padding:7px 16px;border-radius:6px;background:#7a91ff;color:#0a0b14;font-weight:700;border:none;cursor:pointer;font-size:0.82rem;">Apply this rewrite</button>
+          </div>
         `;
+
+        document.getElementById(cardKey)?.addEventListener("click", async () => {
+          const btn = document.getElementById(cardKey);
+          btn.textContent = "Applying…";
+          btn.disabled = true;
+          try {
+            await request("/api/advisor/apply", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                runId: run.id,
+                originalPrompt: prompt,
+                rewrite: analysis.rewrite,
+                tokensIn,
+                runsPerMonth: monthlyRuns,
+                tokenSavingsPct: savingsPct,
+                costUsdPerRun
+              })
+            });
+            btn.textContent = "Applied ✓";
+            btn.style.background = "#4ec";
+          } catch {
+            btn.textContent = "Apply this rewrite";
+            btn.disabled = false;
+          }
+        });
       } catch (e) {
         cardEl.innerHTML = `<p style="color:#f87;">Analysis failed: ${e.message}</p>`;
       }

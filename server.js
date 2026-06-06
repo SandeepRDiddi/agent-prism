@@ -1098,9 +1098,9 @@ const server = createServer(async (req, res) => {
             messages: [{
               role: "user",
               content: `You are a prompt engineering expert. Evaluate the following AI prompt and return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
-{"score":7,"weakness":"one concise sentence about what is weak","rewrite":"the improved prompt text"}
+{"score":7,"weakness":"one concise sentence about what is weak","rewrite":"the improved prompt text","tokenSavingsPct":25}
 
-Score 1-10 where 10 is perfect. Weakness: what's missing or vague. Rewrite: make it specific, context-rich, output-directing.
+Score 1-10 where 10 is perfect. Weakness: what is missing or vague. Rewrite: make it specific, context-rich, output-directing so the model needs fewer tokens to respond well. tokenSavingsPct: integer 0-60 estimating how many fewer input tokens the rewrite needs vs the original (tighter phrasing = higher savings).
 
 Prompt to evaluate:
 ${prompt}`
@@ -1121,6 +1121,38 @@ ${prompt}`
       } catch (err) {
         return sendJson(res, 502, { error: err.message });
       }
+    }
+
+    if (req.method === "POST" && req.url === "/api/advisor/apply") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const { runId, originalPrompt, rewrite, tokensIn, runsPerMonth, tokenSavingsPct, costUsdPerRun } = body;
+      const savingsPct = Math.min(Math.max(Number(tokenSavingsPct) || 0, 0), 60);
+      const monthlyRuns = Math.max(Number(runsPerMonth) || 1, 1);
+      const tokensSavedPerRun = Math.round((Number(tokensIn) || 0) * savingsPct / 100);
+      const costPerToken = (Number(costUsdPerRun) || 0) / Math.max(Number(tokensIn) || 1, 1);
+      const estimatedMonthlySavingsUsd = parseFloat((tokensSavedPerRun * costPerToken * monthlyRuns).toFixed(4));
+      const COMMISSION_RATE = 0.15;
+      const commissionUsd = parseFloat((estimatedMonthlySavingsUsd * COMMISSION_RATE).toFixed(4));
+      await logAuditEvent(auth.tenant.id, {
+        actor: auth.tenant.name || auth.tenant.id,
+        action: "Advisor Rewrite Applied",
+        resource: "Run",
+        details: {
+          runId,
+          tokenSavingsPct: savingsPct,
+          tokensSavedPerRun,
+          estimatedMonthlySavingsUsd,
+          commissionUsd,
+          commissionRate: COMMISSION_RATE,
+          originalPromptLength: (originalPrompt || "").length,
+          rewriteLength: (rewrite || "").length
+        },
+        ip
+      });
+      return sendJson(res, 200, { status: "applied", estimatedMonthlySavingsUsd });
     }
 
     if (req.method === "GET" && req.url === "/api/leaks") {
