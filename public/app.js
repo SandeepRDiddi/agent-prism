@@ -517,6 +517,7 @@ async function renderAdvisorView() {
     `;
 
     let doneCount = 0;
+    let totalMonthlySavingsAgg = 0;
     const progressEl = () => document.getElementById("advisor-progress");
     const applyRegistry = new Map(); // cardIdx → applyFn
 
@@ -562,14 +563,19 @@ async function renderAdvisorView() {
         const tokensOut = run.tokensOut || 0;
         const costUsdPerRun = run.costUsd || 0;
         const tokensSaved = Math.round(tokensIn * savingsPct / 100);
-        // Use actual cost if available; fall back to haiku pricing (~$0.25/1M input tokens)
         const costPerToken = tokensIn > 0 && costUsdPerRun > 0
           ? costUsdPerRun / tokensIn
           : 0.00000025;
         const costPerRunNow = tokensIn * costPerToken;
         const costPerRunAfter = (tokensIn - tokensSaved) * costPerToken;
-        // Assume enterprise: each agent runs ~500×/month minimum
-        const monthlyRuns = Math.max((dashboardState?.headlineMetrics?.totalRuns || 1) * 500, 500);
+        // Workflow-based enterprise monthly volumes (realistic per-agent run rates)
+        const WORKFLOW_MONTHLY_RUNS = {
+          "customer-ops": 150000, "ci-cd-pipeline": 15000, "analytics-pipeline": 60000,
+          "finance-reporting": 6000, "strategic-analysis": 3000, "legal-review": 4500,
+          "sales-ops": 90000, "hr-ops": 45000, "it-ops": 180000,
+          "market-intelligence": 6000, "compliance": 12000, "research": 3000,
+        };
+        const monthlyRuns = WORKFLOW_MONTHLY_RUNS[run.workflow] || 30000;
         const monthlyCostNow = parseFloat((costPerRunNow * monthlyRuns).toFixed(2));
         const monthlyCostAfter = parseFloat((costPerRunAfter * monthlyRuns).toFixed(2));
         const monthlySavings = parseFloat((monthlyCostNow - monthlyCostAfter).toFixed(2));
@@ -609,7 +615,11 @@ async function renderAdvisorView() {
               </div>
               <div>
                 <div style="font-size:0.68rem;opacity:0.55;margin-bottom:2px;">Monthly savings</div>
-                <div style="font-weight:800;color:#4ec;font-size:1.15rem;">$${monthlySavings.toFixed(2)} <span style="font-size:0.75rem;opacity:0.6;">/month</span></div>
+                <div style="font-weight:800;color:#4ec;font-size:1.15rem;">$${monthlySavings.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0})} <span style="font-size:0.75rem;opacity:0.6;">/month</span></div>
+              </div>
+              <div>
+                <div style="font-size:0.68rem;opacity:0.55;margin-bottom:2px;">Annual savings</div>
+                <div style="font-weight:800;color:#4ec;font-size:1.15rem;">$${(monthlySavings*12).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0})} <span style="font-size:0.75rem;opacity:0.6;">/year</span></div>
               </div>
             </div>
           </div>` : ""}
@@ -662,6 +672,7 @@ async function renderAdvisorView() {
 
         document.getElementById(cardKey)?.addEventListener("click", () => applyRewrite("click"));
         applyRegistry.set(i, applyRewrite);
+        totalMonthlySavingsAgg += monthlySavings;
 
         // detect copy from rewrite box — charge commission even without clicking Apply
         const rewriteBox = cardEl.querySelector(".advisor-rewrite-text");
@@ -678,6 +689,29 @@ async function renderAdvisorView() {
     } // end batch loop
     const p = progressEl();
     if (p) p.textContent = `Done — ${runs.length} prompts analyzed. Showing top ${PAGE_SIZE}.`;
+
+    // Aggregate savings banner
+    if (totalMonthlySavingsAgg > 0) {
+      const annualSavings = totalMonthlySavingsAgg * 12;
+      const bannerEl = document.createElement("div");
+      bannerEl.style.cssText = "margin-bottom:20px;padding:20px 24px;border-radius:12px;background:linear-gradient(135deg,rgba(78,204,163,0.12),rgba(122,145,255,0.08));border:1px solid rgba(78,204,163,0.3);display:flex;align-items:center;gap:20px;flex-wrap:wrap;";
+      bannerEl.innerHTML = `
+        <div style="font-size:2rem;">💰</div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;color:#4ec;margin-bottom:4px;">Total optimization opportunity identified</div>
+          <div style="font-size:1.8rem;font-weight:900;color:#4ec;line-height:1.1;">$${annualSavings.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0})}<span style="font-size:1rem;opacity:0.6;font-weight:400;">/year</span></div>
+          <div style="font-size:0.82rem;color:#aab;margin-top:4px;">$${totalMonthlySavingsAgg.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0})}/month · across ${runs.length} agent workflows · from prompt engineering alone</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:0.68rem;opacity:0.5;margin-bottom:2px;">Without infra changes</div>
+          <div style="font-size:1.1rem;font-weight:700;color:#f9c74f;">Zero engineering effort</div>
+          <div style="font-size:0.75rem;color:#aab;margin-top:2px;">Apply rewrites below to capture savings</div>
+        </div>
+      `;
+      const cardsContainer = document.getElementById("advisor-cards");
+      cardsContainer.insertBefore(bannerEl, cardsContainer.firstChild);
+    }
+
     // show Apply All now that all cards are rendered
     const aab = document.getElementById("advisor-apply-all-btn");
     if (aab && applyRegistry.size > 0) aab.style.display = "inline-block";
