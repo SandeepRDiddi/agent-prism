@@ -461,18 +461,20 @@ function renderActivityView() {
               <span>${new Date(item.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
               <strong>${item.agentName}</strong>
               <em class="feed-level ${levelClass(item.level)}">${item.level.toUpperCase()}</em>
-              <p>${item.message}</p>
-              <span class="row-chevron" style="margin-left:auto;opacity:0.5;font-size:0.75rem;">▼</span>
+              <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                <p style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${item.message}</p>
+                <span class="row-chevron" style="flex-shrink:0;opacity:0.5;font-size:0.7rem;">▼</span>
+              </div>
             </div>
-            <div class="feed-detail-panel" id="feed-detail-${i}" style="display:none;padding:10px 16px 12px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.07);font-size:0.8rem;color:#aab;">
-              <div style="display:flex;gap:24px;flex-wrap:wrap;">
-                <span><strong>Model</strong>&nbsp;${item.model || "—"}</span>
-                <span><strong>Provider</strong>&nbsp;${item.provider || "—"}</span>
-                <span><strong>Tokens in</strong>&nbsp;${(item.tokensIn || 0).toLocaleString()}</span>
-                <span><strong>Tokens out</strong>&nbsp;${(item.tokensOut || 0).toLocaleString()}</span>
-                <span><strong>Latency</strong>&nbsp;${item.latencyMs ? item.latencyMs + "ms" : "—"}</span>
-                <span><strong>Cost</strong>&nbsp;$${(item.costUsd || 0).toFixed(4)}</span>
-                <span><strong>Workflow</strong>&nbsp;${item.workflow || "—"}</span>
+            <div class="feed-detail-panel" id="feed-detail-${i}" style="display:none;padding:10px 16px 14px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.07);font-size:0.8rem;color:#aab;margin-top:-4px;">
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 20px;">
+                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Model</div><div style="color:#e0e4ff;font-weight:500;">${item.model || "—"}</div></div>
+                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Provider</div><div style="color:#e0e4ff;font-weight:500;">${item.provider || "—"}</div></div>
+                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Tokens in</div><div style="color:#7af;font-weight:600;">${(item.tokensIn || 0).toLocaleString()}</div></div>
+                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Tokens out</div><div style="color:#7af;font-weight:600;">${(item.tokensOut || 0).toLocaleString()}</div></div>
+                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Latency</div><div style="color:#e0e4ff;font-weight:500;">${item.latencyMs ? item.latencyMs + "ms" : "—"}</div></div>
+                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Cost</div><div style="color:#4ec;">${"$" + (item.costUsd || 0).toFixed(4)}</div></div>
+                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Workflow</div><div style="color:#e0e4ff;font-weight:500;">${item.workflow || "—"}</div></div>
               </div>
             </div>
           `).join("") : `<p class="muted">No activity yet.</p>`}
