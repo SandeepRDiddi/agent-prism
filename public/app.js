@@ -467,6 +467,7 @@ async function renderAdvisorView() {
         </div>
         <div id="advisor-key-row" style="display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
           <button id="advisor-run-btn" style="padding:8px 18px;border-radius:6px;background:#7a91ff;color:#0a0b14;font-weight:700;border:none;cursor:pointer;font-size:0.85rem;">Analyze prompts</button>
+          <button id="advisor-apply-all-btn" style="display:none;padding:8px 18px;border-radius:6px;background:#4ec;color:#0a0b14;font-weight:700;border:none;cursor:pointer;font-size:0.85rem;">✓ Apply All Rewrites</button>
         </div>
         <div id="advisor-cards" style="display:grid;gap:14px;"></div>
       </article>
@@ -511,6 +512,17 @@ async function renderAdvisorView() {
 
     let doneCount = 0;
     const progressEl = () => document.getElementById("advisor-progress");
+    const applyRegistry = new Map(); // cardIdx → applyFn
+
+    // Wire Apply All once analysis is done
+    const applyAllBtn = document.getElementById("advisor-apply-all-btn");
+    applyAllBtn?.addEventListener("click", async () => {
+      applyAllBtn.textContent = "Applying all…";
+      applyAllBtn.disabled = true;
+      for (const [, fn] of applyRegistry) { try { await fn("click"); } catch {} }
+      applyAllBtn.textContent = "✓ All Applied";
+      applyAllBtn.style.background = "#4ec";
+    });
 
     for (let batchStart = 0; batchStart < runs.length; batchStart += BATCH_SIZE) {
       const batch = runs.slice(batchStart, batchStart + BATCH_SIZE);
@@ -535,12 +547,20 @@ async function renderAdvisorView() {
         const score = analysis.score || 0;
         const savingsPct = Math.min(Math.max(Number(analysis.tokenSavingsPct) || 0, 0), 60);
         const tokensIn = run.tokensIn || 0;
+        const tokensOut = run.tokensOut || 0;
         const costUsdPerRun = run.costUsd || 0;
         const tokensSaved = Math.round(tokensIn * savingsPct / 100);
-        // estimate monthly runs from 30-day window (1 run seen = assume at least 1/day for demo)
-        const monthlyRuns = Math.max(dashboardState?.headlineMetrics?.totalRuns || 1, 1);
-        const costPerToken = tokensIn > 0 ? costUsdPerRun / tokensIn : 0;
-        const monthlySavings = parseFloat((tokensSaved * costPerToken * monthlyRuns).toFixed(4));
+        // Use actual cost if available; fall back to haiku pricing (~$0.25/1M input tokens)
+        const costPerToken = tokensIn > 0 && costUsdPerRun > 0
+          ? costUsdPerRun / tokensIn
+          : 0.00000025;
+        const costPerRunNow = tokensIn * costPerToken;
+        const costPerRunAfter = (tokensIn - tokensSaved) * costPerToken;
+        // Assume enterprise: each agent runs ~500×/month minimum
+        const monthlyRuns = Math.max((dashboardState?.headlineMetrics?.totalRuns || 1) * 500, 500);
+        const monthlyCostNow = parseFloat((costPerRunNow * monthlyRuns).toFixed(2));
+        const monthlyCostAfter = parseFloat((costPerRunAfter * monthlyRuns).toFixed(2));
+        const monthlySavings = parseFloat((monthlyCostNow - monthlyCostAfter).toFixed(2));
         const barW = Math.round(score * 10);
         const scoreColor = score >= 8 ? "#4ec" : score >= 5 ? "#f9c74f" : "#f87";
         const cardKey = `advisor-apply-${i}`;
@@ -560,12 +580,25 @@ async function renderAdvisorView() {
           </div>
 
           ${savingsPct > 0 ? `
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;border-radius:8px;background:rgba(122,145,255,0.07);border:1px solid rgba(122,145,255,0.2);">
-            <span style="font-size:1.2rem;">💡</span>
-            <div>
-              <span style="font-weight:700;color:#7a91ff;">~${savingsPct}% fewer input tokens</span>
-              <span style="color:#aab;font-size:0.85rem;"> · saves ~${tokensSaved} tokens/run</span>
-              ${monthlySavings > 0 ? `<span style="color:#4ec;font-size:0.85rem;font-weight:600;"> · ~$${monthlySavings}/month at your volume</span>` : ""}
+          <div style="margin-bottom:14px;padding:12px 16px;border-radius:8px;background:rgba(122,145,255,0.07);border:1px solid rgba(122,145,255,0.2);">
+            <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#7a91ff;margin-bottom:8px;">💡 Apply this rewrite and save</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;">
+              <div>
+                <div style="font-size:0.68rem;opacity:0.55;margin-bottom:2px;">Tokens saved / run</div>
+                <div style="font-weight:700;color:#e0e4ff;font-size:1rem;">${tokensSaved.toLocaleString()} tokens <span style="font-size:0.78rem;color:#7a91ff;">(${savingsPct}% less)</span></div>
+              </div>
+              <div>
+                <div style="font-size:0.68rem;opacity:0.55;margin-bottom:2px;">Cost per run: now → after</div>
+                <div style="font-weight:700;font-size:1rem;"><span style="color:#f87;text-decoration:line-through;">$${costPerRunNow.toFixed(4)}</span> <span style="color:#4ec;">→ $${costPerRunAfter.toFixed(4)}</span></div>
+              </div>
+              <div>
+                <div style="font-size:0.68rem;opacity:0.55;margin-bottom:2px;">Est. monthly runs</div>
+                <div style="font-weight:700;color:#e0e4ff;font-size:1rem;">${monthlyRuns.toLocaleString()}</div>
+              </div>
+              <div>
+                <div style="font-size:0.68rem;opacity:0.55;margin-bottom:2px;">Monthly savings</div>
+                <div style="font-weight:800;color:#4ec;font-size:1.15rem;">$${monthlySavings.toFixed(2)} <span style="font-size:0.75rem;opacity:0.6;">/month</span></div>
+              </div>
             </div>
           </div>` : ""}
 
@@ -616,6 +649,7 @@ async function renderAdvisorView() {
         };
 
         document.getElementById(cardKey)?.addEventListener("click", () => applyRewrite("click"));
+        applyRegistry.set(i, applyRewrite);
 
         // detect copy from rewrite box — charge commission even without clicking Apply
         const rewriteBox = cardEl.querySelector(".advisor-rewrite-text");
@@ -632,6 +666,9 @@ async function renderAdvisorView() {
     } // end batch loop
     const p = progressEl();
     if (p) p.textContent = `Done — ${runs.length} prompts analyzed. Showing top ${PAGE_SIZE}.`;
+    // show Apply All now that all cards are rendered
+    const aab = document.getElementById("advisor-apply-all-btn");
+    if (aab && applyRegistry.size > 0) aab.style.display = "inline-block";
   });
 }
 
