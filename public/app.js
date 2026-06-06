@@ -1636,14 +1636,19 @@ function renderSelectedAgent(agent) {
 
   const logs = (agent.latestRun.breadcrumbs || [])
     .map(
-      (entry, index) => `
+      (entry, index) => {
+        const text = typeof entry === "string"
+          ? entry
+          : entry.message || entry.value || JSON.stringify(entry);
+        return `
         <div class="log-row">
           <div class="feed-time">${new Date(new Date(agent.latestRun.startTime).getTime() + index * 15000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</div>
           <div class="feed-level ${levelClass(index % 4 === 0 ? "info" : index % 4 === 1 ? "tool" : index % 4 === 2 ? "warn" : "success")}">${index % 4 === 0 ? "INFO" : index % 4 === 1 ? "TOOL" : index % 4 === 2 ? "WARN" : "DONE"}</div>
           <div class="feed-agent">${agent.agentName}</div>
-          <div>${entry}</div>
+          <div>${text}</div>
         </div>
-      `
+      `;
+      }
     )
     .join("");
 

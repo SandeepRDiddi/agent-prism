@@ -530,23 +530,28 @@ export function buildDashboardSnapshot(runs) {
     .flatMap((run) => {
       const crumbs = run.breadcrumbs || [];
       if (crumbs.length > 0) {
-        return crumbs.map((breadcrumb, index) => ({
-          time: new Date(new Date(run.startTime).getTime() + index * 15000).toISOString(),
-          agentName: run.agentName,
-          level:
-            run.status === "failed"
-              ? "error"
-              : breadcrumb.toLowerCase().includes("retry")
-                ? "warn"
-                : breadcrumb.toLowerCase().includes("fetched") ||
-                    breadcrumb.toLowerCase().includes("parsed") ||
-                    breadcrumb.toLowerCase().includes("loaded")
-                  ? "info"
-                  : run.status === "success"
-                    ? "success"
-                    : "tool",
-          message: breadcrumb
-        }));
+        return crumbs.map((breadcrumb, index) => {
+          const text = typeof breadcrumb === "string"
+            ? breadcrumb
+            : breadcrumb.message || breadcrumb.value || JSON.stringify(breadcrumb);
+          return {
+            time: new Date(new Date(run.startTime).getTime() + index * 15000).toISOString(),
+            agentName: run.agentName,
+            level:
+              run.status === "failed"
+                ? "error"
+                : text.toLowerCase().includes("retry")
+                  ? "warn"
+                  : text.toLowerCase().includes("fetched") ||
+                      text.toLowerCase().includes("parsed") ||
+                      text.toLowerCase().includes("loaded")
+                    ? "info"
+                    : run.status === "success"
+                      ? "success"
+                      : "tool",
+            message: text
+          };
+        });
       }
       const totalTokens = (run.tokensIn || 0) + (run.tokensOut || 0);
       const events = [
