@@ -1325,13 +1325,16 @@ function renderModelFitnessPanel(mismatches) {
         <span>Agent</span>
         <span>Task</span>
         <span>Model used</span>
-        <span>Status</span>
+        <span>Issue</span>
         <span>Switch to</span>
-        <span>Cost</span>
+        <span title="Cost of this run using the wrong model — switching recovers this spend">Wasted $</span>
       </div>
       ${mismatches.slice(0, 12).map(m => {
         const shortModel = (m.model || "").replace(/claude-/,"").replace(/-20\d{6}$/,"");
         const shortRec   = (m.recommendedModel || "").replace(/claude-/,"").replace(/-20\d{6}$/,"");
+        const issueLabel = m.fitness === "mismatch"
+          ? '<span class="leak-badge leak-badge--high" title="Wrong model tier — quality or reliability at risk">mismatch</span>'
+          : '<span class="leak-badge leak-badge--medium" title="Overkill model — pay less for same output">overspend</span>';
         return `
       <div class="leak-row fitness-row">
         <div class="leak-agent">
@@ -1340,14 +1343,21 @@ function renderModelFitnessPanel(mismatches) {
         </div>
         <span class="muted">${taskLabel[m.taskType] || m.taskType}</span>
         <code class="model-chip">${escapeHtml(shortModel)}</code>
-        <span class="leak-badge ${fitnessBadgeClass[m.fitness] || "leak-badge--low"}">${m.fitness}</span>
+        ${issueLabel}
         <code class="model-chip model-chip--rec">${escapeHtml(shortRec)}</code>
-        <span class="leak-cost ${m.fitness === "mismatch" ? "red" : "amber"}">$${(m.costUsd || 0).toFixed(4)}</span>
+        <span class="leak-cost ${m.fitness === "mismatch" ? "red" : "amber"}" title="Recover this by switching to the recommended model">$${(m.costUsd || 0).toFixed(4)}</span>
       </div>`}).join("")}
     </div>
     <div class="leak-summary">
-      Switching to recommended models saves: <strong class="green">$${mismatches.reduce((s, m) => s + (m.costUsd || 0), 0).toFixed(4)}</strong> on these runs
-      &nbsp;·&nbsp; ${mismatches.length} run${mismatches.length !== 1 ? "s" : ""} flagged across all providers
+      ${(() => {
+        const suboptimal = mismatches.filter(m => m.fitness === "suboptimal");
+        const mismatch   = mismatches.filter(m => m.fitness === "mismatch");
+        const wastedUsd  = suboptimal.reduce((s, m) => s + (m.costUsd || 0), 0);
+        const parts = [];
+        if (suboptimal.length) parts.push(`<strong class="green">Save $${wastedUsd.toFixed(4)}</strong> by downgrading ${suboptimal.length} overspend run${suboptimal.length !== 1 ? "s" : ""} to cheaper models`);
+        if (mismatch.length)   parts.push(`<strong class="red">${mismatch.length} quality risk${mismatch.length !== 1 ? "s" : ""}</strong> — upgrade to avoid failures`);
+        return parts.join(" &nbsp;·&nbsp; ") || "Switch models to recover spend";
+      })()}
     </div>
   </article>`;
 }
