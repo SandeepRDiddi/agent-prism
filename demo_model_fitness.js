@@ -84,9 +84,10 @@ async function ensureSetup() {
     process.exit(1);
   }
   const keyData = await keyRes.json();
-  PRISM_KEY = keyData.key || keyData.apiKey?.key;
-  if (!PRISM_KEY) {
-    console.error(red("❌  No key in response:"), JSON.stringify(keyData));
+  // response shape: { tenant, apiKey: "acp_plaintext", key: { id, prefix, ... } }
+  PRISM_KEY = typeof keyData.apiKey === "string" ? keyData.apiKey : keyData.key?.plainText;
+  if (!PRISM_KEY || typeof PRISM_KEY !== "string") {
+    console.error(red("❌  Could not extract key from response:"), JSON.stringify(keyData));
     process.exit(1);
   }
   console.log(green(`✓  API key: ${PRISM_KEY.slice(0, 16)}...`));
