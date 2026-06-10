@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { computeControlScore, classifyHealth, summarizeStatus, average } from "./scoring.js";
+import { scoreFitness, getModelRecommendation } from "./model-classifier.js";
 
 const samplePath = join(process.cwd(), "data", "sample-runs.json");
 
@@ -51,6 +52,31 @@ export function detectCostLeaks(runs) {
             : "Review prompt quality and handoff logic."
     }))
     .sort((left, right) => right.costUsd - left.costUsd);
+}
+
+export function detectModelMismatches(runs) {
+  const mismatches = [];
+  for (const run of runs) {
+    if (!run.model || run.model === "unknown") continue;
+    const provider = (run.provider || "").toLowerCase().includes("openai") ? "openai" : "anthropic";
+    const { fitness, penalty, recommendedModel } = getModelRecommendation(run.model, run.taskType || "general", provider);
+    if (fitness === "mismatch" || fitness === "suboptimal") {
+      mismatches.push({
+        id: run.id,
+        agentName: run.agentName,
+        model: run.model,
+        taskType: run.taskType,
+        fitness,
+        penalty,
+        recommendedModel,
+        costUsd: run.costUsd,
+        tokensIn: run.tokensIn,
+        provider: run.provider,
+        startTime: run.startTime
+      });
+    }
+  }
+  return mismatches.sort((a, b) => b.costUsd - a.costUsd);
 }
 
 function buildTokenEfficiency(enrichedRuns) {

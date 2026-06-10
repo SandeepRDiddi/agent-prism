@@ -2,7 +2,8 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDashboardSnapshot, detectCostLeaks } from "./src/store.js";
+import { buildDashboardSnapshot, detectCostLeaks, detectModelMismatches } from "./src/store.js";
+import { classifyTask, getModelRecommendation, scrubPii } from "./src/model-classifier.js";
 import { config } from "./src/config.js";
 import { generateAiAdvisor, callLlm } from "./src/ai-advisor.js";
 import { createId } from "./src/auth.js";
@@ -34,7 +35,10 @@ import {
   logAuditEvent,
   listAuditLogs,
   getPromptAnalysis,
-  savePromptAnalysis
+  savePromptAnalysis,
+  savePromptCapture,
+  listPromptCaptures,
+  getModelFitnessStats
 } from "./src/saas-store.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -834,7 +838,13 @@ const server = createServer(async (req, res) => {
         });
       }
 
-      // 4. Forward the request to Anthropic securely
+      // 4. Pre-flight: classify task type and advise on model fitness
+      const messages = body.messages || [];
+      const toolCount = Array.isArray(body.tools) ? body.tools.length : 0;
+      const taskType = classifyTask(messages, { toolCount });
+      const { fitness, penalty, recommendedModel } = getModelRecommendation(body.model || "unknown", taskType, "anthropic");
+
+      // 5. Forward the request to Anthropic securely
       const startTime = Date.now();
       try {
         const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
@@ -849,14 +859,13 @@ const server = createServer(async (req, res) => {
 
         const anthropicData = await anthropicRes.json();
         const endTime = Date.now();
+        const latencyMs = endTime - startTime;
 
-        // 5. Automatically log the telemetry if successful
+        // 6. Automatically log the telemetry if successful
         if (anthropicRes.ok) {
           const runId = createId("run");
-          // Calculate cost based on tokens
           const inputTokens = anthropicData.usage?.input_tokens || 0;
           const outputTokens = anthropicData.usage?.output_tokens || 0;
-          // Haiku pricing as a default fallback
           const costUsd = (inputTokens * 0.25 / 1000000) + (outputTokens * 1.25 / 1000000);
 
           const run = {
@@ -864,18 +873,18 @@ const server = createServer(async (req, res) => {
             agentName: "Gateway Proxy Agent",
             provider: "anthropic",
             model: body.model || "unknown",
-            taskType: "proxy_request",
+            taskType,
             status: "success",
             startTime: new Date(startTime).toISOString(),
             endTime: new Date(endTime).toISOString(),
-            latencyMs: endTime - startTime,
+            latencyMs,
             tokensIn: inputTokens,
             tokensOut: outputTokens,
             costUsd,
             budgetUsd: 0.05,
             autonomyLevel: 0,
             retryCount: 0,
-            toolCalls: 0,
+            toolCalls: toolCount,
             policyViolations: 0,
             userSatisfaction: null,
             environment: "development",
@@ -884,10 +893,43 @@ const server = createServer(async (req, res) => {
           };
 
           await upsertTenantRuns(auth.tenant.id, [run]);
+
+          // Async prompt capture — non-blocking, errors swallowed to never affect gateway latency
+          const captureEnabled = process.env.PROMPT_CAPTURE_ENABLED !== "false";
+          const scrub = process.env.PROMPT_CAPTURE_SCRUB_PII !== "false";
+          if (captureEnabled) {
+            const samplingRate = parseFloat(process.env.PROMPT_CAPTURE_SAMPLING_RATE || "1.0");
+            if (Math.random() <= samplingRate) {
+              const capturedMessages = scrub ? scrubPii(messages) : messages;
+              savePromptCapture(auth.tenant.id, {
+                id: createId("cap"),
+                runId,
+                provider: "anthropic",
+                model: body.model || "unknown",
+                taskType,
+                messages: capturedMessages,
+                response: { content: anthropicData.content, usage: anthropicData.usage },
+                tokensIn: inputTokens,
+                tokensOut: outputTokens,
+                costUsd,
+                latencyMs,
+                modelFitness: fitness,
+                recommendedModel,
+                piiScrubbed: scrub,
+                createdAt: new Date().toISOString()
+              }).catch(() => {});
+            }
+          }
         }
 
-        // 6. Return the exact response back to the SDK
+        // 7. Return the exact response with model advisory headers
         setSecurityHeaders(res);
+        res.setHeader("X-Agent-Prism-Task-Type", taskType);
+        res.setHeader("X-Agent-Prism-Model-Fitness", fitness);
+        if (fitness === "mismatch" || fitness === "suboptimal") {
+          res.setHeader("X-Agent-Prism-Recommended-Model", recommendedModel);
+          res.setHeader("X-Agent-Prism-Fitness-Penalty", String(penalty));
+        }
         res.writeHead(anthropicRes.status, { "Content-Type": "application/json" });
         res.end(JSON.stringify(anthropicData));
         return;
@@ -913,6 +955,11 @@ const server = createServer(async (req, res) => {
         });
       }
 
+      const oaiRespMessages = Array.isArray(body.input) ? body.input : (body.messages || []);
+      const oaiRespToolCount = Array.isArray(body.tools) ? body.tools.length : 0;
+      const oaiRespTaskType = classifyTask(oaiRespMessages, { toolCount: oaiRespToolCount });
+      const oaiRespFitness = getModelRecommendation(body.model || "unknown", oaiRespTaskType, "openai");
+
       const startTime = Date.now();
       try {
         const openAiRes = await fetch("https://api.openai.com/v1/responses", {
@@ -926,27 +973,30 @@ const server = createServer(async (req, res) => {
 
         const openAiData = await openAiRes.json();
         const endTime = Date.now();
+        const latencyMs = endTime - startTime;
 
         if (openAiRes.ok) {
           const inputTokens = openAiData.usage?.input_tokens || 0;
           const outputTokens = openAiData.usage?.output_tokens || 0;
+          const costUsd = estimateOpenAiCost({ inputTokens, outputTokens });
+          const runId = createId("run");
           const run = {
-            id: createId("run"),
+            id: runId,
             agentName: "OpenAI Reasoning Agent",
             provider: "OpenAI",
             model: body.model || openAiData.model || "unknown",
-            taskType: "security-review",
+            taskType: oaiRespTaskType,
             status: "success",
             startTime: new Date(startTime).toISOString(),
             endTime: new Date(endTime).toISOString(),
-            latencyMs: endTime - startTime,
+            latencyMs,
             tokensIn: inputTokens,
             tokensOut: outputTokens,
-            costUsd: estimateOpenAiCost({ inputTokens, outputTokens }),
+            costUsd,
             budgetUsd: Number(process.env.OPENAI_DEMO_BUDGET_USD || 0.05),
             autonomyLevel: 4,
             retryCount: 0,
-            toolCalls: Array.isArray(body.tools) ? body.tools.length : 0,
+            toolCalls: oaiRespToolCount,
             policyViolations: 0,
             userSatisfaction: 4,
             environment: "production",
@@ -958,9 +1008,39 @@ const server = createServer(async (req, res) => {
           };
 
           await upsertTenantRuns(auth.tenant.id, [run]);
+
+          const captureEnabled = process.env.PROMPT_CAPTURE_ENABLED !== "false";
+          if (captureEnabled) {
+            const samplingRate = parseFloat(process.env.PROMPT_CAPTURE_SAMPLING_RATE || "1.0");
+            if (Math.random() <= samplingRate) {
+              const scrub = process.env.PROMPT_CAPTURE_SCRUB_PII !== "false";
+              savePromptCapture(auth.tenant.id, {
+                id: createId("cap"),
+                runId,
+                provider: "openai",
+                model: body.model || openAiData.model || "unknown",
+                taskType: oaiRespTaskType,
+                messages: scrub ? scrubPii(oaiRespMessages) : oaiRespMessages,
+                response: { output: openAiData.output, usage: openAiData.usage },
+                tokensIn: inputTokens,
+                tokensOut: outputTokens,
+                costUsd,
+                latencyMs,
+                modelFitness: oaiRespFitness.fitness,
+                recommendedModel: oaiRespFitness.recommendedModel,
+                piiScrubbed: scrub !== false,
+                createdAt: new Date().toISOString()
+              }).catch(() => {});
+            }
+          }
         }
 
         setSecurityHeaders(res);
+        res.setHeader("X-Agent-Prism-Task-Type", oaiRespTaskType);
+        res.setHeader("X-Agent-Prism-Model-Fitness", oaiRespFitness.fitness);
+        if (oaiRespFitness.fitness === "mismatch" || oaiRespFitness.fitness === "suboptimal") {
+          res.setHeader("X-Agent-Prism-Recommended-Model", oaiRespFitness.recommendedModel);
+        }
         res.writeHead(openAiRes.status, { "Content-Type": contentTypes[".json"] });
         res.end(JSON.stringify(openAiData));
         return;
@@ -987,6 +1067,11 @@ const server = createServer(async (req, res) => {
         });
       }
 
+      const chatMessages = body.messages || [];
+      const chatToolCount = Array.isArray(body.tools) ? body.tools.length : 0;
+      const chatTaskType = classifyTask(chatMessages, { toolCount: chatToolCount });
+      const chatFitness = getModelRecommendation(body.model || "unknown", chatTaskType, "openai");
+
       const startTime = Date.now();
       try {
         const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -1000,27 +1085,30 @@ const server = createServer(async (req, res) => {
 
         const openAiData = await openAiRes.json();
         const endTime = Date.now();
+        const latencyMs = endTime - startTime;
 
         if (openAiRes.ok) {
           const inputTokens = openAiData.usage?.prompt_tokens || 0;
           const outputTokens = openAiData.usage?.completion_tokens || 0;
+          const costUsd = estimateOpenAiCost({ inputTokens, outputTokens });
+          const runId = createId("run");
           const run = {
-            id: createId("run"),
+            id: runId,
             agentName: "OpenAI Chat Agent",
             provider: "OpenAI",
             model: body.model || openAiData.model || "unknown",
-            taskType: body.messages?.[0]?.content?.slice(0, 40) || "chat",
+            taskType: chatTaskType,
             status: "success",
             startTime: new Date(startTime).toISOString(),
             endTime: new Date(endTime).toISOString(),
-            latencyMs: endTime - startTime,
+            latencyMs,
             tokensIn: inputTokens,
             tokensOut: outputTokens,
-            costUsd: estimateOpenAiCost({ inputTokens, outputTokens }),
+            costUsd,
             budgetUsd: Number(process.env.OPENAI_DEMO_BUDGET_USD || 0.05),
             autonomyLevel: 3,
             retryCount: 0,
-            toolCalls: Array.isArray(body.tools) ? body.tools.length : 0,
+            toolCalls: chatToolCount,
             policyViolations: 0,
             userSatisfaction: 4,
             environment: "production",
@@ -1028,9 +1116,39 @@ const server = createServer(async (req, res) => {
             team: "engineering"
           };
           await upsertTenantRuns(auth.tenant.id, [run]);
+
+          const captureEnabled = process.env.PROMPT_CAPTURE_ENABLED !== "false";
+          if (captureEnabled) {
+            const samplingRate = parseFloat(process.env.PROMPT_CAPTURE_SAMPLING_RATE || "1.0");
+            if (Math.random() <= samplingRate) {
+              const scrub = process.env.PROMPT_CAPTURE_SCRUB_PII !== "false";
+              savePromptCapture(auth.tenant.id, {
+                id: createId("cap"),
+                runId,
+                provider: "openai",
+                model: body.model || openAiData.model || "unknown",
+                taskType: chatTaskType,
+                messages: scrub ? scrubPii(chatMessages) : chatMessages,
+                response: { choices: openAiData.choices, usage: openAiData.usage },
+                tokensIn: inputTokens,
+                tokensOut: outputTokens,
+                costUsd,
+                latencyMs,
+                modelFitness: chatFitness.fitness,
+                recommendedModel: chatFitness.recommendedModel,
+                piiScrubbed: scrub !== false,
+                createdAt: new Date().toISOString()
+              }).catch(() => {});
+            }
+          }
         }
 
         setSecurityHeaders(res);
+        res.setHeader("X-Agent-Prism-Task-Type", chatTaskType);
+        res.setHeader("X-Agent-Prism-Model-Fitness", chatFitness.fitness);
+        if (chatFitness.fitness === "mismatch" || chatFitness.fitness === "suboptimal") {
+          res.setHeader("X-Agent-Prism-Recommended-Model", chatFitness.recommendedModel);
+        }
         res.writeHead(openAiRes.status, { "Content-Type": contentTypes[".json"] });
         res.end(JSON.stringify(openAiData));
         return;
@@ -1046,10 +1164,12 @@ const server = createServer(async (req, res) => {
       }
       const context = await listTenantContext(auth.tenant.id);
       const snapshot = buildDashboardSnapshot(context.runs);
+      const modelMismatches = detectModelMismatches(context.runs);
       return sendJson(res, 200, {
         ...snapshot,
         tenant: context.tenant,
-        runs: context.runs
+        runs: context.runs,
+        modelMismatches
       });
     }
 
@@ -1155,6 +1275,53 @@ ${prompt}`;
       }
       const context = await listTenantContext(auth.tenant.id);
       return sendJson(res, 200, { leaks: detectCostLeaks(context.runs) });
+    }
+
+    if (req.method === "GET" && req.url.startsWith("/api/captures")) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+
+      const url = new URL(req.url, "http://localhost");
+      const format = url.searchParams.get("format") || "json";
+      const limit = Math.min(parseInt(url.searchParams.get("limit") || "100", 10), 1000);
+      const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+      const taskType = url.searchParams.get("task_type") || undefined;
+      const model = url.searchParams.get("model") || undefined;
+
+      const result = await listPromptCaptures(auth.tenant.id, { limit, offset, taskType, model });
+
+      if (format === "jsonl") {
+        setSecurityHeaders(res);
+        res.writeHead(200, {
+          "Content-Type": "application/x-ndjson",
+          "Content-Disposition": 'attachment; filename="captures.jsonl"'
+        });
+        for (const capture of result.captures) {
+          res.write(JSON.stringify({
+            id: capture.id,
+            model: capture.model,
+            task_type: capture.taskType,
+            messages: capture.messages,
+            response: capture.response,
+            tokens_in: capture.tokensIn,
+            tokens_out: capture.tokensOut,
+            model_fitness: capture.modelFitness,
+            created_at: capture.createdAt
+          }) + "\n");
+        }
+        res.end();
+        return;
+      }
+
+      return sendJson(res, 200, { captures: result.captures, total: result.total, limit, offset });
+    }
+
+    if (req.method === "GET" && req.url === "/api/model-fitness") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+
+      const stats = await getModelFitnessStats(auth.tenant.id);
+      return sendJson(res, 200, stats);
     }
 
     if (req.method === "GET" && req.url === "/api/tenant") {

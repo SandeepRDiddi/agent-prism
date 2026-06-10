@@ -152,3 +152,18 @@ export async function listPromptAnalyses(tenantId) {
   const backend = await getBackend();
   return backend.listPromptAnalyses ? backend.listPromptAnalyses(tenantId) : [];
 }
+
+export async function savePromptCapture(tenantId, capture) {
+  const backend = await getBackend();
+  return backend.savePromptCapture ? backend.savePromptCapture(tenantId, capture) : null;
+}
+
+export async function listPromptCaptures(tenantId, opts) {
+  const backend = await getBackend();
+  return backend.listPromptCaptures ? backend.listPromptCaptures(tenantId, opts) : { captures: [], total: 0 };
+}
+
+export async function getModelFitnessStats(tenantId) {
+  const backend = await getBackend();
+  return backend.getModelFitnessStats ? backend.getModelFitnessStats(tenantId) : { fitnessBreakdown: [], topTaskModelPairs: [] };
+}

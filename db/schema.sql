@@ -105,3 +105,26 @@ CREATE TABLE dashboard_sessions (
 
 CREATE INDEX idx_dashboard_sessions_token ON dashboard_sessions (token_hash);
 CREATE INDEX idx_dashboard_sessions_tenant ON dashboard_sessions (tenant_id);
+
+CREATE TABLE prompt_captures (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  run_id TEXT,
+  provider TEXT NOT NULL DEFAULT 'unknown',
+  model TEXT NOT NULL DEFAULT 'unknown',
+  task_type TEXT NOT NULL DEFAULT 'general',
+  messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+  response JSONB NOT NULL DEFAULT '{}'::jsonb,
+  tokens_in INTEGER NOT NULL DEFAULT 0,
+  tokens_out INTEGER NOT NULL DEFAULT 0,
+  cost_usd NUMERIC(12,4) NOT NULL DEFAULT 0,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  model_fitness TEXT NOT NULL DEFAULT 'unknown',
+  recommended_model TEXT NOT NULL DEFAULT '',
+  pii_scrubbed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_prompt_captures_tenant_time ON prompt_captures (tenant_id, created_at DESC);
+CREATE INDEX idx_prompt_captures_model ON prompt_captures (tenant_id, model);
+CREATE INDEX idx_prompt_captures_task ON prompt_captures (tenant_id, task_type);

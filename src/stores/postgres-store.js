@@ -590,7 +590,7 @@ export async function listAuditLogs(tenantId) {
     "select * from audit_logs where tenant_id = $1 order by timestamp desc limit 100",
     [tenantId]
   );
-  
+
   return result.rows.map(row => ({
     id: row.id,
     tenantId: row.tenant_id,
@@ -601,4 +601,79 @@ export async function listAuditLogs(tenantId) {
     details: row.details,
     ip: row.ip_address
   }));
+}
+
+export async function savePromptCapture(tenantId, capture) {
+  const pool = await getPool();
+  await pool.query(
+    `insert into prompt_captures (
+      id, tenant_id, run_id, provider, model, task_type,
+      messages, response, tokens_in, tokens_out, cost_usd, latency_ms,
+      model_fitness, recommended_model, pii_scrubbed, created_at
+    ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    [
+      capture.id, tenantId, capture.runId || null, capture.provider, capture.model,
+      capture.taskType, JSON.stringify(capture.messages), JSON.stringify(capture.response),
+      capture.tokensIn, capture.tokensOut, capture.costUsd, capture.latencyMs,
+      capture.modelFitness, capture.recommendedModel, capture.piiScrubbed,
+      capture.createdAt || now()
+    ]
+  );
+  return capture;
+}
+
+export async function listPromptCaptures(tenantId, { limit = 100, offset = 0, taskType, model } = {}) {
+  const pool = await getPool();
+  const conditions = ["tenant_id = $1"];
+  const params = [tenantId];
+  let p = 2;
+
+  if (taskType) { conditions.push(`task_type = $${p++}`); params.push(taskType); }
+  if (model)    { conditions.push(`model = $${p++}`);     params.push(model); }
+
+  params.push(limit, offset);
+  const result = await pool.query(
+    `select * from prompt_captures where ${conditions.join(" and ")}
+     order by created_at desc limit $${p} offset $${p + 1}`,
+    params
+  );
+
+  const countResult = await pool.query(
+    `select count(*)::int as total from prompt_captures where ${conditions.slice(0, p - 2).join(" and ")}`,
+    params.slice(0, p - 2)
+  );
+
+  return {
+    captures: result.rows.map(r => ({
+      id: r.id, tenantId: r.tenant_id, runId: r.run_id,
+      provider: r.provider, model: r.model, taskType: r.task_type,
+      messages: r.messages, response: r.response,
+      tokensIn: r.tokens_in, tokensOut: r.tokens_out,
+      costUsd: Number(r.cost_usd), latencyMs: r.latency_ms,
+      modelFitness: r.model_fitness, recommendedModel: r.recommended_model,
+      piiScrubbed: r.pii_scrubbed, createdAt: r.created_at?.toISOString?.() || r.created_at
+    })),
+    total: countResult.rows[0]?.total || 0
+  };
+}
+
+export async function getModelFitnessStats(tenantId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    `select model_fitness, count(*)::int as count, round(avg(cost_usd)::numeric, 4) as avg_cost
+     from prompt_captures where tenant_id = $1
+     group by model_fitness`,
+    [tenantId]
+  );
+  const taskResult = await pool.query(
+    `select task_type, model, count(*)::int as count,
+            sum(case when model_fitness = 'mismatch' then 1 else 0 end)::int as mismatches
+     from prompt_captures where tenant_id = $1
+     group by task_type, model order by count desc limit 20`,
+    [tenantId]
+  );
+  return {
+    fitnessBreakdown: result.rows,
+    topTaskModelPairs: taskResult.rows
+  };
 }

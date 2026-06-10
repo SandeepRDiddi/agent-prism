@@ -1296,12 +1296,66 @@ function renderPromptBurnPanel(efficiency) {
   `;
 }
 
+function renderModelFitnessPanel(mismatches) {
+  if (!mismatches || mismatches.length === 0) {
+    return `
+    <article class="panel wide-panel">
+      <div class="panel-title">
+        <p class="eyebrow">Model Fitness</p>
+        <h2>All runs using optimal models</h2>
+      </div>
+      <div class="leak-empty">
+        <span class="leak-empty-icon">&#10003;</span>
+        <p>No model mismatches detected. Every run matches the recommended tier for its task type.</p>
+      </div>
+    </article>`;
+  }
+
+  const fitnessBadgeClass = { mismatch: "leak-badge--high", suboptimal: "leak-badge--medium" };
+  const taskLabel = { code: "Code", reasoning: "Reasoning", summarization: "Summarize", creative: "Creative", data: "Data", multi_tool: "Multi-tool", simple_qa: "Simple Q&A", general: "General" };
+
+  return `
+  <article class="panel wide-panel">
+    <div class="panel-title">
+      <p class="eyebrow">Model Fitness</p>
+      <h2>${mismatches.length} run${mismatches.length !== 1 ? "s" : ""} using wrong model tier</h2>
+    </div>
+    <div class="leak-table">
+      <div class="leak-table-head">
+        <span>Agent</span>
+        <span>Task detected</span>
+        <span>Model used</span>
+        <span>Status</span>
+        <span>Recommended</span>
+        <span>Cost</span>
+      </div>
+      ${mismatches.slice(0, 12).map(m => `
+      <div class="leak-row">
+        <div class="leak-agent">
+          <strong>${escapeHtml(m.agentName)}</strong>
+          <span>${escapeHtml(m.provider || "")}</span>
+        </div>
+        <span class="muted">${taskLabel[m.taskType] || m.taskType}</span>
+        <code style="font-size:0.75rem">${escapeHtml(m.model)}</code>
+        <span class="leak-badge ${fitnessBadgeClass[m.fitness] || "leak-badge--low"}">${m.fitness}</span>
+        <code style="font-size:0.75rem;color:var(--green)">${escapeHtml(m.recommendedModel)}</code>
+        <span class="leak-cost ${m.fitness === "mismatch" ? "red" : "amber"}">$${(m.costUsd || 0).toFixed(4)}</span>
+      </div>`).join("")}
+    </div>
+    <div class="leak-summary">
+      Total spend on mismatched runs: <strong class="amber">$${mismatches.reduce((s, m) => s + (m.costUsd || 0), 0).toFixed(4)}</strong>
+      &nbsp;·&nbsp; Switch to recommended model to reduce cost and improve quality
+    </div>
+  </article>`;
+}
+
 function renderTokenCoachView() {
   const efficiency = dashboardState.tokenEfficiency || {};
   const suggestions = efficiency.suggestions || [];
   const topAgents = efficiency.topAgents || [];
   const hotspots = efficiency.workflowHotspots || [];
   const leaks = (dashboardState.costLeaks || []).slice(0, 8);
+  const modelMismatches = (dashboardState.modelMismatches || []).slice(0, 20);
   const ml = dashboardState.mlAnalytics || null;
   const score = efficiency.efficiencyScore ?? null;
   const scoreColor = score === null ? "muted" : score >= 80 ? "green" : score >= 60 ? "amber" : "red";
@@ -1423,6 +1477,8 @@ function renderTokenCoachView() {
         </div>
         `}
       </article>
+
+      ${renderModelFitnessPanel(modelMismatches)}
 
       ${savingsBanners.length ? savingsBanners.map(b => {
         const safeKey = encodeURIComponent(b.title);

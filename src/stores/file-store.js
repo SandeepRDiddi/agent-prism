@@ -16,7 +16,8 @@ const emptyState = {
   sessions: [],
   dashboardSessions: [],
   auditLogs: [],
-  promptAnalyses: []
+  promptAnalyses: [],
+  promptCaptures: []
 };
 
 function now() {
@@ -498,4 +499,51 @@ export async function savePromptAnalysis(tenantId, runId, promptHash, analysis) 
 export async function listPromptAnalyses(tenantId) {
   const state = await readState();
   return (state.promptAnalyses || []).filter(a => a.tenantId === tenantId);
+}
+
+export async function savePromptCapture(tenantId, capture) {
+  const state = await readState();
+  if (!state.promptCaptures) state.promptCaptures = [];
+  state.promptCaptures.push({ ...capture, tenantId });
+  // Keep last 10k captures in file store to avoid unbounded growth
+  if (state.promptCaptures.length > 10000) {
+    state.promptCaptures = state.promptCaptures.slice(-10000);
+  }
+  await writeState(state);
+  return capture;
+}
+
+export async function listPromptCaptures(tenantId, { limit = 100, offset = 0, taskType, model } = {}) {
+  const state = await readState();
+  let captures = (state.promptCaptures || []).filter(c => c.tenantId === tenantId);
+  if (taskType) captures = captures.filter(c => c.taskType === taskType);
+  if (model)    captures = captures.filter(c => c.model === model);
+  captures = captures.slice().reverse(); // newest first
+  return { captures: captures.slice(offset, offset + limit), total: captures.length };
+}
+
+export async function getModelFitnessStats(tenantId) {
+  const state = await readState();
+  const captures = (state.promptCaptures || []).filter(c => c.tenantId === tenantId);
+
+  const fitnessBreakdown = Object.entries(
+    captures.reduce((acc, c) => {
+      const f = c.modelFitness || "unknown";
+      if (!acc[f]) acc[f] = { model_fitness: f, count: 0, total_cost: 0 };
+      acc[f].count++;
+      acc[f].total_cost += Number(c.costUsd || 0);
+      return acc;
+    }, {})
+  ).map(([, v]) => ({ model_fitness: v.model_fitness, count: v.count, avg_cost: v.count ? (v.total_cost / v.count).toFixed(4) : 0 }));
+
+  const pairMap = {};
+  for (const c of captures) {
+    const key = `${c.taskType}|${c.model}`;
+    if (!pairMap[key]) pairMap[key] = { task_type: c.taskType, model: c.model, count: 0, mismatches: 0 };
+    pairMap[key].count++;
+    if (c.modelFitness === "mismatch") pairMap[key].mismatches++;
+  }
+  const topTaskModelPairs = Object.values(pairMap).sort((a, b) => b.count - a.count).slice(0, 20);
+
+  return { fitnessBreakdown, topTaskModelPairs };
 }
