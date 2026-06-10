@@ -1843,21 +1843,34 @@ const response = await fetch("${window.location.origin}/v1/messages", {
           <p class="eyebrow">Access Keys</p>
           <h2>Workspace credentials</h2>
         </div>
-        <form id="create-key-form" class="inline-admin-form">
-          <input name="name" placeholder="Key name — e.g. Production agent" value="Demo agent key" />
-          <button type="submit">Create key</button>
-        </form>
+        <div class="inline-admin-form-row">
+          <form id="create-key-form" class="inline-admin-form">
+            <input name="name" placeholder="Key name — e.g. Production agent" value="Demo agent key" />
+            <button type="submit">Create key</button>
+          </form>
+          ${tenantApiKeys.filter(k => k.status !== "active").length > 0
+            ? `<button id="revoke-all-button" class="ghost danger-ghost">Revoke all inactive</button>`
+            : ""}
+        </div>
         <p id="new-key-output" class="secret-output" hidden></p>
         <div class="admin-list">
           ${tenantApiKeys.length ? tenantApiKeys.map((key) => {
             const isCurrentKey = key.prefix === currentKeyPrefix;
+            const isRevoked = key.status !== "active";
             return `
-            <div class="admin-row">
+            <div class="admin-row ${isRevoked ? "admin-row--revoked" : ""}">
               <div>
-                <strong>${key.name}</strong>
-                <span>${key.status === "active" ? "Active" : "Revoked"}${isCurrentKey ? " · this session" : ""} · last used ${formatDate(key.lastUsedAt)}</span>
+                <strong>${escapeHtml(key.name)}</strong>
+                <span class="${isRevoked ? "muted" : ""}">
+                  ${isRevoked ? '<span class="leak-badge leak-badge--high">Revoked</span>' : '<span class="leak-badge leak-badge--low">Active</span>'}
+                  ${isCurrentKey ? " · this session" : ""} · created ${formatDate(key.createdAt)} · last used ${formatDate(key.lastUsedAt)}
+                </span>
               </div>
-              <button class="ghost revoke-key-button" data-key-id="${key.id}" ${key.status !== "active" || isCurrentKey ? "disabled" : ""}>${isCurrentKey ? "In use" : "Revoke"}</button>
+              <div class="key-actions">
+                ${!isRevoked && !isCurrentKey ? `<button class="ghost revoke-key-button" data-key-id="${key.id}">Revoke</button>` : ""}
+                ${isCurrentKey ? `<span class="muted">In use</span>` : ""}
+                ${isRevoked ? `<button class="ghost danger-ghost delete-key-button" data-key-id="${key.id}" data-key-name="${escapeHtml(key.name)}">Delete</button>` : ""}
+              </div>
             </div>
           `}).join("") : `<p class="muted">No access keys yet.</p>`}
         </div>
@@ -1869,9 +1882,12 @@ const response = await fetch("${window.location.origin}/v1/messages", {
           <h2>Activity log</h2>
         </div>
         <div class="admin-actions">
-          <button id="export-audit-button" type="button">Download activity report</button>
+          <button id="export-audit-button" type="button">Download CSV</button>
         </div>
-        <p class="muted">Reports are scoped to this workspace and never include API secrets or full keys.</p>
+        <p class="muted" style="margin-bottom:12px">Scoped to this workspace. Never includes full API secrets. For long-term retention use <code>STORAGE_BACKEND=postgres</code>.</p>
+        <div id="audit-log-table-wrap" class="audit-log-wrap">
+          <p class="muted">Loading activity log…</p>
+        </div>
       </article>
     </section>
   `;
@@ -1897,6 +1913,13 @@ const response = await fetch("${window.location.origin}/v1/messages", {
   document.querySelectorAll(".revoke-key-button").forEach((button) => {
     button.addEventListener("click", () => revokeTenantKey(button.dataset.keyId));
   });
+  document.querySelectorAll(".delete-key-button").forEach((button) => {
+    button.addEventListener("click", () => deleteTenantKey(button.dataset.keyId, button.dataset.keyName));
+  });
+  if (document.querySelector("#revoke-all-button")) {
+    document.querySelector("#revoke-all-button").addEventListener("click", revokeAllInactiveKeys);
+  }
+  loadAuditLogTable();
   document.querySelectorAll(".connector-form").forEach((form) => {
     form.addEventListener("submit", connectCatalogSource);
   });
@@ -2304,6 +2327,74 @@ async function testCatalogSource(provider) {
       button.textContent = originalLabel;
     }
     renderCurrentView();
+  }
+}
+
+async function deleteTenantKey(keyId, keyName) {
+  if (!confirm(`Permanently delete key "${keyName}"? This cannot be undone.`)) return;
+  adminActionMessage = "";
+  try {
+    await request(`/api/tenant/api-keys/${encodeURIComponent(keyId)}/permanent`, { method: "DELETE" });
+    adminActionMessage = `Key "${keyName}" permanently deleted.`;
+    await loadTenantSummary();
+    await loadDashboard();
+    currentView = "admin";
+    renderCurrentView();
+  } catch (error) {
+    adminActionMessage = error.message;
+    renderCurrentView();
+  }
+}
+
+async function revokeAllInactiveKeys() {
+  if (!confirm("Revoke all non-active keys? Active keys in use will not be affected.")) return;
+  adminActionMessage = "";
+  try {
+    const { keys } = await request("/api/tenant/api-keys");
+    const inactive = (keys || []).filter((k) => k.status !== "active");
+    await Promise.all(inactive.map((k) => request(`/api/tenant/api-keys/${encodeURIComponent(k.id)}`, { method: "DELETE" })));
+    adminActionMessage = `${inactive.length} key${inactive.length !== 1 ? "s" : ""} revoked.`;
+    await loadTenantSummary();
+    await loadDashboard();
+    currentView = "admin";
+    renderCurrentView();
+  } catch (error) {
+    adminActionMessage = error.message;
+    renderCurrentView();
+  }
+}
+
+async function loadAuditLogTable() {
+  const wrap = document.querySelector("#audit-log-table-wrap");
+  if (!wrap) return;
+  try {
+    const data = await request("/api/audit");
+    const logs = data.auditLogs || [];
+    if (!logs.length) {
+      wrap.innerHTML = `<p class="muted">No activity recorded yet.</p>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <div class="audit-scroll">
+        <table class="audit-table">
+          <thead><tr>
+            <th>Time</th><th>Actor</th><th>Action</th><th>Resource</th><th>IP</th>
+          </tr></thead>
+          <tbody>
+            ${logs.slice(0, 100).map((log) => `
+              <tr>
+                <td class="muted">${formatDate(log.timestamp)}</td>
+                <td>${escapeHtml(log.actor || "")}</td>
+                <td><strong>${escapeHtml(log.action || "")}</strong></td>
+                <td class="muted">${escapeHtml(log.resource || "")}</td>
+                <td class="muted">${escapeHtml(log.ip || "")}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+        ${logs.length > 100 ? `<p class="muted" style="padding:8px">Showing 100 of ${logs.length} entries. Download CSV for full export.</p>` : ""}
+      </div>`;
+  } catch {
+    wrap.innerHTML = `<p class="muted">Could not load activity log.</p>`;
   }
 }
 

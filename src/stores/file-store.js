@@ -203,6 +203,15 @@ export async function revokeTenantApiKey(tenantId, keyId) {
   };
 }
 
+export async function deleteTenantApiKey(tenantId, keyId) {
+  const state = await readState();
+  const idx = state.apiKeys.findIndex((k) => k.tenantId === tenantId && k.id === keyId);
+  if (idx === -1) return null;
+  const [removed] = state.apiKeys.splice(idx, 1);
+  await writeState(state);
+  return { id: removed.id, name: removed.name, prefix: removed.prefix };
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   if (!apiKeyValue) {
     return null;
@@ -467,6 +476,8 @@ export async function logAuditEvent(tenantId, { actor, action, resource, details
   };
   
   state.auditLogs.push(log);
+  // Keep newest 500 — file store is dev/demo only; use Postgres for long-term retention
+  if (state.auditLogs.length > 500) state.auditLogs = state.auditLogs.slice(-500);
   await writeState(state);
   return log;
 }

@@ -48,6 +48,11 @@ export async function revokeTenantApiKey(tenantId, keyId) {
   return backend.revokeTenantApiKey ? backend.revokeTenantApiKey(tenantId, keyId) : null;
 }
 
+export async function deleteTenantApiKey(tenantId, keyId) {
+  const backend = await getBackend();
+  return backend.deleteTenantApiKey ? backend.deleteTenantApiKey(tenantId, keyId) : null;
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   const backend = await getBackend();
   return backend.authenticateTenantApiKey(apiKeyValue);

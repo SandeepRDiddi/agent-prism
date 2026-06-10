@@ -18,6 +18,7 @@ import {
   createTenantApiKey,
   listTenantApiKeys,
   revokeTenantApiKey,
+  deleteTenantApiKey,
   authenticateUser,
   createDashboardSession,
   authenticateDashboardSession,
@@ -1396,6 +1397,31 @@ ${prompt}`;
       });
 
       return sendJson(res, 200, { key: revoked });
+    }
+
+    if (req.method === "DELETE" && req.url.startsWith("/api/tenant/api-keys/") && req.url.endsWith("/permanent")) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const keyId = decodeURIComponent(req.url.slice("/api/tenant/api-keys/".length, -"/permanent".length));
+
+      if (keyId === auth.apiKey.id) {
+        return sendJson(res, 400, { error: "bad_request", message: "Cannot delete the API key used for this request." });
+      }
+
+      const deleted = await deleteTenantApiKey(auth.tenant.id, keyId);
+      if (!deleted) {
+        return sendJson(res, 404, { error: "not_found", message: "API key not found." });
+      }
+
+      await logAuditEvent(auth.tenant.id, {
+        actor: `Admin (via ${auth.apiKey.prefix})`,
+        action: "Tenant API Key Deleted",
+        resource: deleted.prefix,
+        details: { name: deleted.name },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
+      return sendJson(res, 200, { deleted });
     }
 
     if (req.method === "POST" && req.url === "/api/connectors") {

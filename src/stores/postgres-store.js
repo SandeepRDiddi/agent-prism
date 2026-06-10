@@ -266,6 +266,15 @@ export async function revokeTenantApiKey(tenantId, keyId) {
   };
 }
 
+export async function deleteTenantApiKey(tenantId, keyId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    "delete from api_keys where tenant_id = $1 and id = $2 returning id, name, prefix",
+    [tenantId, keyId]
+  );
+  return result.rows[0] || null;
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   if (!apiKeyValue) {
     return null;

@@ -2610,6 +2610,72 @@ strong.red   { color: #ff7f7f; }
   padding: 12px;
 }
 
+.admin-row--revoked {
+  opacity: 0.6;
+}
+
+.key-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.danger-ghost {
+  color: #f87171 !important;
+  border-color: rgba(248, 113, 113, 0.35) !important;
+}
+
+.danger-ghost:hover {
+  background: rgba(248, 113, 113, 0.1) !important;
+}
+
+.inline-admin-form-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.inline-admin-form-row .inline-admin-form {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.audit-log-wrap {
+  margin-top: 8px;
+}
+
+.audit-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.audit-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  color: #94a3b8;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.audit-table td {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  vertical-align: top;
+}
+
 .admin-pill {
   width: fit-content;
   border-radius: 999px;
