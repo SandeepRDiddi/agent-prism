@@ -2246,6 +2246,29 @@ canvas {
   color: var(--muted);
 }
 
+/* Model Fitness table — 6-column layout, no overflow */
+.fitness-table .leak-table-head,
+.fitness-table .fitness-row {
+  grid-template-columns: 2fr 1fr 1.4fr 1fr 1.4fr 0.8fr;
+}
+
+.model-chip {
+  font-size: 0.72rem;
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  padding: 2px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: block;
+}
+
+.model-chip--rec {
+  color: var(--green);
+  background: rgba(74,222,128,0.08);
+}
+
 .leak-badge {
   display: inline-flex;
   align-items: center;

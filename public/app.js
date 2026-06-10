@@ -1320,31 +1320,34 @@ function renderModelFitnessPanel(mismatches) {
       <p class="eyebrow">Model Fitness</p>
       <h2>${mismatches.length} run${mismatches.length !== 1 ? "s" : ""} using wrong model tier</h2>
     </div>
-    <div class="leak-table">
+    <div class="leak-table fitness-table">
       <div class="leak-table-head">
         <span>Agent</span>
-        <span>Task detected</span>
+        <span>Task</span>
         <span>Model used</span>
         <span>Status</span>
-        <span>Recommended</span>
+        <span>Switch to</span>
         <span>Cost</span>
       </div>
-      ${mismatches.slice(0, 12).map(m => `
-      <div class="leak-row">
+      ${mismatches.slice(0, 12).map(m => {
+        const shortModel = (m.model || "").replace(/claude-/,"").replace(/-20\d{6}$/,"");
+        const shortRec   = (m.recommendedModel || "").replace(/claude-/,"").replace(/-20\d{6}$/,"");
+        return `
+      <div class="leak-row fitness-row">
         <div class="leak-agent">
           <strong>${escapeHtml(m.agentName)}</strong>
           <span>${escapeHtml(m.provider || "")}</span>
         </div>
         <span class="muted">${taskLabel[m.taskType] || m.taskType}</span>
-        <code style="font-size:0.75rem">${escapeHtml(m.model)}</code>
+        <code class="model-chip">${escapeHtml(shortModel)}</code>
         <span class="leak-badge ${fitnessBadgeClass[m.fitness] || "leak-badge--low"}">${m.fitness}</span>
-        <code style="font-size:0.75rem;color:var(--green)">${escapeHtml(m.recommendedModel)}</code>
+        <code class="model-chip model-chip--rec">${escapeHtml(shortRec)}</code>
         <span class="leak-cost ${m.fitness === "mismatch" ? "red" : "amber"}">$${(m.costUsd || 0).toFixed(4)}</span>
-      </div>`).join("")}
+      </div>`}).join("")}
     </div>
     <div class="leak-summary">
-      Total spend on mismatched runs: <strong class="amber">$${mismatches.reduce((s, m) => s + (m.costUsd || 0), 0).toFixed(4)}</strong>
-      &nbsp;·&nbsp; Switch to recommended model to reduce cost and improve quality
+      Switching to recommended models saves: <strong class="green">$${mismatches.reduce((s, m) => s + (m.costUsd || 0), 0).toFixed(4)}</strong> on these runs
+      &nbsp;·&nbsp; ${mismatches.length} run${mismatches.length !== 1 ? "s" : ""} flagged across all providers
     </div>
   </article>`;
 }
@@ -1551,7 +1554,7 @@ function renderTokenCoachView() {
 
                 <div class="coach-apply-row">
                   <button class="coach-apply-btn" onclick="coachApply('${cardId}')">
-                    &#9654; Apply this fix${savingsShort ? " — " + savingsShort : ""}
+                    &#9654; Apply this fix${savingsShort ? " — save " + savingsShort : ""}
                   </button>
                   <p class="coach-apply-note">Applying auto-configures your agent. Making the changes manually above also counts — Token Coach will detect the improvement on your next run.</p>
                 </div>

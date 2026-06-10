@@ -77,7 +77,7 @@ async function ensureSetup() {
     console.log(cyan("▶ Saving Anthropic connector..."));
     const r = await prismFetch("/api/connectors", {
       method: "POST",
-      body: JSON.stringify({ provider: "anthropic", name: "Claude Gateway", mode: "proxy", status: "ready", config: { apiKey: ANTHROPIC_KEY } })
+      body: JSON.stringify({ provider: "anthropic", name: "Claude Gateway", mode: "proxy", apiKey: ANTHROPIC_KEY })
     });
     console.log(r.ok ? green("✓  Anthropic connector saved") : yellow("⚠  Anthropic connector: " + (await r.text()).slice(0, 80)));
   }
@@ -86,7 +86,7 @@ async function ensureSetup() {
     console.log(cyan("▶ Saving OpenAI connector..."));
     const r = await prismFetch("/api/connectors", {
       method: "POST",
-      body: JSON.stringify({ provider: "openai", name: "OpenAI Gateway", mode: "proxy", status: "ready", config: { apiKey: OPENAI_KEY } })
+      body: JSON.stringify({ provider: "openai", name: "OpenAI Gateway", mode: "proxy", apiKey: OPENAI_KEY })
     });
     console.log(r.ok ? green("✓  OpenAI connector saved") : yellow("⚠  OpenAI connector: " + (await r.text()).slice(0, 80)));
   }
