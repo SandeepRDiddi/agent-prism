@@ -1318,23 +1318,23 @@ function renderModelFitnessPanel(mismatches) {
   <article class="panel wide-panel">
     <div class="panel-title">
       <p class="eyebrow">Model Fitness</p>
-      <h2>${mismatches.length} run${mismatches.length !== 1 ? "s" : ""} using wrong model tier</h2>
+      <h2>${mismatches.length} run${mismatches.length !== 1 ? "s" : ""} with model optimization opportunities</h2>
     </div>
     <div class="leak-table fitness-table">
       <div class="leak-table-head">
         <span>Agent</span>
         <span>Task</span>
         <span>Model used</span>
-        <span>Issue</span>
-        <span>Switch to</span>
-        <span title="Cost of this run using the wrong model — switching recovers this spend">Wasted $</span>
+        <span>Opportunity</span>
+        <span>Recommended</span>
+        <span title="Amount recoverable by switching to the recommended model">Recoverable</span>
       </div>
       ${mismatches.slice(0, 12).map(m => {
         const shortModel = (m.model || "").replace(/claude-/,"").replace(/-20\d{6}$/,"");
         const shortRec   = (m.recommendedModel || "").replace(/claude-/,"").replace(/-20\d{6}$/,"");
         const issueLabel = m.fitness === "mismatch"
-          ? '<span class="leak-badge leak-badge--high" title="Wrong model tier — quality or reliability at risk">mismatch</span>'
-          : '<span class="leak-badge leak-badge--medium" title="Overkill model — pay less for same output">overspend</span>';
+          ? '<span class="leak-badge leak-badge--high" title="Under-powered model — quality or reliability at risk">Quality Risk</span>'
+          : '<span class="leak-badge leak-badge--medium" title="Overkill model — same output at lower cost">Overpaying</span>';
         return `
       <div class="leak-row fitness-row">
         <div class="leak-agent">
@@ -1354,8 +1354,8 @@ function renderModelFitnessPanel(mismatches) {
         const mismatch   = mismatches.filter(m => m.fitness === "mismatch");
         const wastedUsd  = suboptimal.reduce((s, m) => s + (m.costUsd || 0), 0);
         const parts = [];
-        if (suboptimal.length) parts.push(`<strong class="green">Save $${wastedUsd.toFixed(4)}</strong> by downgrading ${suboptimal.length} overspend run${suboptimal.length !== 1 ? "s" : ""} to cheaper models`);
-        if (mismatch.length)   parts.push(`<strong class="red">${mismatch.length} quality risk${mismatch.length !== 1 ? "s" : ""}</strong> — upgrade to avoid failures`);
+        if (suboptimal.length) parts.push(`<strong class="green">Recover $${wastedUsd.toFixed(4)}</strong> by switching ${suboptimal.length} run${suboptimal.length !== 1 ? "s" : ""} to right-sized models`);
+        if (mismatch.length)   parts.push(`<strong class="red">${mismatch.length} run${mismatch.length !== 1 ? "s" : ""} at quality risk</strong> — upgrade model to protect outcomes`);
         return parts.join(" &nbsp;·&nbsp; ") || "Switch models to recover spend";
       })()}
     </div>
