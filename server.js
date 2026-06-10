@@ -829,9 +829,9 @@ const server = createServer(async (req, res) => {
 
       // 3. Find the Anthropic Connector for this tenant
       const context = await listTenantContext(auth.tenant.id);
-      const anthropicConnector = context.connectors.find(c => c.provider === "anthropic");
-      
-      if (!anthropicConnector || !anthropicConnector.config.apiKey) {
+      const anthropicConnector = context.connectors.find(c => c.provider === "anthropic" && c.config?.apiKey);
+
+      if (!anthropicConnector) {
         return sendJson(res, 403, { 
           error: "forbidden", 
           message: "No Anthropic API Key configured in your Agent Prism Dashboard." 
@@ -946,7 +946,7 @@ const server = createServer(async (req, res) => {
       if (body === null) return;
 
       const context = await listTenantContext(auth.tenant.id);
-      const openAiConnector = context.connectors.find((c) => c.provider === "openai");
+      const openAiConnector = context.connectors.find((c) => c.provider === "openai" && c.config?.apiKey);
 
       if (!openAiConnector?.config?.apiKey) {
         return sendJson(res, 403, {
@@ -1058,7 +1058,7 @@ const server = createServer(async (req, res) => {
       if (body === null) return;
 
       const context = await listTenantContext(auth.tenant.id);
-      const openAiConnector = context.connectors.find((c) => c.provider === "openai");
+      const openAiConnector = context.connectors.find((c) => c.provider === "openai" && c.config?.apiKey);
 
       if (!openAiConnector?.config?.apiKey) {
         return sendJson(res, 403, {
