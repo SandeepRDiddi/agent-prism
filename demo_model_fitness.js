@@ -116,7 +116,7 @@ async function runClaude(demo) {
     body: JSON.stringify({ model: demo.model, max_tokens: 120, messages: [{ role: "user", content: demo.prompt }] })
   });
   const data = await res.json();
-  if (!res.ok) return { ok: false, error: data.error || data.message || JSON.stringify(data) };
+  if (!res.ok) return { ok: false, error: `HTTP ${res.status} [${data.error || "error"}] ${data.message || JSON.stringify(data)}` };
 
   return {
     ok: true,
@@ -136,7 +136,7 @@ async function runOpenAI(demo) {
     body: JSON.stringify({ model: demo.model, max_tokens: 120, messages: [{ role: "user", content: demo.prompt }] })
   });
   const data = await res.json();
-  if (!res.ok) return { ok: false, error: data.error?.message || data.message || JSON.stringify(data) };
+  if (!res.ok) return { ok: false, error: `HTTP ${res.status} [${data.error?.code || data.error || "error"}] ${data.error?.message || data.message || JSON.stringify(data)}` };
 
   return {
     ok: true,
@@ -181,7 +181,7 @@ function printResult(label, desc, model, provider, result) {
 
 const HAIKU  = "claude-haiku-4-5-20251001";
 const SONNET = "claude-sonnet-4-6";
-const OPUS   = "claude-opus-4-5";
+const OPUS   = "claude-opus-4-8";
 
 const GPT_MINI = "gpt-4o-mini";
 const GPT_4O   = "gpt-4o";

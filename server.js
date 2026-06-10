@@ -870,6 +870,7 @@ const server = createServer(async (req, res) => {
 
           const run = {
             id: runId,
+            source: "claude",
             agentName: "Gateway Proxy Agent",
             provider: "anthropic",
             model: body.model || "unknown",
@@ -934,6 +935,7 @@ const server = createServer(async (req, res) => {
         res.end(JSON.stringify(anthropicData));
         return;
       } catch (err) {
+        console.error("[Claude proxy error]", err.message, err.stack?.split("\n")[1]);
         return sendJson(res, 502, { error: "bad_gateway", message: err.message });
       }
     }
@@ -982,6 +984,7 @@ const server = createServer(async (req, res) => {
           const runId = createId("run");
           const run = {
             id: runId,
+            source: "openai",
             agentName: "OpenAI Reasoning Agent",
             provider: "OpenAI",
             model: body.model || openAiData.model || "unknown",
@@ -1094,6 +1097,7 @@ const server = createServer(async (req, res) => {
           const runId = createId("run");
           const run = {
             id: runId,
+            source: "openai",
             agentName: "OpenAI Chat Agent",
             provider: "OpenAI",
             model: body.model || openAiData.model || "unknown",
