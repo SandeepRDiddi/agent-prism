@@ -113,74 +113,79 @@ async function ensureSetup() {
 
 // ── demo prompts — 10 scenarios covering all task types + fitness states ──────
 
+// Valid Anthropic model IDs (as of 2025)
+const HAIKU  = "claude-haiku-4-5-20251001";   // fast / cheap tier
+const SONNET = "claude-sonnet-4-6";            // balanced tier
+const OPUS   = "claude-opus-4-5";              // powerful tier
+
 const DEMOS = [
   {
     label: "1. Simple Q&A  ➜  haiku  [OPTIMAL]",
     desc:  "Cheap model for trivial question — correct choice",
-    model: "claude-haiku-3-5",
+    model: HAIKU,
     prompt: "What is the capital of France?",
     expect: { task: "simple_qa", fitness: "optimal" }
   },
   {
     label: "2. Simple Q&A  ➜  opus   [SUBOPTIMAL — overkill]",
     desc:  "Most expensive model wasted on a one-word answer",
-    model: "claude-opus-4",
+    model: OPUS,
     prompt: "What does HTTP stand for?",
     expect: { task: "simple_qa", fitness: "suboptimal" }
   },
   {
     label: "3. Code gen    ➜  haiku  [MISMATCH — quality risk]",
     desc:  "Fast/cheap model asked to write production auth code",
-    model: "claude-haiku-3-5",
+    model: HAIKU,
     prompt: "Write a Python function to parse and validate JWT tokens, checking signature, expiry, and audience claims.",
     expect: { task: "code", fitness: "mismatch" }
   },
   {
     label: "4. Code gen    ➜  sonnet [OPTIMAL]",
     desc:  "Balanced model for code — right tier",
-    model: "claude-sonnet-3-7",
+    model: SONNET,
     prompt: "Implement a rate limiter in Node.js using a sliding window algorithm with Redis.",
     expect: { task: "code", fitness: "optimal" }
   },
   {
     label: "5. Complex reasoning  ➜  haiku  [MISMATCH — dangerous]",
     desc:  "Fast model asked to do multi-step legal/risk analysis",
-    model: "claude-haiku-3-5",
+    model: HAIKU,
     prompt: "Analyze the trade-offs between GDPR compliance and product velocity for a B2B SaaS company entering the EU market. Compare the risks, costs, and strategic implications.",
     expect: { task: "reasoning", fitness: "mismatch" }
   },
   {
     label: "6. Complex reasoning  ➜  opus   [OPTIMAL]",
     desc:  "Powerful model for deep analysis — correct choice",
-    model: "claude-opus-4",
+    model: OPUS,
     prompt: "Compare microservices vs monolith architecture for a 10-person startup. Evaluate long-term operational complexity, team cognitive load, and scale-up costs.",
     expect: { task: "reasoning", fitness: "optimal" }
   },
   {
     label: "7. Summarization  ➜  opus   [SUBOPTIMAL — cost waste]",
     desc:  "Expensive model for a task haiku handles perfectly",
-    model: "claude-opus-4",
+    model: OPUS,
     prompt: "Summarize this article in 3 bullet points: AI agents are becoming mainstream in enterprise software. Companies are deploying agents for code review, customer support, and data analysis. The main challenges are cost, reliability, and governance.",
     expect: { task: "summarization", fitness: "suboptimal" }
   },
   {
     label: "8. Summarization  ➜  haiku  [OPTIMAL]",
     desc:  "Fast model for summarization — correct and cheap",
-    model: "claude-haiku-3-5",
+    model: HAIKU,
     prompt: "Give me the key points from this: Enterprise AI budgets are growing 40% YoY. Most companies lack visibility into per-agent cost. Token waste is the biggest controllable cost lever.",
     expect: { task: "summarization", fitness: "optimal" }
   },
   {
     label: "9. Creative writing  ➜  sonnet [OPTIMAL]",
     desc:  "Balanced model for creative content — right tier",
-    model: "claude-sonnet-3-7",
+    model: SONNET,
     prompt: "Write a short product launch email for an AI cost-monitoring SaaS. Make it compelling for a CTO audience, 3 paragraphs.",
     expect: { task: "creative", fitness: "optimal" }
   },
   {
     label: "10. Data / SQL  ➜  haiku  [MISMATCH]",
     desc:  "Cheap model for complex SQL query generation",
-    model: "claude-haiku-3-5",
+    model: HAIKU,
     prompt: "Write a SQL query to calculate month-over-month token cost growth per agent, using a window function with LAG, grouped by provider and workflow. Include a CTE for clarity.",
     expect: { task: "data", fitness: "mismatch" }
   }
@@ -213,6 +218,12 @@ async function runDemo(demo) {
     recommended = res.headers.get("x-agent-prism-recommended-model") || "";
 
     const data = await res.json();
+
+    if (!res.ok) {
+      console.log(`\n${bold(demo.label)}`);
+      console.log(red(`  ❌ HTTP ${res.status}: ${data.error || data.message || JSON.stringify(data)}`));
+      return { ok: false };
+    }
 
     const colorFn = fitnessBadge => (fitnessBadge === "optimal" || fitnessBadge === "good")
       ? green : fitnessBadge === "suboptimal" ? yellow : red;
@@ -248,6 +259,30 @@ async function main() {
   console.log(dim(`  Target: ${PRISM_URL}\n`));
 
   await ensureSetup();
+
+  // pre-flight: verify gateway is live and new code is deployed
+  console.log(cyan("\n▶ Checking gateway health..."));
+  try {
+    const health = await fetch(`${PRISM_URL}/api/health`);
+    const hData = await health.json();
+    console.log(green(`✓  Gateway up — ${JSON.stringify(hData)}`));
+  } catch (e) {
+    console.log(red(`❌  Gateway unreachable: ${e.message}`));
+    process.exit(1);
+  }
+
+  // verify new headers exist by pinging with a dummy call (will fail auth but headers should appear)
+  const probe = await fetch(`${PRISM_URL}/v1/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": PRISM_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: HAIKU, max_tokens: 5, messages: [{ role: "user", content: "ping" }] })
+  });
+  const probeTask = probe.headers.get("x-agent-prism-task-type");
+  if (!probeTask) {
+    console.log(yellow("⚠  x-agent-prism-task-type header missing — Render may still be deploying old code. Wait 2 min and retry."));
+  } else {
+    console.log(green(`✓  Model fitness headers present (task: ${probeTask})`));
+  }
 
   console.log(bold("\n── Running 10 prompts across all task types ──────────\n"));
 
