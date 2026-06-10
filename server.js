@@ -887,8 +887,8 @@ const server = createServer(async (req, res) => {
             retryCount: 0,
             toolCalls: toolCount,
             policyViolations: 0,
-            userSatisfaction: null,
-            environment: "development",
+            userSatisfaction: 0,
+            environment: "production",
             workflow: "gateway",
             team: "engineering"
           };
