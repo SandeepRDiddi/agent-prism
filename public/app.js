@@ -111,6 +111,7 @@ const workspaceShell = `
       <button class="view-tab" data-view="tokens" type="button">Token Coach</button>
       <button class="view-tab" data-view="governance" type="button">Governance</button>
       <button class="view-tab" data-view="advisor" type="button">Prompt Advisor</button>
+      <button class="view-tab" data-view="live-sessions" type="button">&#x25CF; Live Sessions</button>
       <button class="view-tab" data-view="admin" type="button">Admin</button>
     </nav>
     <section class="metrics-grid cockpit-metrics" id="metrics-grid"></section>
@@ -1641,6 +1642,208 @@ function formatDate(value) {
   });
 }
 
+let liveSessionsData = null;
+let liveSessionsTimer = null;
+
+function fmtTokens(n) {
+  if (!n) return "0";
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+  return String(n);
+}
+
+function fmtAgo(ts) {
+  if (!ts) return "—";
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 60) return sec + "s ago";
+  if (sec < 3600) return Math.floor(sec / 60) + "m ago";
+  if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
+  return Math.floor(sec / 86400) + "d ago";
+}
+
+function shortModel(model) {
+  if (!model) return "—";
+  if (model.includes("sonnet")) return "sonnet4.6";
+  if (model.includes("opus")) return "opus4";
+  if (model.includes("haiku")) return "haiku4.5";
+  return model.split("-").slice(-2).join("-");
+}
+
+function shortProject(dir) {
+  if (!dir) return "—";
+  return dir.replace(/^-Users-[^-]+-/, "").replace(/-/g, "/").slice(-24);
+}
+
+function ctxBarHtml(pct) {
+  const cls = pct >= 90 ? "ctx-bar--crit" : pct >= 70 ? "ctx-bar--warn" : "ctx-bar--ok";
+  return `<div class="ctx-bar-wrap"><div class="ctx-bar ${cls}" style="width:${pct}%"></div></div><span class="ctx-pct">${pct}%</span>`;
+}
+
+async function loadLiveSessions() {
+  try {
+    const data = await fetch("/api/local-sessions").then((r) => r.json());
+    liveSessionsData = data;
+    renderLiveSessionsContent();
+  } catch (err) {
+    const el = document.querySelector("#live-sessions-content");
+    if (el) el.innerHTML = `<p class="ls-error">Failed to load: ${escapeHtml(err.message)}</p>`;
+  }
+}
+
+window.killPort = async function (port) {
+  const btn = document.querySelector(`[data-kill-port="${port}"]`);
+  if (btn) { btn.textContent = "Killing…"; btn.disabled = true; }
+  try {
+    const r = await fetch(`/api/local-sessions/kill-port/${port}`, { method: "POST" });
+    const d = await r.json();
+    if (r.ok) {
+      await loadLiveSessions();
+    } else {
+      alert("Kill failed: " + (d.error || "unknown error"));
+      if (btn) { btn.textContent = "Kill"; btn.disabled = false; }
+    }
+  } catch (err) {
+    alert("Kill failed: " + err.message);
+    if (btn) { btn.textContent = "Kill"; btn.disabled = false; }
+  }
+};
+
+function renderLiveSessionsContent() {
+  const el = document.querySelector("#live-sessions-content");
+  if (!el) return;
+
+  const d = liveSessionsData;
+  if (!d) { el.innerHTML = `<p class="ls-loading">Loading…</p>`; return; }
+
+  const { sessions = [], processes = [], ports = [] } = d;
+  const active = sessions.filter((s) => s.status === "active").length;
+  const recent = sessions.filter((s) => s.status === "recent").length;
+
+  const sessionRows = sessions.length === 0
+    ? `<tr><td colspan="8" class="ls-empty">No sessions found in ~/.claude/projects (last 48h)</td></tr>`
+    : sessions.map((s) => {
+        const statusDot = s.status === "active" ? "&#x25CF;" : s.status === "recent" ? "&#x25CB;" : "&#x2219;";
+        const statusCls = `ls-dot--${s.status}`;
+        const totalTok = (s.totalInputTokens || 0) + (s.totalOutputTokens || 0);
+        return `<tr class="ls-row ls-row--${s.status}">
+          <td><span class="ls-dot ${statusCls}">${statusDot}</span></td>
+          <td class="ls-mono ls-sid">${escapeHtml(s.sessionId.slice(0, 8))}</td>
+          <td class="ls-proj" title="${escapeHtml(s.cwd || s.projectDir)}">${escapeHtml(shortProject(s.projectDir))}</td>
+          <td class="ls-summary" title="${escapeHtml(s.summary || '')}">${escapeHtml((s.summary || "").slice(0, 40))}${s.summary && s.summary.length > 40 ? "…" : ""}</td>
+          <td class="ls-right ls-model">${escapeHtml(shortModel(s.model))}</td>
+          <td class="ls-right ls-tok">${fmtTokens(totalTok)}</td>
+          <td class="ls-ctx">${ctxBarHtml(s.contextPct || 0)}</td>
+          <td class="ls-right ls-ago">${fmtAgo(s.lastActivity)}</td>
+        </tr>`;
+      }).join("");
+
+  const procRows = processes.length === 0
+    ? `<tr><td colspan="4" class="ls-empty">No agent processes detected</td></tr>`
+    : processes.map((p) => `<tr>
+        <td class="ls-mono">${escapeHtml(p.pid)}</td>
+        <td class="ls-type-tag">${escapeHtml(p.type)}</td>
+        <td class="ls-right ls-dim">${p.cpu.toFixed(1)}%</td>
+        <td class="ls-cmd" title="${escapeHtml(p.cmd)}">${escapeHtml(p.cmd.slice(0, 50))}</td>
+      </tr>`).join("");
+
+  const portRows = ports.length === 0
+    ? `<tr><td colspan="3" class="ls-empty">No agent ports listening</td></tr>`
+    : ports.filter((p) => p.isAgentPort).map((p) => `<tr>
+        <td class="ls-mono ls-port-num">:${p.port}</td>
+        <td class="ls-dim">${escapeHtml(p.process)} (pid ${escapeHtml(p.pid)})</td>
+        <td><button class="ls-kill-btn" data-kill-port="${p.port}" onclick="killPort(${p.port})">&#x2715; Kill</button></td>
+      </tr>`).join("") || `<tr><td colspan="3" class="ls-empty">No agent ports listening</td></tr>`;
+
+  el.innerHTML = `
+    <div class="ls-stats-bar">
+      <span class="ls-stat"><span class="ls-dot ls-dot--active">&#x25CF;</span> ${active} active</span>
+      <span class="ls-stat"><span class="ls-dot ls-dot--recent">&#x25CB;</span> ${recent} recent</span>
+      <span class="ls-stat ls-dim">${sessions.length} sessions (48h)</span>
+      <span class="ls-stat ls-dim">${processes.length} processes</span>
+      <span class="ls-stat ls-dim">${ports.filter((p) => p.isAgentPort).length} ports</span>
+    </div>
+
+    <div class="ls-panel-grid">
+      <div class="ls-panel ls-panel--sessions">
+        <div class="ls-panel-head">Sessions <span class="ls-panel-sub">token burn &amp; context window</span></div>
+        <div class="ls-table-wrap">
+          <table class="ls-table">
+            <thead><tr>
+              <th></th>
+              <th>ID</th>
+              <th>Project</th>
+              <th>Task</th>
+              <th>Model</th>
+              <th>Tokens</th>
+              <th>Context</th>
+              <th>Last seen</th>
+            </tr></thead>
+            <tbody>${sessionRows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="ls-side-panels">
+        <div class="ls-panel ls-panel--ports">
+          <div class="ls-panel-head">Ports <span class="ls-panel-sub">orphan detection</span></div>
+          <table class="ls-table">
+            <thead><tr><th>Port</th><th>Process</th><th></th></tr></thead>
+            <tbody>${portRows}</tbody>
+          </table>
+        </div>
+
+        <div class="ls-panel ls-panel--procs">
+          <div class="ls-panel-head">Processes <span class="ls-panel-sub">live agent processes</span></div>
+          <table class="ls-table">
+            <thead><tr><th>PID</th><th>Type</th><th>CPU</th><th>Command</th></tr></thead>
+            <tbody>${procRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderLiveSessionsView() {
+  document.querySelector("#view-content").innerHTML = `
+    <section class="tab-stage ls-stage">
+      <div class="ls-header">
+        <div>
+          <h2 class="ls-title">Live Sessions</h2>
+          <p class="ls-subtitle">Claude Code &middot; Codex CLI &middot; OpenCode &mdash; discovered from local process state</p>
+        </div>
+        <div class="ls-header-actions">
+          <label class="ls-auto-label">
+            <input type="checkbox" id="ls-auto-refresh" checked /> auto-refresh 5s
+          </label>
+          <button class="ls-refresh-btn" onclick="loadLiveSessions()">&#x21BA; Refresh</button>
+        </div>
+      </div>
+      <div id="live-sessions-content"><p class="ls-loading">Scanning local processes…</p></div>
+    </section>
+  `;
+
+  document.querySelector("#ls-auto-refresh")?.addEventListener("change", (e) => {
+    if (e.target.checked) {
+      startLiveSessionsPolling();
+    } else {
+      clearInterval(liveSessionsTimer);
+      liveSessionsTimer = null;
+    }
+  });
+
+  loadLiveSessions();
+  startLiveSessionsPolling();
+}
+
+function startLiveSessionsPolling() {
+  clearInterval(liveSessionsTimer);
+  liveSessionsTimer = setInterval(() => {
+    if (currentView === "live-sessions") loadLiveSessions();
+    else { clearInterval(liveSessionsTimer); liveSessionsTimer = null; }
+  }, 5000);
+}
+
 function renderAdminView() {
   const tenant = tenantSummary?.tenant || {};
   const connectors = tenantSummary?.connectors || [];
@@ -1949,12 +2152,17 @@ function renderCurrentView() {
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === currentView);
   });
-  document.querySelector("#metrics-grid").hidden = currentView === "admin";
+  document.querySelector("#metrics-grid").hidden = currentView === "admin" || currentView === "live-sessions";
 
   const workspace = document.querySelector(".workspace");
   if (workspace) {
-    const needsScroll = currentView === "admin" || currentView === "tokens" || currentView === "analytics" || currentView === "governance" || currentView === "activity" || currentView === "advisor";
+    const needsScroll = currentView === "admin" || currentView === "tokens" || currentView === "analytics" || currentView === "governance" || currentView === "activity" || currentView === "advisor" || currentView === "live-sessions";
     workspace.classList.toggle("admin-scroll", needsScroll);
+  }
+
+  if (currentView !== "live-sessions") {
+    clearInterval(liveSessionsTimer);
+    liveSessionsTimer = null;
   }
 
   if (currentView === "activity") {
@@ -1967,6 +2175,8 @@ function renderCurrentView() {
     renderGovernanceView();
   } else if (currentView === "advisor") {
     renderAdvisorView();
+  } else if (currentView === "live-sessions") {
+    renderLiveSessionsView();
   } else if (currentView === "admin") {
     renderAdminView();
   } else {

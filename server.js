@@ -1,7 +1,12 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import os from "node:os";
 import { dirname, extname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const execAsync = promisify(exec);
 import { buildDashboardSnapshot, detectCostLeaks, detectModelMismatches } from "./src/store.js";
 import { classifyTask, getModelRecommendation, scrubPii } from "./src/model-classifier.js";
 import { config } from "./src/config.js";
@@ -557,6 +562,179 @@ async function serveStatic(req, res) {
     sendText(res, 404, "Not found");
   }
 }
+
+// ── Local session / process scanning helpers ──────────────────────────────────
+
+const MODEL_CONTEXT_WINDOWS = {
+  "claude-sonnet-4-6": 200000,
+  "claude-opus-4-8": 200000,
+  "claude-haiku-4-5": 200000,
+  "claude-opus-4-5": 200000,
+  "claude-3-5-sonnet": 200000,
+  "claude-3-5-haiku": 200000,
+  "claude-3-opus": 200000,
+};
+
+function getContextWindow(model) {
+  if (!model) return 200000;
+  for (const [key, val] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
+    if (model.includes(key)) return val;
+  }
+  return 200000;
+}
+
+async function scanLocalSessions() {
+  const claudeDir = join(os.homedir(), ".claude", "projects");
+  const sessions = [];
+  const now = Date.now();
+  const cutoff = now - 48 * 60 * 60 * 1000;
+
+  try {
+    const projectDirs = await readdir(claudeDir);
+    for (const projectDir of projectDirs) {
+      const projectPath = join(claudeDir, projectDir);
+      const projectStat = await stat(projectPath).catch(() => null);
+      if (!projectStat?.isDirectory()) continue;
+
+      const files = await readdir(projectPath).catch(() => []);
+      const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
+
+      for (const file of jsonlFiles) {
+        const filePath = join(projectPath, file);
+        const fileStat = await stat(filePath).catch(() => null);
+        if (!fileStat || fileStat.mtimeMs < cutoff) continue;
+
+        const content = await readFile(filePath, "utf-8").catch(() => "");
+        const lines = content.trim().split("\n").filter(Boolean);
+
+        const session = {
+          sessionId: file.replace(".jsonl", ""),
+          projectDir,
+          model: null,
+          version: null,
+          gitBranch: null,
+          cwd: null,
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalCacheRead: 0,
+          lastContextTokens: 0,
+          turnCount: 0,
+          lastActivity: null,
+          summary: null,
+          agentType: "Claude Code",
+          status: "idle",
+          fileSizeKb: Math.round(fileStat.size / 1024),
+        };
+
+        for (const line of lines) {
+          try {
+            const msg = JSON.parse(line);
+            if (msg.cwd && !session.cwd) session.cwd = msg.cwd;
+            if (msg.gitBranch && !session.gitBranch) session.gitBranch = msg.gitBranch;
+            if (msg.version && !session.version) session.version = msg.version;
+
+            if (msg.type === "assistant" && msg.message?.usage) {
+              const u = msg.message.usage;
+              session.totalInputTokens += u.input_tokens || 0;
+              session.totalOutputTokens += u.output_tokens || 0;
+              session.totalCacheRead += u.cache_read_input_tokens || 0;
+              session.lastContextTokens =
+                (u.cache_read_input_tokens || 0) +
+                (u.input_tokens || 0) +
+                (u.cache_creation_input_tokens || 0);
+              if (!session.model && msg.message.model) session.model = msg.message.model;
+            }
+
+            if (msg.type === "user" && msg.message?.role === "user") {
+              session.turnCount++;
+              if (!session.summary) {
+                const c = msg.message.content;
+                const text = typeof c === "string" ? c : (Array.isArray(c) ? (c.find((x) => x.type === "text")?.text || "") : "");
+                if (text.length > 3) session.summary = text.slice(0, 72);
+              }
+            }
+
+            if (msg.timestamp) {
+              const ts = new Date(msg.timestamp).getTime();
+              if (!session.lastActivity || ts > session.lastActivity) session.lastActivity = ts;
+            }
+          } catch {}
+        }
+
+        if (session.lastActivity) {
+          const ageMins = (now - session.lastActivity) / 60000;
+          session.status = ageMins < 5 ? "active" : ageMins < 60 ? "recent" : "idle";
+        }
+
+        const contextWindow = getContextWindow(session.model);
+        session.contextPct = session.lastContextTokens
+          ? Math.min(100, Math.round((session.lastContextTokens / contextWindow) * 100))
+          : 0;
+
+        sessions.push(session);
+      }
+    }
+  } catch {}
+
+  return sessions.sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+}
+
+async function scanProcesses() {
+  const agentPatterns = [
+    { match: /\bclaude\b/i, type: "Claude Code" },
+    { match: /\bcodex\b/i, type: "Codex CLI" },
+    { match: /\bopencode\b/i, type: "OpenCode" },
+    { match: /\baider\b/i, type: "Aider" },
+    { match: /\bcontinue\b/i, type: "Continue" },
+  ];
+
+  try {
+    const { stdout } = await execAsync("ps aux | grep -E '(claude|codex|opencode|aider)' | grep -v grep 2>/dev/null", { timeout: 5000 });
+    return stdout.trim().split("\n").filter(Boolean).map((line) => {
+      const parts = line.trim().split(/\s+/);
+      const cmd = parts.slice(10).join(" ");
+      let type = "Unknown";
+      for (const p of agentPatterns) {
+        if (p.match.test(cmd)) { type = p.type; break; }
+      }
+      return { pid: parts[1], cpu: parseFloat(parts[2]), mem: parseFloat(parts[3]), cmd: cmd.slice(0, 80), type };
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function scanPorts() {
+  const agentProcPatterns = ["node", "claude", "codex", "opencode", "python", "python3", "deno", "bun", "ollama", "aider"];
+  try {
+    const { stdout } = await execAsync("lsof -i -P -n 2>/dev/null | grep LISTEN", { timeout: 5000 });
+    const seen = new Set();
+    return stdout.trim().split("\n").filter(Boolean).flatMap((line) => {
+      const parts = line.trim().split(/\s+/);
+      const portMatch = (parts[8] || "").match(/:(\d+)$/);
+      if (!portMatch) return [];
+      const port = parseInt(portMatch[1]);
+      if (port < 1024 || seen.has(port)) return [];
+      seen.add(port);
+      const proc = parts[0].toLowerCase();
+      const isAgentPort = agentProcPatterns.some((p) => proc.includes(p));
+      return [{ port, pid: parts[1], process: parts[0], isAgentPort }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function killPort(port) {
+  const { stdout } = await execAsync(`lsof -ti:${parseInt(port)} 2>/dev/null`, { timeout: 5000 });
+  const pids = stdout.trim().split("\n").filter(Boolean);
+  for (const pid of pids) {
+    await execAsync(`kill -9 ${parseInt(pid)}`).catch(() => {});
+  }
+  return pids;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const server = createServer(async (req, res) => {
   inflightCount++;
@@ -1714,6 +1892,27 @@ ${prompt}`;
       const run = normalizeGenericRun(body.payload || body);
       await upsertTenantRuns(auth.tenant.id, [run]);
       return sendJson(res, 201, { status: "ingested", source: "generic" });
+    }
+
+    // ── Local sessions (no auth — local machine only) ─────────────────────────
+
+    if (req.method === "GET" && req.url === "/api/local-sessions") {
+      const [sessions, processes, ports] = await Promise.all([
+        scanLocalSessions(),
+        scanProcesses(),
+        scanPorts(),
+      ]);
+      return sendJson(res, 200, { sessions, processes, ports, ts: Date.now() });
+    }
+
+    if (req.method === "POST" && req.url.startsWith("/api/local-sessions/kill-port/")) {
+      const rawPort = req.url.slice("/api/local-sessions/kill-port/".length);
+      const port = parseInt(rawPort);
+      if (!port || isNaN(port) || port < 1024 || port > 65535) {
+        return sendJson(res, 400, { error: "invalid_port" });
+      }
+      const pids = await killPort(port).catch((err) => { throw new Error(`kill failed: ${err.message}`); });
+      return sendJson(res, 200, { killed: pids, port });
     }
 
     // ── Dashboard page (Basic Auth gate) ─────────────────────────────────────
