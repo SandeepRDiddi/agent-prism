@@ -356,7 +356,7 @@ function renderMetrics(metrics) {
     ["Active Agents", dashboardState.agentProfiles.length, "Connected fleet", "green"],
     ["Success Rate", `${metrics.successRate}%`, `${dashboardState.status.success} completed`, "violet"],
     ["Total Spend", currency(metrics.totalCostUsd), `${metrics.budgetUsedPercent}% of budget`, "amber"],
-    ["Control Score", metrics.averageControlScore, `${Math.round(metrics.averageLatencyMs / 1000)}s avg latency`, "blue"]
+    ["Reliability Score", metrics.averageControlScore, `${Math.round(metrics.averageLatencyMs / 1000)}s avg latency`, "blue"]
   ];
 
   document.querySelector("#metrics-grid").innerHTML = cards
@@ -396,7 +396,7 @@ function renderOverview() {
           <p>${agent ? agent.currentTask : "Connect Claude, OpenAI, Copilot, or a custom agent to start comparing cost, quality, and risk."}</p>
         </div>
         <div class="hero-score">
-          <span>Control Score</span>
+          <span>Reliability Score</span>
           <strong>${dashboardState.headlineMetrics.averageControlScore}</strong>
         </div>
         <div class="hero-strip">
@@ -813,7 +813,7 @@ function renderProviderScorecard(providers) {
   }
 
   const metrics = [
-    { key: "avgScore",       label: "Control Score",      unit: "",     higherBetter: true,  fmt: (v) => v },
+    { key: "avgScore",       label: "Reliability Score",      unit: "",     higherBetter: true,  fmt: (v) => v },
     { key: "successRate",    label: "Success Rate",        unit: "%",    higherBetter: true,  fmt: (v) => v + "%" },
     { key: "avgLatencyMs",   label: "Avg Latency",         unit: "ms",   higherBetter: false, fmt: (v) => v >= 1000 ? (v / 1000).toFixed(1) + "s" : v + "ms" },
     { key: "costPerRun",     label: "Cost per Run",        unit: "$",    higherBetter: false, fmt: (v) => "$" + v.toFixed(4) },
@@ -1681,8 +1681,11 @@ function ctxBarHtml(pct) {
 
 async function loadLiveSessions() {
   try {
-    const data = await fetch("/api/local-sessions").then((r) => r.json());
-    liveSessionsData = data;
+    const [sessionsData, rlData] = await Promise.all([
+      fetch("/api/local-sessions").then((r) => r.json()),
+      fetch("/api/rate-limits").then((r) => r.json()).catch(() => null)
+    ]);
+    liveSessionsData = { ...sessionsData, rateLimit: rlData };
     renderLiveSessionsContent();
   } catch (err) {
     const el = document.querySelector("#live-sessions-content");
@@ -1708,6 +1711,60 @@ window.killPort = async function (port) {
   }
 };
 
+function rlBar(remaining, limit) {
+  if (limit == null || limit === 0) return "";
+  const pct = Math.min(100, Math.round((remaining / limit) * 100));
+  const cls = pct <= 10 ? "ctx-bar--crit" : pct <= 30 ? "ctx-bar--warn" : "ctx-bar--ok";
+  return `<div class="ctx-bar-wrap" style="flex:1"><div class="ctx-bar ${cls}" style="width:${pct}%"></div></div>`;
+}
+
+function rlResetIn(resetTs) {
+  if (!resetTs) return "";
+  const ms = new Date(resetTs).getTime() - Date.now();
+  if (ms < 0) return "reset soon";
+  if (ms < 60000) return `${Math.ceil(ms / 1000)}s`;
+  return `${Math.ceil(ms / 60000)}m`;
+}
+
+function renderRateLimitsPanel(rl) {
+  if (!rl?.anthropic) {
+    return `<div class="ls-panel ls-panel--rl">
+      <div class="ls-panel-head">Rate Limits <span class="ls-panel-sub">Anthropic API</span></div>
+      <p class="ls-empty" style="padding:10px 0">No proxy calls yet — send traffic through<br><code style="font-size:10px">POST /v1/messages</code> to see live quota</p>
+    </div>`;
+  }
+  const a = rl.anthropic;
+  const rows = [
+    ["Requests", a.requestsRemaining, a.requestsLimit, a.requestsReset],
+    ["Tokens/min", a.tokensRemaining, a.tokensLimit, a.tokensReset],
+    ["Input tok", a.inputTokensRemaining, a.inputTokensLimit, a.inputTokensReset],
+    ["Output tok", a.outputTokensRemaining, a.outputTokensLimit, a.outputTokensReset],
+  ].filter(([, rem]) => rem != null);
+
+  const staleMs = Date.now() - (a.capturedAt || 0);
+  const staleLabel = staleMs < 5000 ? "live" : staleMs < 60000 ? `${Math.round(staleMs / 1000)}s ago` : `${Math.round(staleMs / 60000)}m ago`;
+
+  return `<div class="ls-panel ls-panel--rl">
+    <div class="ls-panel-head">Rate Limits <span class="ls-panel-sub">Anthropic &mdash; ${staleLabel}</span></div>
+    <table class="ls-table ls-rl-table">
+      <thead><tr><th>Metric</th><th>Remaining</th><th>Quota</th><th>Resets</th></tr></thead>
+      <tbody>
+        ${rows.map(([label, rem, lim, reset]) => {
+          const pct = lim ? Math.min(100, Math.round((rem / lim) * 100)) : null;
+          const cls = pct != null && pct <= 10 ? "ls-tok" : pct != null && pct <= 30 ? "ls-amber" : "";
+          return `<tr>
+            <td class="ls-dim" style="font-size:11px">${label}</td>
+            <td class="ls-right ${cls}" style="font-size:12px">${fmtTokens(rem)}</td>
+            <td style="padding-left:8px;min-width:80px">${rlBar(rem, lim)}</td>
+            <td class="ls-dim" style="font-size:10px;text-align:right">${rlResetIn(reset)}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    ${a.retryAfter ? `<p class="ls-rl-warn">&#x26A0; Rate limited — retry in ${a.retryAfter}s</p>` : ""}
+  </div>`;
+}
+
 function renderLiveSessionsContent() {
   const el = document.querySelector("#live-sessions-content");
   if (!el) return;
@@ -1715,7 +1772,7 @@ function renderLiveSessionsContent() {
   const d = liveSessionsData;
   if (!d) { el.innerHTML = `<p class="ls-loading">Loading…</p>`; return; }
 
-  const { sessions = [], processes = [], ports = [] } = d;
+  const { sessions = [], processes = [], ports = [], rateLimit } = d;
   const active = sessions.filter((s) => s.status === "active").length;
   const recent = sessions.filter((s) => s.status === "recent").length;
 
@@ -1784,6 +1841,8 @@ function renderLiveSessionsContent() {
       </div>
 
       <div class="ls-side-panels">
+        ${renderRateLimitsPanel(rateLimit)}
+
         <div class="ls-panel ls-panel--ports">
           <div class="ls-panel-head">Ports <span class="ls-panel-sub">orphan detection</span></div>
           <table class="ls-table">

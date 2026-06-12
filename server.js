@@ -563,6 +563,39 @@ async function serveStatic(req, res) {
   }
 }
 
+// ── Rate limit state capture (in-memory, updated on each proxy call) ─────────
+
+const rateLimitState = {
+  anthropic: null,
+  openai: null,
+  updatedAt: null
+};
+
+function captureAnthropicRateLimits(headers) {
+  const h = (name) => headers.get(name);
+  const n = (name) => { const v = h(name); return v != null ? parseInt(v) : null; };
+  const state = {
+    requestsLimit: n("anthropic-ratelimit-requests-limit"),
+    requestsRemaining: n("anthropic-ratelimit-requests-remaining"),
+    requestsReset: h("anthropic-ratelimit-requests-reset"),
+    tokensLimit: n("anthropic-ratelimit-tokens-limit"),
+    tokensRemaining: n("anthropic-ratelimit-tokens-remaining"),
+    tokensReset: h("anthropic-ratelimit-tokens-reset"),
+    inputTokensLimit: n("anthropic-ratelimit-input-tokens-limit"),
+    inputTokensRemaining: n("anthropic-ratelimit-input-tokens-remaining"),
+    inputTokensReset: h("anthropic-ratelimit-input-tokens-reset"),
+    outputTokensLimit: n("anthropic-ratelimit-output-tokens-limit"),
+    outputTokensRemaining: n("anthropic-ratelimit-output-tokens-remaining"),
+    outputTokensReset: h("anthropic-ratelimit-output-tokens-reset"),
+    retryAfter: h("retry-after"),
+    capturedAt: Date.now()
+  };
+  if (state.requestsLimit != null || state.tokensLimit != null) {
+    rateLimitState.anthropic = state;
+    rateLimitState.updatedAt = Date.now();
+  }
+}
+
 // ── Local session / process scanning helpers ──────────────────────────────────
 
 const MODEL_CONTEXT_WINDOWS = {
@@ -1039,6 +1072,8 @@ const server = createServer(async (req, res) => {
         const anthropicData = await anthropicRes.json();
         const endTime = Date.now();
         const latencyMs = endTime - startTime;
+
+        captureAnthropicRateLimits(anthropicRes.headers);
 
         // 6. Automatically log the telemetry if successful
         if (anthropicRes.ok) {
@@ -1892,6 +1927,16 @@ ${prompt}`;
       const run = normalizeGenericRun(body.payload || body);
       await upsertTenantRuns(auth.tenant.id, [run]);
       return sendJson(res, 201, { status: "ingested", source: "generic" });
+    }
+
+    // ── Rate limits (no auth — local observability) ───────────────────────────
+
+    if (req.method === "GET" && req.url === "/api/rate-limits") {
+      return sendJson(res, 200, {
+        anthropic: rateLimitState.anthropic,
+        openai: rateLimitState.openai,
+        updatedAt: rateLimitState.updatedAt
+      });
     }
 
     // ── Local sessions (no auth — local machine only) ─────────────────────────
