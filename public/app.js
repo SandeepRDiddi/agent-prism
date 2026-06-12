@@ -387,22 +387,107 @@ function renderOverview() {
   const topWorkflow = dashboardState.workflowInsights[0];
   const leakCount = dashboardState.costLeaks.length;
 
+  const score = dashboardState.headlineMetrics.averageControlScore;
+  const scoreMetrics = dashboardState.headlineMetrics;
+  const retryRuns = dashboardState.recentRuns.filter((r) => (r.retryCount || 0) > 0).length;
+  const overBudgetRuns = dashboardState.recentRuns.filter((r) => r.costUsd > r.budgetUsd).length;
+  const violationRuns = dashboardState.recentRuns.filter((r) => (r.policyViolations || 0) > 0).length;
+
+  const scoreBand = score >= 85 ? { label: "Strong", cls: "score-band--strong", desc: "Agents performing above benchmark. Safe to scale." }
+    : score >= 70 ? { label: "Stable", cls: "score-band--stable", desc: "Agents operating within acceptable range. Monitor cost efficiency." }
+    : score >= 55 ? { label: "Needs Attention", cls: "score-band--watch", desc: "Some agents underperforming. Review cost leaks before scaling." }
+    : { label: "At Risk", cls: "score-band--crit", desc: "Agent reliability below threshold. Immediate review recommended." };
+
+  const drivers = [
+    {
+      label: "Task Success",
+      value: scoreMetrics.successRate,
+      max: 100,
+      good: scoreMetrics.successRate >= 90,
+      fmt: `${scoreMetrics.successRate}%`
+    },
+    {
+      label: "Budget Efficiency",
+      value: Math.max(0, 100 - Math.max(0, scoreMetrics.budgetUsedPercent - 100)),
+      max: 100,
+      good: scoreMetrics.budgetUsedPercent <= 100,
+      fmt: overBudgetRuns > 0 ? `${overBudgetRuns} over budget` : "On target"
+    },
+    {
+      label: "Response Speed",
+      value: Math.max(0, 100 - Math.round(scoreMetrics.averageLatencyMs / 200)),
+      max: 100,
+      good: scoreMetrics.averageLatencyMs < 8000,
+      fmt: scoreMetrics.averageLatencyMs >= 1000
+        ? `${(scoreMetrics.averageLatencyMs / 1000).toFixed(1)}s avg`
+        : `${scoreMetrics.averageLatencyMs}ms avg`
+    },
+    {
+      label: "Retry Rate",
+      value: Math.max(0, 100 - (retryRuns / Math.max(scoreMetrics.totalRuns, 1)) * 100 * 3),
+      max: 100,
+      good: retryRuns === 0,
+      fmt: retryRuns > 0 ? `${retryRuns} retrying` : "Clean"
+    },
+    {
+      label: "Policy Compliance",
+      value: Math.max(0, 100 - violationRuns * 25),
+      max: 100,
+      good: violationRuns === 0,
+      fmt: violationRuns > 0 ? `${violationRuns} violations` : "Compliant"
+    }
+  ];
+
+  const businessNarrative = (() => {
+    const issues = [];
+    if (overBudgetRuns > 0) issues.push(`${overBudgetRuns} agent run${overBudgetRuns > 1 ? "s" : ""} exceeded budget`);
+    if (retryRuns > 0) issues.push(`${retryRuns} retrying — wasting tokens`);
+    if (leakCount > 0) issues.push(`${leakCount} cost leak${leakCount > 1 ? "s" : ""} detected`);
+    if (violationRuns > 0) issues.push(`${violationRuns} policy violation${violationRuns > 1 ? "s" : ""}`);
+    if (issues.length === 0) return `All ${scoreMetrics.totalRuns} agent runs completed within budget and policy. No action required.`;
+    return `${issues.join(" · ")}. Review Token Coach for optimisation actions.`;
+  })();
+
   document.querySelector("#view-content").innerHTML = `
     <section class="overview-stage">
       <article class="panel hero-agent-card">
-        <div class="hero-copy">
-          <p class="eyebrow">Primary Signal</p>
-          <h2>${agent ? agent.agentName : "No active agent runs yet"}</h2>
-          <p>${agent ? agent.currentTask : "Connect Claude, OpenAI, Copilot, or a custom agent to start comparing cost, quality, and risk."}</p>
+        <div class="hero-top-row">
+          <div class="hero-copy">
+            <p class="eyebrow">Primary Signal</p>
+            <h2>${agent ? escapeHtml(agent.agentName) : "No active agent runs yet"}</h2>
+            <p>${agent ? escapeHtml(agent.currentTask) : "Connect Claude, OpenAI, Copilot, or a custom agent to start comparing cost, quality, and risk."}</p>
+          </div>
+          <div class="hero-score">
+            <span>Reliability Score</span>
+            <strong>${score}</strong>
+            <div class="hero-score-band ${scoreBand.cls}">${scoreBand.label}</div>
+          </div>
         </div>
-        <div class="hero-score">
-          <span>Reliability Score</span>
-          <strong>${dashboardState.headlineMetrics.averageControlScore}</strong>
+
+        <div class="hero-drivers">
+          ${drivers.map((d) => {
+            const pct = Math.min(100, Math.max(0, Math.round(d.value)));
+            const barCls = d.good ? "hd-bar--good" : pct >= 50 ? "hd-bar--warn" : "hd-bar--crit";
+            return `<div class="hero-driver">
+              <div class="hd-label-row">
+                <span class="hd-label">${d.label}</span>
+                <span class="hd-val ${d.good ? "hd-val--good" : "hd-val--warn"}">${d.fmt}</span>
+              </div>
+              <div class="hd-track"><div class="hd-bar ${barCls}" style="width:${pct}%"></div></div>
+            </div>`;
+          }).join("")}
         </div>
+
+        <div class="hero-narrative ${scoreBand.cls}">
+          <span class="hero-narrative-icon">${score >= 70 ? "&#x2714;" : "&#x26A0;"}</span>
+          <span>${businessNarrative}</span>
+        </div>
+
         <div class="hero-strip">
           <div><span>Status</span><strong>${agent ? agent.status : "Waiting"}</strong></div>
           <div><span>Workflow</span><strong>${agent ? agent.workflow : "Not started"}</strong></div>
           <div><span>Spend</span><strong>${currency(dashboardState.headlineMetrics.totalCostUsd)}</strong></div>
+          <div><span>Total Runs</span><strong>${scoreMetrics.totalRuns}</strong></div>
         </div>
       </article>
 
