@@ -1719,6 +1719,84 @@ window.killPort = async function (port) {
   }
 };
 
+function renderLiveStatsPanel(stats) {
+  const {
+    machinesOnline = null, machinesTotal = null,
+    activeSessions, totalSessions,
+    totalTokens, contextCritical, contextWarning,
+    orphanPorts, trackedSpend = null
+  } = stats;
+
+  const hasMachines = machinesTotal != null;
+  const healthScore = (() => {
+    let score = 100;
+    score -= contextCritical * 18;
+    score -= contextWarning * 8;
+    score -= orphanPorts * 5;
+    if (hasMachines && machinesOnline < machinesTotal) score -= ((machinesTotal - machinesOnline) / machinesTotal) * 15;
+    return Math.max(0, Math.round(score));
+  })();
+  const healthCls = healthScore >= 80 ? "lss-health--good" : healthScore >= 55 ? "lss-health--warn" : "lss-health--crit";
+  const healthLabel = healthScore >= 80 ? "Healthy" : healthScore >= 55 ? "Needs attention" : "Action required";
+
+  const kpis = [
+    hasMachines ? {
+      icon: "&#x1F4BB;", label: "Machines", value: `${machinesOnline}<span class="lss-kpi-total">/${machinesTotal}</span>`,
+      sub: `${machinesTotal - machinesOnline} offline`, cls: machinesOnline < machinesTotal ? "lss-kpi--warn" : "lss-kpi--ok"
+    } : null,
+    {
+      icon: "&#x25CF;", label: "Active Sessions", value: String(activeSessions),
+      sub: `${totalSessions} total (48h)`, cls: activeSessions > 0 ? "lss-kpi--ok" : "lss-kpi--dim"
+    },
+    {
+      icon: "&#x26A1;", label: "Tokens In Flight", value: fmtTokens(totalTokens),
+      sub: "across active sessions", cls: "lss-kpi--blue"
+    },
+    contextCritical > 0 ? {
+      icon: "&#x26A0;", label: "Context Critical", value: String(contextCritical),
+      sub: "sessions will lose work", cls: "lss-kpi--crit"
+    } : {
+      icon: "&#x2714;", label: "Context Pressure", value: contextWarning > 0 ? String(contextWarning) : "None",
+      sub: contextWarning > 0 ? "sessions approaching limit" : "all sessions healthy", cls: contextWarning > 0 ? "lss-kpi--warn" : "lss-kpi--ok"
+    },
+    orphanPorts > 0 ? {
+      icon: "&#x1F47B;", label: "Orphan Ports", value: String(orphanPorts),
+      sub: "abandoned, still listening", cls: "lss-kpi--warn"
+    } : {
+      icon: "&#x1F517;", label: "Orphan Ports", value: "0",
+      sub: "no abandoned ports", cls: "lss-kpi--ok"
+    },
+    trackedSpend != null ? {
+      icon: "&#x1F4B0;", label: "Tracked Spend", value: `$${trackedSpend.toFixed(2)}`,
+      sub: "session token cost", cls: "lss-kpi--blue"
+    } : null
+  ].filter(Boolean);
+
+  return `
+    <div class="ls-panel lss-panel">
+      <div class="lss-header">
+        <div class="ls-panel-head" style="margin:0">Fleet Overview <span class="ls-panel-sub">live</span></div>
+        <div class="lss-health ${healthCls}">
+          <span class="lss-health-score">${healthScore}</span>
+          <span class="lss-health-label">${healthLabel}</span>
+        </div>
+      </div>
+      <div class="lss-kpi-grid">
+        ${kpis.map((k) => `
+          <div class="lss-kpi ${k.cls}">
+            <div class="lss-kpi-top">
+              <span class="lss-kpi-icon">${k.icon}</span>
+              <span class="lss-kpi-label">${k.label}</span>
+            </div>
+            <div class="lss-kpi-value">${k.value}</div>
+            <div class="lss-kpi-sub">${k.sub}</div>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function rlBar(remaining, limit) {
   if (limit == null || limit === 0) return "";
   const pct = Math.min(100, Math.round((remaining / limit) * 100));
@@ -1771,6 +1849,30 @@ function renderRateLimitsPanel(rl) {
     </table>
     ${a.retryAfter ? `<p class="ls-rl-warn">&#x26A0; Rate limited — retry in ${a.retryAfter}s</p>` : ""}
   </div>`;
+}
+
+function fleetStats(fleet) {
+  const { machines = [], summary = {} } = fleet;
+  const allSessions = machines.flatMap((m) => m.sessions);
+  const orphanPorts = machines.reduce((n, m) =>
+    n + m.ports.filter((p) => p.isAgentPort && p.pid === "ORPHAN").length, 0);
+  const totalTokens = summary.totalTokens ||
+    allSessions.reduce((n, s) => n + (s.totalInputTokens || 0) + (s.totalOutputTokens || 0), 0);
+  const trackedSpend = allSessions.reduce((n, s) => {
+    const toks = (s.totalInputTokens || 0) + (s.totalOutputTokens || 0);
+    return n + toks * 0.000003;
+  }, 0);
+  return {
+    machinesOnline: summary.onlineMachines || machines.filter((m) => m.online).length,
+    machinesTotal: summary.totalMachines || machines.length,
+    activeSessions: summary.activeSessions || allSessions.filter((s) => s.status === "active").length,
+    totalSessions: summary.totalSessions || allSessions.length,
+    totalTokens,
+    contextCritical: allSessions.filter((s) => (s.contextPct || 0) >= 85).length,
+    contextWarning: allSessions.filter((s) => (s.contextPct || 0) >= 70 && (s.contextPct || 0) < 85).length,
+    orphanPorts,
+    trackedSpend
+  };
 }
 
 function renderFleetView(fleet, rateLimit) {
@@ -1840,6 +1942,7 @@ function renderFleetView(fleet, rateLimit) {
         <div class="fleet-machines-list">${machineCards}</div>
       </div>
       <div class="ls-side-panels">
+        ${renderLiveStatsPanel(fleetStats(fleet))}
         ${renderRateLimitsPanel(rateLimit)}
         <div class="ls-panel">
           <div class="ls-panel-head">Setup <span class="ls-panel-sub">add more machines</span></div>
@@ -1935,6 +2038,14 @@ function renderLiveSessionsContent() {
       </div>
 
       <div class="ls-side-panels">
+        ${renderLiveStatsPanel({
+          activeSessions: active,
+          totalSessions: sessions.length,
+          totalTokens: sessions.reduce((n, s) => n + (s.totalInputTokens || 0) + (s.totalOutputTokens || 0), 0),
+          contextCritical: sessions.filter((s) => (s.contextPct || 0) >= 85).length,
+          contextWarning: sessions.filter((s) => (s.contextPct || 0) >= 70 && (s.contextPct || 0) < 85).length,
+          orphanPorts: ports.filter((p) => p.isAgentPort).length
+        })}
         ${renderRateLimitsPanel(rateLimit)}
 
         <div class="ls-panel ls-panel--ports">
