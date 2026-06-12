@@ -1681,11 +1681,19 @@ function ctxBarHtml(pct) {
 
 async function loadLiveSessions() {
   try {
-    const [sessionsData, rlData] = await Promise.all([
-      fetch("/api/local-sessions").then((r) => r.json()),
+    const [fleetData, rlData] = await Promise.all([
+      fetch("/api/fleet/sessions", { headers: tenantApiKey ? { "x-api-key": tenantApiKey } : {} })
+        .then((r) => r.ok ? r.json() : null)
+        .catch(() => null),
       fetch("/api/rate-limits").then((r) => r.json()).catch(() => null)
     ]);
-    liveSessionsData = { ...sessionsData, rateLimit: rlData };
+
+    if (fleetData && fleetData.machines && fleetData.machines.length > 0) {
+      liveSessionsData = { mode: "fleet", fleet: fleetData, rateLimit: rlData };
+    } else {
+      const localData = await fetch("/api/local-sessions").then((r) => r.json()).catch(() => ({ sessions: [], processes: [], ports: [] }));
+      liveSessionsData = { mode: "local", ...localData, rateLimit: rlData };
+    }
     renderLiveSessionsContent();
   } catch (err) {
     const el = document.querySelector("#live-sessions-content");
@@ -1765,12 +1773,98 @@ function renderRateLimitsPanel(rl) {
   </div>`;
 }
 
+function renderFleetView(fleet, rateLimit) {
+  const { machines = [], summary = {} } = fleet;
+  const onlineMachines = machines.filter((m) => m.online);
+  const offlineMachines = machines.filter((m) => !m.online);
+
+  const machineCards = machines.length === 0
+    ? `<div class="fleet-empty">
+        <p>No collectors reporting yet.</p>
+        <p>Run on each developer machine:</p>
+        <pre class="fleet-cmd">node collector.js --url &lt;this-server&gt; --key acp_... --developer alice@company.com</pre>
+       </div>`
+    : machines.map((m) => {
+        const totalTok = m.sessions.reduce((n, s) => n + (s.totalInputTokens || 0) + (s.totalOutputTokens || 0), 0);
+        const activeSess = m.sessions.filter((s) => s.status === "active");
+        const maxCtx = m.sessions.reduce((n, s) => Math.max(n, s.contextPct || 0), 0);
+        const ctxCls = maxCtx >= 90 ? "ctx-bar--crit" : maxCtx >= 70 ? "ctx-bar--warn" : "ctx-bar--ok";
+        const onlineCls = m.online ? "fleet-machine--online" : "fleet-machine--offline";
+        const beatLabel = m.online ? `${m.ageSec}s ago` : fmtAgo(m.receivedAt);
+
+        return `<div class="fleet-machine ${onlineCls}">
+          <div class="fleet-machine-head">
+            <span class="fleet-online-dot ${m.online ? "fleet-dot--on" : "fleet-dot--off"}">&#x25CF;</span>
+            <span class="fleet-hostname">${escapeHtml(m.hostname)}</span>
+            <span class="fleet-dev">${escapeHtml(m.developer || "")}</span>
+            <span class="fleet-beat">${beatLabel}</span>
+          </div>
+          <div class="fleet-machine-stats">
+            <span class="fleet-stat-chip fleet-chip--sessions">${activeSess.length} active / ${m.sessions.length} sessions</span>
+            <span class="fleet-stat-chip fleet-chip--tokens">${fmtTokens(totalTok)} tokens</span>
+            ${maxCtx > 0 ? `<span class="fleet-stat-chip fleet-chip--ctx ${ctxCls.replace("ctx-bar--", "fleet-ctx--")}">${maxCtx}% ctx</span>` : ""}
+            ${m.processes.length > 0 ? `<span class="fleet-stat-chip fleet-chip--procs">${m.processes.length} procs</span>` : ""}
+          </div>
+          ${m.sessions.length > 0 ? `
+          <table class="ls-table fleet-sess-table">
+            <thead><tr><th>Session</th><th>Project</th><th>Model</th><th>Tokens</th><th>Context</th><th>Last seen</th></tr></thead>
+            <tbody>
+              ${m.sessions.slice(0, 5).map((s) => {
+                const tok = (s.totalInputTokens || 0) + (s.totalOutputTokens || 0);
+                return `<tr class="ls-row ls-row--${s.status}">
+                  <td class="ls-mono ls-sid">${escapeHtml(s.sessionId.slice(0, 8))}</td>
+                  <td class="ls-proj">${escapeHtml(shortProject(s.projectDir))}</td>
+                  <td class="ls-model">${escapeHtml(shortModel(s.model))}</td>
+                  <td class="ls-right ls-tok">${fmtTokens(tok)}</td>
+                  <td class="ls-ctx">${ctxBarHtml(s.contextPct || 0)}</td>
+                  <td class="ls-right ls-ago">${fmtAgo(s.lastActivity)}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>` : ""}
+        </div>`;
+      }).join("");
+
+  return `
+    <div class="ls-stats-bar">
+      <span class="ls-stat"><span class="fleet-dot--on">&#x25CF;</span> ${summary.onlineMachines || 0} online</span>
+      <span class="ls-stat ls-dim">&#x25CB; ${(summary.totalMachines || 0) - (summary.onlineMachines || 0)} offline</span>
+      <span class="ls-stat"><span class="ls-dot ls-dot--active">&#x25CF;</span> ${summary.activeSessions || 0} active sessions</span>
+      <span class="ls-stat ls-dim">${summary.totalSessions || 0} total (48h)</span>
+      <span class="ls-stat ls-tok">${fmtTokens(summary.totalTokens || 0)} tokens</span>
+      <span class="ls-stat ls-dim fleet-mode-badge">&#x1F4E1; Fleet Mode</span>
+    </div>
+    <div class="ls-panel-grid">
+      <div class="ls-panel ls-panel--sessions fleet-machines-panel">
+        <div class="ls-panel-head">Developer Machines <span class="ls-panel-sub">live session state per machine</span></div>
+        <div class="fleet-machines-list">${machineCards}</div>
+      </div>
+      <div class="ls-side-panels">
+        ${renderRateLimitsPanel(rateLimit)}
+        <div class="ls-panel">
+          <div class="ls-panel-head">Setup <span class="ls-panel-sub">add more machines</span></div>
+          <p class="fleet-setup-hint">Run on each dev machine:</p>
+          <pre class="fleet-cmd-small">node collector.js \\
+  --url ${escapeHtml(window.location.origin)} \\
+  --key acp_... \\
+  --developer name@company.com</pre>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderLiveSessionsContent() {
   const el = document.querySelector("#live-sessions-content");
   if (!el) return;
 
   const d = liveSessionsData;
   if (!d) { el.innerHTML = `<p class="ls-loading">Loading…</p>`; return; }
+
+  if (d.mode === "fleet") {
+    el.innerHTML = renderFleetView(d.fleet, d.rateLimit);
+    return;
+  }
 
   const { sessions = [], processes = [], ports = [], rateLimit } = d;
   const active = sessions.filter((s) => s.status === "active").length;

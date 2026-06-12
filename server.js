@@ -563,6 +563,34 @@ async function serveStatic(req, res) {
   }
 }
 
+// ── Fleet session store (in-memory; collector daemons POST snapshots here) ────
+// Map<tenantId, Map<machineId, { snapshot, receivedAt }>>
+const fleetStore = new Map();
+
+function upsertFleetSnapshot(tenantId, machineId, snapshot) {
+  if (!fleetStore.has(tenantId)) fleetStore.set(tenantId, new Map());
+  fleetStore.get(tenantId).set(machineId, { snapshot, receivedAt: Date.now() });
+}
+
+function getFleetSnapshots(tenantId) {
+  const machines = fleetStore.get(tenantId);
+  if (!machines) return [];
+  const now = Date.now();
+  const stale = 5 * 60 * 1000; // 5min — machine is "offline" after this
+  return Array.from(machines.entries()).map(([machineId, { snapshot, receivedAt }]) => ({
+    machineId,
+    hostname: snapshot.hostname || machineId,
+    developer: snapshot.developer || null,
+    sessions: snapshot.sessions || [],
+    processes: snapshot.processes || [],
+    ports: snapshot.ports || [],
+    rateLimit: snapshot.rateLimit || null,
+    receivedAt,
+    online: (now - receivedAt) < stale,
+    ageSec: Math.round((now - receivedAt) / 1000)
+  }));
+}
+
 // ── Rate limit state capture (in-memory, updated on each proxy call) ─────────
 
 const rateLimitState = {
@@ -1927,6 +1955,34 @@ ${prompt}`;
       const run = normalizeGenericRun(body.payload || body);
       await upsertTenantRuns(auth.tenant.id, [run]);
       return sendJson(res, 201, { status: "ingested", source: "generic" });
+    }
+
+    // ── Fleet session ingest (tenant auth — collector daemons post here) ────────
+
+    if (req.method === "POST" && req.url === "/api/fleet/ingest") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const machineId = body.machineId || body.hostname || "unknown";
+      if (!machineId) return sendJson(res, 400, { error: "machineId required" });
+      upsertFleetSnapshot(auth.tenant.id, machineId, body);
+      return sendJson(res, 200, { ok: true, machineId, tenantId: auth.tenant.id });
+    }
+
+    if (req.method === "GET" && req.url === "/api/fleet/sessions") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const machines = getFleetSnapshots(auth.tenant.id);
+      const totalSessions = machines.reduce((n, m) => n + m.sessions.length, 0);
+      const totalTokens = machines.reduce((n, m) =>
+        n + m.sessions.reduce((s, sess) => s + (sess.totalInputTokens || 0) + (sess.totalOutputTokens || 0), 0), 0);
+      const activeSessions = machines.reduce((n, m) =>
+        n + m.sessions.filter((s) => s.status === "active").length, 0);
+      return sendJson(res, 200, {
+        machines,
+        summary: { totalMachines: machines.length, onlineMachines: machines.filter((m) => m.online).length, totalSessions, activeSessions, totalTokens }
+      });
     }
 
     // ── Rate limits (no auth — local observability) ───────────────────────────
