@@ -483,11 +483,14 @@ function renderOverview() {
           <span>${businessNarrative}</span>
         </div>
 
-        <div class="hero-strip">
-          <div><span>Status</span><strong>${agent ? agent.status : "Waiting"}</strong></div>
-          <div><span>Workflow</span><strong>${agent ? agent.workflow : "Not started"}</strong></div>
-          <div><span>Spend</span><strong>${currency(dashboardState.headlineMetrics.totalCostUsd)}</strong></div>
-          <div><span>Total Runs</span><strong>${scoreMetrics.totalRuns}</strong></div>
+        <div class="hero-score-guide">
+          <div class="hsg-intro">0–100 score blended across task success, budget efficiency, response speed, retry rate &amp; policy compliance</div>
+          <div class="hsg-bands">
+            <div class="hsg-band ${score >= 85 ? "hsg-band--active" : ""} hsg-strong"><span>≥ 85</span><b>Strong</b><em>Safe to scale</em></div>
+            <div class="hsg-band ${score >= 70 && score < 85 ? "hsg-band--active" : ""} hsg-stable"><span>70–84</span><b>Stable</b><em>Monitor efficiency</em></div>
+            <div class="hsg-band ${score >= 55 && score < 70 ? "hsg-band--active" : ""} hsg-watch"><span>55–69</span><b>Needs Attention</b><em>Review before scaling</em></div>
+            <div class="hsg-band ${score < 55 ? "hsg-band--active" : ""} hsg-crit"><span>&lt; 55</span><b>At Risk</b><em>Immediate review</em></div>
+          </div>
         </div>
       </article>
 
