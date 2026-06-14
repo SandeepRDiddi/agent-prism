@@ -1,0 +1,6 @@
+{
+  "name": "Agent Prism",
+  "description": "An interactive control plane and physics-based telemetry dashboard for monitoring, optimizing, and securing enterprise AI agents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
