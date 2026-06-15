@@ -123,14 +123,35 @@ export function getModelRecommendation(model, taskType, provider = "anthropic") 
   return { fitness, penalty, recommendedModel: recommended, idealTier };
 }
 
-// PII scrub — replaces common PII patterns with placeholders
+// PII scrub — global patterns covering major markets
 const PII_RULES = [
+  // Universal
   [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[EMAIL]"],
-  [/\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, "[PHONE]"],
-  [/\b\d{3}-\d{2}-\d{4}\b/g, "[SSN]"],
   [/\b(?:\d{4}[-\s]?){3}\d{4}\b/g, "[CARD]"],
   [/\bsk-[A-Za-z0-9]{20,}\b/g, "[API_KEY]"],
-  [/\bBearer [A-Za-z0-9._-]{10,}\b/g, "Bearer [TOKEN]"]
+  [/\bBearer [A-Za-z0-9._-]{10,}\b/g, "Bearer [TOKEN]"],
+  // Payments / banking
+  [/\b[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}\b/g, "[PAYMENT_ID]"],  // UPI, PIX-style, Venmo handles
+  [/\b[A-Z]{2}\d{2}[A-Z0-9]{1,30}\b/g, "[IBAN]"],
+  // US
+  [/\b\d{3}-\d{2}-\d{4}\b/g, "[SSN]"],
+  [/\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, "[PHONE]"],
+  // UK
+  [/\b[A-CEGHJ-PR-TW-Z]{2}\d{6}[A-D]\b/g, "[NIN]"],          // National Insurance Number
+  [/\b(?:\+44|0)[\s-]?(?:\d[\s-]?){9,10}\b/g, "[PHONE]"],
+  // Canada
+  [/\b\d{3}[-\s]\d{3}[-\s]\d{3}\b/g, "[SIN]"],               // Social Insurance Number
+  // Australia
+  [/\b\d{3}[\s-]\d{3}[\s-]\d{3}\b/g, "[TFN]"],               // Tax File Number
+  // Singapore
+  [/\b[STFG]\d{7}[A-Z]\b/g, "[NRIC]"],
+  // India
+  [/\b[2-9]\d{3}[\s-]?\d{4}[\s-]?\d{4}\b/g, "[AADHAAR]"],
+  [/\b[A-Z]{5}[0-9]{4}[A-Z]\b/g, "[PAN]"],
+  [/(?:\+91|0)[-\s]?[6-9]\d{9}\b/g, "[PHONE]"],
+  [/\b[6-9]\d{9}\b/g, "[PHONE]"],
+  // Generic international mobile: +CC followed by 7-12 digits
+  [/\+\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{3,5}[-.\s]?\d{4,9}\b/g, "[PHONE]"]
 ];
 
 export function scrubPii(messages = []) {

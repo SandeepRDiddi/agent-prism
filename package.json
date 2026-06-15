@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "cluster": "node src/cluster.js",
+    "migrate": "node db/migrate.js",
     "test": "node --test test/*.test.js",
     "demo:copilot": "node real_demo_copilot_agent.js"
   },

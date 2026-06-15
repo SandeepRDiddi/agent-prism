@@ -1,5 +1,6 @@
 import { createApiKey, createId, createSessionToken, hashPassword, verifyApiKey, verifyPassword } from "../auth.js";
 import { createHash } from "node:crypto";
+import { encryptConnectorConfig, decryptConnectorConfig } from "../crypto.js";
 import { config } from "../config.js";
 
 let poolPromise;
@@ -14,10 +15,78 @@ async function getPool() {
   }
 
   if (!poolPromise) {
-    poolPromise = import("pg").then(({ Pool }) => new Pool({ connectionString: config.databaseUrl }));
+    poolPromise = import("pg").then(({ Pool }) => {
+      const poolConfig = {
+        connectionString: config.databaseUrl,
+        max: config.db.max,
+        min: config.db.min,
+        idleTimeoutMillis: config.db.idleTimeoutMillis,
+        connectionTimeoutMillis: config.db.connectionTimeoutMillis,
+        // statement_timeout set at session level via options string; pg-native uses options
+        options: `--statement_timeout=${config.db.statementTimeoutMs}`
+      };
+
+      // SSL: required for all managed Postgres providers
+      if (config.db.ssl) {
+        poolConfig.ssl = {
+          // rejectUnauthorized=false is needed for some providers (Render, Neon) that use
+          // self-signed or non-standard certs. Set DB_SSL_REJECT_UNAUTHORIZED=true for
+          // providers with properly verifiable certs (RDS with cert bundle, etc.).
+          rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === "true"
+        };
+      }
+
+      const pool = new Pool(poolConfig);
+
+      // Handle idle-client errors — without this, an error on an idle connection
+      // emits an uncaught 'error' event and crashes the process.
+      pool.on("error", (err) => {
+        process.stderr.write(`[postgres-pool] Idle client error: ${err.message}\n`);
+      });
+
+      return pool;
+    });
   }
 
   return poolPromise;
+}
+
+/**
+ * Verify DB connectivity. Returns { ok: true, latencyMs } or { ok: false, error }.
+ * Used by the health check endpoint.
+ */
+export async function pingDb() {
+  const start = Date.now();
+  try {
+    const pool = await getPool();
+    await pool.query("SELECT 1");
+    return { ok: true, latencyMs: Date.now() - start };
+  } catch (err) {
+    return { ok: false, error: err.message, latencyMs: Date.now() - start };
+  }
+}
+
+/**
+ * Execute fn(client) inside a transaction with app.current_tenant_id set.
+ * This satisfies the RLS SELECT policies on agent_runs, connectors, audit_logs,
+ * and prompt_captures. The config key is local to the transaction (reverts on
+ * commit/rollback), so pooled connections never carry stale context.
+ */
+async function withTenant(tenantId, fn) {
+  const pool = await getPool();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [String(tenantId)]);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 function mapTenant(row) {
@@ -65,7 +134,7 @@ function mapConnector(row) {
     name: row.name,
     mode: row.mode,
     status: row.status,
-    config: row.config || {},
+    config: decryptConnectorConfig(row.config || {}),
     createdAt: row.created_at?.toISOString?.() || row.created_at
   };
 }
@@ -115,7 +184,7 @@ export async function getBootstrapStatus() {
   };
 }
 
-export async function bootstrapSaas({ companyName, adminEmail, adminName, adminPassword }) {
+export async function bootstrapSaas({ companyName, adminEmail, adminName, adminPassword, plan = "free" }) {
   const pool = await getPool();
   const existing = await getBootstrapStatus();
 
@@ -138,7 +207,7 @@ export async function bootstrapSaas({ companyName, adminEmail, adminName, adminP
     await client.query("begin");
     await client.query(
       "insert into tenants (id, name, slug, plan, status, created_at) values ($1, $2, $3, $4, $5, $6)",
-      [tenantId, companyName, slug || tenantId, "enterprise-trial", "active", now()]
+      [tenantId, companyName, slug || tenantId, plan, "active", now()]
     );
     await client.query(
       "insert into users (id, tenant_id, email, name, role, password_hash, created_at) values ($1, $2, $3, $4, $5, $6, $7)",
@@ -415,29 +484,25 @@ function createSessionTokenHash(token) {
 }
 
 export async function listTenantContext(tenantId) {
-  const pool = await getPool();
-  const [tenant, users, connectors, runs] = await Promise.all([
-    pool.query("select * from tenants where id = $1", [tenantId]),
-    pool.query("select * from users where tenant_id = $1 order by created_at asc", [tenantId]),
-    pool.query("select * from connectors where tenant_id = $1 order by created_at asc", [tenantId]),
-    pool.query("select * from agent_runs where tenant_id = $1 order by start_time desc", [tenantId])
-  ]);
+  return withTenant(tenantId, async (client) => {
+    const [tenant, users, connectors, runs] = await Promise.all([
+      client.query("select * from tenants where id = $1", [tenantId]),
+      client.query("select * from users where tenant_id = $1 order by created_at asc", [tenantId]),
+      client.query("select * from connectors where tenant_id = $1 order by created_at asc", [tenantId]),
+      client.query("select * from agent_runs where tenant_id = $1 order by start_time desc", [tenantId])
+    ]);
 
-  return {
-    tenant: mapTenant(tenant.rows[0]),
-    users: users.rows.map(mapUser),
-    connectors: connectors.rows.map(mapConnector),
-    runs: runs.rows.map(mapRun)
-  };
+    return {
+      tenant: mapTenant(tenant.rows[0]),
+      users: users.rows.map(mapUser),
+      connectors: connectors.rows.map(mapConnector),
+      runs: runs.rows.map(mapRun)
+    };
+  });
 }
 
 export async function upsertTenantRuns(tenantId, incomingRuns) {
-  const pool = await getPool();
-  const client = await pool.connect();
-
-  try {
-    await client.query("begin");
-
+  return withTenant(tenantId, async (client) => {
     for (const run of incomingRuns) {
       await client.query(
         `
@@ -524,23 +589,17 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
       );
     }
 
-    await client.query("commit");
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
-
-  const runs = await pool.query(
-    "select * from agent_runs where tenant_id = $1 order by start_time desc",
-    [tenantId]
-  );
-  return runs.rows.map(mapRun);
+    const runs = await client.query(
+      "select * from agent_runs where tenant_id = $1 order by start_time desc",
+      [tenantId]
+    );
+    return runs.rows.map(mapRun);
+  });
 }
 
 export async function createConnector(tenantId, connector) {
   const pool = await getPool();
+  const encryptedConfig = encryptConnectorConfig(connector.config || {});
   const record = {
     id: createId("connector"),
     tenantId,
@@ -548,7 +607,7 @@ export async function createConnector(tenantId, connector) {
     name: connector.name,
     mode: connector.mode || "webhook",
     status: connector.status || "ready",
-    config: connector.config || {},
+    config: encryptedConfig,
     createdAt: now()
   };
 
@@ -561,21 +620,43 @@ export async function createConnector(tenantId, connector) {
       record.name,
       record.mode,
       record.status,
-      JSON.stringify(record.config),
+      JSON.stringify(encryptedConfig),
       record.createdAt
     ]
   );
 
-  return record;
+  // Return with decrypted config so callers get the original value back
+  return { ...record, config: connector.config || {} };
 }
 
 export async function resetTenantRuns(tenantId) {
+  return withTenant(tenantId, async (client) => {
+    await client.query("delete from agent_runs where tenant_id = $1", [tenantId]);
+  });
+}
+
+export async function resetPromptCaptures(tenantId) {
   const pool = await getPool();
-  await pool.query("delete from agent_runs where tenant_id = $1", [tenantId]);
+  await pool.query("delete from prompt_captures where tenant_id = $1", [tenantId]);
+}
+
+export async function applyDataRetention(daysToKeep) {
+  if (!daysToKeep || daysToKeep <= 0) return { deletedRuns: 0, deletedCaptures: 0 };
+  const pool = await getPool();
+  const [runs, captures] = await Promise.all([
+    pool.query(
+      "delete from agent_runs where start_time < NOW() - make_interval(days => $1) returning id",
+      [daysToKeep]
+    ),
+    pool.query(
+      "delete from prompt_captures where created_at < NOW() - make_interval(days => $1) returning id",
+      [daysToKeep]
+    )
+  ]);
+  return { deletedRuns: runs.rowCount, deletedCaptures: captures.rowCount };
 }
 
 export async function logAuditEvent(tenantId, data) {
-  const pool = await getPool();
   const id = createId("audit");
   const timestamp = data.timestamp || now();
   const actor = data.actor || "System";
@@ -584,32 +665,45 @@ export async function logAuditEvent(tenantId, data) {
   const details = data.details || {};
   const ip = data.ip || "0.0.0.0";
 
-  await pool.query(
-    `insert into audit_logs (id, tenant_id, timestamp, actor, action, resource, details, ip_address) 
-     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
-    [id, tenantId, timestamp, actor, action, resource, JSON.stringify(details), ip]
-  );
-  
-  return { id, tenantId, timestamp, actor, action, resource, details, ip };
+  return withTenant(tenantId, async (client) => {
+    const prev = await client.query(
+      "select hash from audit_logs where tenant_id = $1 order by timestamp desc limit 1",
+      [tenantId]
+    );
+    const prevHash = prev.rows[0]?.hash || "0".repeat(64);
+    const hashInput = `${prevHash}:${id}:${tenantId}:${actor}:${action}:${resource}:${timestamp}`;
+    const hash = createHash("sha256").update(hashInput).digest("hex");
+
+    await client.query(
+      `insert into audit_logs (id, tenant_id, timestamp, actor, action, resource, details, ip_address, hash, prev_hash)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)`,
+      [id, tenantId, timestamp, actor, action, resource, JSON.stringify(details), ip, hash, prevHash]
+    );
+
+    return { id, tenantId, timestamp, actor, action, resource, details, ip, hash, prevHash };
+  });
 }
 
 export async function listAuditLogs(tenantId) {
-  const pool = await getPool();
-  const result = await pool.query(
-    "select * from audit_logs where tenant_id = $1 order by timestamp desc limit 100",
-    [tenantId]
-  );
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      "select * from audit_logs where tenant_id = $1 order by timestamp desc limit 100",
+      [tenantId]
+    );
 
-  return result.rows.map(row => ({
-    id: row.id,
-    tenantId: row.tenant_id,
-    timestamp: row.timestamp?.toISOString?.() || row.timestamp,
-    actor: row.actor,
-    action: row.action,
-    resource: row.resource,
-    details: row.details,
-    ip: row.ip_address
-  }));
+    return result.rows.map(row => ({
+      id: row.id,
+      tenantId: row.tenant_id,
+      timestamp: row.timestamp?.toISOString?.() || row.timestamp,
+      actor: row.actor,
+      action: row.action,
+      resource: row.resource,
+      details: row.details,
+      ip: row.ip_address,
+      hash: row.hash || "",
+      prevHash: row.prev_hash || ""
+    }));
+  });
 }
 
 export async function savePromptCapture(tenantId, capture) {
@@ -632,57 +726,71 @@ export async function savePromptCapture(tenantId, capture) {
 }
 
 export async function listPromptCaptures(tenantId, { limit = 100, offset = 0, taskType, model } = {}) {
+  return withTenant(tenantId, async (client) => {
+    const conditions = ["tenant_id = $1"];
+    const params = [tenantId];
+    let p = 2;
+
+    if (taskType) { conditions.push(`task_type = $${p++}`); params.push(taskType); }
+    if (model)    { conditions.push(`model = $${p++}`);     params.push(model); }
+
+    const filterParams = params.slice();
+    params.push(limit, offset);
+    const result = await client.query(
+      `select * from prompt_captures where ${conditions.join(" and ")}
+       order by created_at desc limit $${p} offset $${p + 1}`,
+      params
+    );
+
+    const countResult = await client.query(
+      `select count(*)::int as total from prompt_captures where ${conditions.join(" and ")}`,
+      filterParams
+    );
+
+    return {
+      captures: result.rows.map(r => ({
+        id: r.id, tenantId: r.tenant_id, runId: r.run_id,
+        provider: r.provider, model: r.model, taskType: r.task_type,
+        messages: r.messages, response: r.response,
+        tokensIn: r.tokens_in, tokensOut: r.tokens_out,
+        costUsd: Number(r.cost_usd), latencyMs: r.latency_ms,
+        modelFitness: r.model_fitness, recommendedModel: r.recommended_model,
+        piiScrubbed: r.pii_scrubbed, createdAt: r.created_at?.toISOString?.() || r.created_at
+      })),
+      total: countResult.rows[0]?.total || 0
+    };
+  });
+}
+
+export async function updateTenantPlan(tenantId, plan) {
   const pool = await getPool();
-  const conditions = ["tenant_id = $1"];
-  const params = [tenantId];
-  let p = 2;
-
-  if (taskType) { conditions.push(`task_type = $${p++}`); params.push(taskType); }
-  if (model)    { conditions.push(`model = $${p++}`);     params.push(model); }
-
-  params.push(limit, offset);
   const result = await pool.query(
-    `select * from prompt_captures where ${conditions.join(" and ")}
-     order by created_at desc limit $${p} offset $${p + 1}`,
-    params
+    "update tenants set plan = $1 where id = $2 returning *",
+    [plan, tenantId]
   );
-
-  const countResult = await pool.query(
-    `select count(*)::int as total from prompt_captures where ${conditions.slice(0, p - 2).join(" and ")}`,
-    params.slice(0, p - 2)
-  );
-
-  return {
-    captures: result.rows.map(r => ({
-      id: r.id, tenantId: r.tenant_id, runId: r.run_id,
-      provider: r.provider, model: r.model, taskType: r.task_type,
-      messages: r.messages, response: r.response,
-      tokensIn: r.tokens_in, tokensOut: r.tokens_out,
-      costUsd: Number(r.cost_usd), latencyMs: r.latency_ms,
-      modelFitness: r.model_fitness, recommendedModel: r.recommended_model,
-      piiScrubbed: r.pii_scrubbed, createdAt: r.created_at?.toISOString?.() || r.created_at
-    })),
-    total: countResult.rows[0]?.total || 0
-  };
+  return result.rows[0] ? mapTenant(result.rows[0]) : null;
 }
 
 export async function getModelFitnessStats(tenantId) {
-  const pool = await getPool();
-  const result = await pool.query(
-    `select model_fitness, count(*)::int as count, round(avg(cost_usd)::numeric, 4) as avg_cost
-     from prompt_captures where tenant_id = $1
-     group by model_fitness`,
-    [tenantId]
-  );
-  const taskResult = await pool.query(
-    `select task_type, model, count(*)::int as count,
-            sum(case when model_fitness = 'mismatch' then 1 else 0 end)::int as mismatches
-     from prompt_captures where tenant_id = $1
-     group by task_type, model order by count desc limit 20`,
-    [tenantId]
-  );
-  return {
-    fitnessBreakdown: result.rows,
-    topTaskModelPairs: taskResult.rows
-  };
+  return withTenant(tenantId, async (client) => {
+    const [result, taskResult] = await Promise.all([
+      client.query(
+        `select model_fitness, count(*)::int as count, round(avg(cost_usd)::numeric, 4) as avg_cost
+         from prompt_captures where tenant_id = $1
+         group by model_fitness`,
+        [tenantId]
+      ),
+      client.query(
+        `select task_type, model, count(*)::int as count,
+                sum(case when model_fitness = 'mismatch' then 1 else 0 end)::int as mismatches
+         from prompt_captures where tenant_id = $1
+         group by task_type, model order by count desc limit 20`,
+        [tenantId]
+      )
+    ]);
+    return {
+      fitnessBreakdown: result.rows,
+      topTaskModelPairs: taskResult.rows
+    };
+  });
 }

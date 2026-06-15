@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { createApiKey, createId, createSessionToken, hashPassword, verifyApiKey, verifyPassword } from "../auth.js";
+import { encryptConnectorConfig, decryptConnectorConfig } from "../crypto.js";
 
 const dataDir = join(process.cwd(), "data");
 const appStatePath = join(dataDir, "app-state.json");
@@ -53,7 +54,7 @@ export async function getBootstrapStatus() {
   };
 }
 
-export async function bootstrapSaas({ companyName, adminEmail, adminName, adminPassword }) {
+export async function bootstrapSaas({ companyName, adminEmail, adminName, adminPassword, plan = "free" }) {
   const state = await readState();
 
   if (state.tenants.length > 0) {
@@ -73,7 +74,7 @@ export async function bootstrapSaas({ companyName, adminEmail, adminName, adminP
     id: tenantId,
     name: companyName,
     slug: slug || tenantId,
-    plan: "enterprise-trial",
+    plan,
     status: "active",
     createdAt: now()
   };
@@ -316,12 +317,23 @@ function sanitizeUser(user) {
   };
 }
 
+export async function updateTenantPlan(tenantId, plan) {
+  const state = await readState();
+  const tenant = state.tenants.find(t => t.id === tenantId);
+  if (!tenant) return null;
+  tenant.plan = plan;
+  await writeState(state);
+  return { ...tenant };
+}
+
 export async function listTenantContext(tenantId) {
   const state = await readState();
   return {
     tenant: state.tenants.find((item) => item.id === tenantId) || null,
     users: state.users.filter((item) => item.tenantId === tenantId),
-    connectors: state.connectors.filter((item) => item.tenantId === tenantId),
+    connectors: state.connectors
+      .filter((item) => item.tenantId === tenantId)
+      .map((c) => ({ ...c, config: decryptConnectorConfig(c.config) })),
     runs: state.runs.filter((item) => item.tenantId === tenantId)
   };
 }
@@ -354,17 +366,40 @@ export async function createConnector(tenantId, connector) {
     tenantId,
     status: "ready",
     createdAt: now(),
-    ...connector
+    ...connector,
+    config: encryptConnectorConfig(connector.config || {})
   };
   state.connectors.push(record);
   await writeState(state);
-  return record;
+  // Return with decrypted config so callers get the original value back
+  return { ...record, config: decryptConnectorConfig(record.config) };
 }
 
 export async function resetTenantRuns(tenantId) {
   const state = await readState();
   state.runs = state.runs.filter((item) => item.tenantId !== tenantId);
   await writeState(state);
+}
+
+export async function resetPromptCaptures(tenantId) {
+  const state = await readState();
+  state.promptCaptures = (state.promptCaptures || []).filter((c) => c.tenantId !== tenantId);
+  await writeState(state);
+}
+
+export async function applyDataRetention(daysToKeep) {
+  if (!daysToKeep || daysToKeep <= 0) return { deletedRuns: 0, deletedCaptures: 0 };
+  const cutoff = new Date(Date.now() - daysToKeep * 86400_000).toISOString();
+  const state = await readState();
+  const runsBefore = (state.runs || []).length;
+  const capturesBefore = (state.promptCaptures || []).length;
+  state.runs = (state.runs || []).filter((r) => (r.startTime || r.createdAt) >= cutoff);
+  state.promptCaptures = (state.promptCaptures || []).filter((c) => (c.createdAt || "") >= cutoff);
+  await writeState(state);
+  return {
+    deletedRuns: runsBefore - state.runs.length,
+    deletedCaptures: capturesBefore - state.promptCaptures.length
+  };
 }
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -463,18 +498,28 @@ export async function getActiveSessionCounts(tenantId) {
 export async function logAuditEvent(tenantId, { actor, action, resource, details, ip }) {
   const state = await readState();
   if (!state.auditLogs) state.auditLogs = [];
-  
+
+  const tenantLogs = state.auditLogs.filter(l => l.tenantId === tenantId);
+  const prevHash = tenantLogs.length > 0 ? tenantLogs[tenantLogs.length - 1].hash : "0".repeat(64);
+
+  const timestamp = now();
+  const id = createId("audit");
+  const hashInput = `${prevHash}:${id}:${tenantId}:${actor}:${action}:${resource}:${timestamp}`;
+  const hash = createHash("sha256").update(hashInput).digest("hex");
+
   const log = {
-    id: createId("audit"),
+    id,
     tenantId,
     actor,
     action,
     resource,
     details: details || {},
     ip: ip || "unknown",
-    timestamp: now()
+    timestamp,
+    prevHash,
+    hash
   };
-  
+
   state.auditLogs.push(log);
   // Keep newest 500 — file store is dev/demo only; use Postgres for long-term retention
   if (state.auditLogs.length > 500) state.auditLogs = state.auditLogs.slice(-500);

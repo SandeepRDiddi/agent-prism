@@ -33,6 +33,8 @@ import {
   getBootstrapStatus,
   listTenantContext,
   resetTenantRuns,
+  resetPromptCaptures,
+  applyDataRetention,
   upsertTenantRuns,
   createSession,
   updateSession,
@@ -44,7 +46,9 @@ import {
   savePromptAnalysis,
   savePromptCapture,
   listPromptCaptures,
-  getModelFitnessStats
+  getModelFitnessStats,
+  updateTenantPlan,
+  pingDb
 } from "./src/saas-store.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -54,11 +58,13 @@ import { computeRoi } from "./src/roi.js";
 import { runSessionTimeout } from "./src/jobs/session-timeout.js";
 import { verifyHmacSignature } from "./src/ingest/verify.js";
 import { validateConfig } from "./src/startup.js";
+import { breakers } from "./src/circuit-breaker.js";
 import { setSecurityHeaders } from "./src/middleware/security-headers.js";
 import { applyCors } from "./src/middleware/cors.js";
-import { tenantLimiter, bootstrapLimiter } from "./src/middleware/rate-limiter.js";
+import { tenantLimiter, bootstrapLimiter, keyRpmLimiter, keyTpmLimiter } from "./src/middleware/rate-limiter.js";
+import { checkIngestAllowed, checkGatewayAllowed, getPlan, computeUsage } from "./src/plans.js";
 import { validate, SCHEMAS } from "./src/validation.js";
-import { logRequest, logError } from "./src/middleware/logger.js";
+import { logRequest, logError, scrubSecrets } from "./src/middleware/logger.js";
 import { setupGracefulShutdown } from "./src/shutdown.js";
 import jwt from "jsonwebtoken";
 
@@ -75,6 +81,33 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8"
 };
+
+// Timeout for upstream LLM/provider calls. Configurable per provider.
+const GATEWAY_TIMEOUT_MS = parseInt(process.env.GATEWAY_TIMEOUT_MS || "30000", 10);
+const GATEWAY_TIMEOUT_ANTHROPIC_MS = parseInt(process.env.GATEWAY_TIMEOUT_ANTHROPIC_MS || String(GATEWAY_TIMEOUT_MS), 10);
+const GATEWAY_TIMEOUT_OPENAI_MS = parseInt(process.env.GATEWAY_TIMEOUT_OPENAI_MS || String(GATEWAY_TIMEOUT_MS), 10);
+const GATEWAY_TIMEOUT_AZURE_MS = parseInt(process.env.GATEWAY_TIMEOUT_AZURE_MS || String(GATEWAY_TIMEOUT_MS), 10);
+
+/**
+ * fetch() wrapper with AbortController timeout.
+ * Throws an error with err.isTimeout = true on timeout so callers can return 504.
+ */
+async function gatewayFetch(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      const timeoutErr = new Error(`Upstream request timed out after ${timeoutMs}ms`);
+      timeoutErr.isTimeout = true;
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function sendJson(res, statusCode, payload) {
   setSecurityHeaders(res);
@@ -193,11 +226,11 @@ async function dispatchBudgetAlert(tenantId, run) {
   
   if (webhookUrl) {
     try {
-      await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await gatewayFetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: message })
-      });
+      }, 5000);
       console.log(`[Alert Engine] Webhook dispatched to Slack for run ${run.id}`);
     } catch (err) {
       console.error(`[Alert Engine] Failed to dispatch webhook:`, err.message);
@@ -380,6 +413,16 @@ const connectorCatalog = [
     mode: "gateway",
     requiresSecret: true,
     endpoint: "/v1/messages"
+  },
+  {
+    provider: "azure_openai",
+    name: "Azure OpenAI",
+    category: "Gateway",
+    setup: "Paste your Azure OpenAI endpoint, API key, and deployment name. Route chat completions through Agent Prism for spend control and governance.",
+    mode: "gateway",
+    requiresSecret: true,
+    endpoint: "/v1/azure/chat/completions",
+    configFields: ["endpoint", "apiKey", "deployment", "apiVersion"]
   },
   {
     provider: "github-copilot",
@@ -813,13 +856,28 @@ const server = createServer(async (req, res) => {
     if (applyCors(req, res)) return;
 
     if (req.method === "GET" && req.url === "/api/health") {
-      const bootstrap = await getBootstrapStatus();
-      return sendJson(res, 200, {
-        ok: true,
+      const [bootstrap, db] = await Promise.all([
+        getBootstrapStatus(),
+        pingDb()
+      ]);
+      const circuitStatuses = Object.values(breakers).map((b) => b.getStatus());
+      const anyCircuitOpen = circuitStatuses.some((s) => s.state === "OPEN");
+      const healthy = db.ok && !anyCircuitOpen;
+      return sendJson(res, healthy ? 200 : 503, {
+        ok: healthy,
         service: "agent-prism",
-        mode: "saas-foundation",
         storageBackend,
-        bootstrapped: bootstrap.bootstrapped
+        bootstrapped: bootstrap.bootstrapped,
+        db: {
+          ok: db.ok,
+          latencyMs: db.latencyMs,
+          ...(db.error ? { error: db.error } : {}),
+          ...(db.note ? { note: db.note } : {})
+        },
+        circuits: circuitStatuses,
+        uptime: Math.floor(process.uptime()),
+        memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        pid: process.pid
       });
     }
 
@@ -931,6 +989,19 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 201, result);
     }
 
+    if (req.method === "POST" && req.url === "/api/admin/tenant/plan") {
+      if (!requireAdmin(req, res)) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const { tenantId: targetTenantId, plan } = body;
+      const validPlans = ["free", "starter", "pro", "enterprise", "enterprise-trial"];
+      if (!targetTenantId || !plan) return sendJson(res, 400, { error: "bad_request", message: "tenantId and plan required" });
+      if (!validPlans.includes(plan)) return sendJson(res, 400, { error: "bad_request", message: `plan must be one of: ${validPlans.join(", ")}` });
+      const updated = await updateTenantPlan(targetTenantId, plan);
+      if (!updated) return sendJson(res, 404, { error: "not_found", message: "Tenant not found" });
+      return sendJson(res, 200, { ok: true, tenant: updated });
+    }
+
     if (req.method === "POST" && req.url === "/api/admin/users/password") {
       if (!requireAdmin(req, res)) return;
       const body = await parseBody(req, res);
@@ -1000,14 +1071,19 @@ const server = createServer(async (req, res) => {
       const { provider, name, apiKey, mode } = body;
       if (!provider || !name) return sendJson(res, 400, { error: "bad_request", message: "Missing provider or name" });
 
-      const result = await createConnector(auth.tenant.id, { 
-        provider, 
+      const connectorConfig = {
+        apiKey,
+        setupMethod: body.setupMethod || "connector-marketplace"
+      };
+      if (body.monthlyBudgetUsd !== undefined) {
+        connectorConfig.monthlyBudgetUsd = parseFloat(body.monthlyBudgetUsd) || 0;
+      }
+
+      const result = await createConnector(auth.tenant.id, {
+        provider,
         name,
         mode: mode || "webhook",
-        config: {
-          apiKey,
-          setupMethod: body.setupMethod || "connector-marketplace"
-        } 
+        config: connectorConfig
       });
       
       await logAuditEvent(auth.tenant.id, {
@@ -1063,6 +1139,19 @@ const server = createServer(async (req, res) => {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) return;
 
+      // Per-key RPM + TPM enforcement
+      const keyId = auth.apiKey?.id || auth.tenant.id;
+      const rpmCheck = keyRpmLimiter.check(keyId);
+      if (!rpmCheck.allowed) {
+        res.setHeader("Retry-After", String(rpmCheck.retryAfter));
+        return sendJson(res, 429, { error: "rate_limit_exceeded", message: `Per-key RPM limit reached. Retry after ${rpmCheck.retryAfter}s.`, retryAfter: rpmCheck.retryAfter });
+      }
+      const tpmCheck = keyTpmLimiter.check(keyId);
+      if (!tpmCheck.allowed) {
+        res.setHeader("Retry-After", String(tpmCheck.retryAfter));
+        return sendJson(res, 429, { error: "rate_limit_exceeded", message: `Per-key TPM limit reached. Retry after ${tpmCheck.retryAfter}s.`, retryAfter: tpmCheck.retryAfter });
+      }
+
       // 2. Read the body (Anthropic payload)
       const body = await parseBody(req, res);
       if (body === null) return;
@@ -1072,13 +1161,50 @@ const server = createServer(async (req, res) => {
       const anthropicConnector = context.connectors.find(c => c.provider === "anthropic" && c.config?.apiKey);
 
       if (!anthropicConnector) {
-        return sendJson(res, 403, { 
-          error: "forbidden", 
-          message: "No Anthropic API Key configured in your Agent Prism Dashboard." 
+        return sendJson(res, 403, {
+          error: "forbidden",
+          message: "No Anthropic API Key configured in your Agent Prism Dashboard."
         });
       }
 
-      // 4. Pre-flight: classify task type and advise on model fitness
+      // Plan guard — gateway proxy is a paid feature
+      const gatewayCheck = checkGatewayAllowed(auth.tenant);
+      if (!gatewayCheck.allowed) {
+        return sendJson(res, 402, { error: gatewayCheck.code, message: gatewayCheck.reason, upgrade: gatewayCheck.upgrade });
+      }
+
+      // Plan guard — agent limit
+      const ingestAgentName = body.agentName || "Gateway Proxy Agent";
+      const planCheck = checkIngestAllowed(auth.tenant, context.runs, ingestAgentName);
+      if (!planCheck.allowed) {
+        return sendJson(res, 402, { error: planCheck.code, message: planCheck.reason, usage: planCheck.usage, upgrade: planCheck.upgrade });
+      }
+
+      // 4. Budget enforcement — reject before any upstream spend
+      const monthlyBudgetUsd = parseFloat(
+        anthropicConnector.config.monthlyBudgetUsd ||
+        process.env.GATEWAY_MONTHLY_BUDGET_USD ||
+        "0"
+      );
+      if (monthlyBudgetUsd > 0) {
+        const monthStart = new Date();
+        monthStart.setUTCDate(1);
+        monthStart.setUTCHours(0, 0, 0, 0);
+        const monthStartIso = monthStart.toISOString();
+        const monthSpend = context.runs
+          .filter(r => r.source === "claude" && (r.startTime || "") >= monthStartIso)
+          .reduce((sum, r) => sum + (r.costUsd || 0), 0);
+        if (monthSpend >= monthlyBudgetUsd) {
+          return sendJson(res, 402, {
+            error: "budget_exceeded",
+            message: `Monthly gateway budget of $${monthlyBudgetUsd.toFixed(2)} reached (spent $${monthSpend.toFixed(4)}). Increase GATEWAY_MONTHLY_BUDGET_USD or wait until next month.`,
+            spentUsd: Number(monthSpend.toFixed(4)),
+            budgetUsd: monthlyBudgetUsd
+          });
+        }
+      }
+
+      // 4b. Pre-flight: classify task type and advise on model fitness
       const messages = body.messages || [];
       const toolCount = Array.isArray(body.tools) ? body.tools.length : 0;
       const taskType = classifyTask(messages, { toolCount });
@@ -1087,15 +1213,17 @@ const server = createServer(async (req, res) => {
       // 5. Forward the request to Anthropic securely
       const startTime = Date.now();
       try {
-        const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": anthropicConnector.config.apiKey,
-            "anthropic-version": req.headers["anthropic-version"] || "2023-06-01"
-          },
-          body: JSON.stringify(body)
-        });
+        const anthropicRes = await breakers.anthropic.execute(() =>
+          gatewayFetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": anthropicConnector.config.apiKey,
+              "anthropic-version": req.headers["anthropic-version"] || "2023-06-01"
+            },
+            body: JSON.stringify(body)
+          }, GATEWAY_TIMEOUT_ANTHROPIC_MS)
+        );
 
         const anthropicData = await anthropicRes.json();
         const endTime = Date.now();
@@ -1109,6 +1237,8 @@ const server = createServer(async (req, res) => {
           const inputTokens = anthropicData.usage?.input_tokens || 0;
           const outputTokens = anthropicData.usage?.output_tokens || 0;
           const costUsd = (inputTokens * 0.25 / 1000000) + (outputTokens * 1.25 / 1000000);
+          // Record token usage against per-key TPM counter
+          keyTpmLimiter.record(keyId, inputTokens + outputTokens);
 
           const run = {
             id: runId,
@@ -1177,14 +1307,29 @@ const server = createServer(async (req, res) => {
         res.end(JSON.stringify(anthropicData));
         return;
       } catch (err) {
-        console.error("[Claude proxy error]", err.message, err.stack?.split("\n")[1]);
-        return sendJson(res, 502, { error: "bad_gateway", message: err.message });
+        logError(req, err, tenantId);
+        if (err.isCircuitOpen) return sendJson(res, 503, { error: "provider_unavailable", message: scrubSecrets(err.message) });
+        if (err.isTimeout) return sendJson(res, 504, { error: "gateway_timeout", message: scrubSecrets(err.message) });
+        return sendJson(res, 502, { error: "bad_gateway", message: scrubSecrets(err.message) });
       }
     }
 
     if (req.method === "POST" && req.url.startsWith("/v1/responses")) {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) return;
+
+      // Per-key RPM + TPM enforcement
+      const oaiKeyId = auth.apiKey?.id || auth.tenant.id;
+      const oaiRpmCheck = keyRpmLimiter.check(oaiKeyId);
+      if (!oaiRpmCheck.allowed) {
+        res.setHeader("Retry-After", String(oaiRpmCheck.retryAfter));
+        return sendJson(res, 429, { error: "rate_limit_exceeded", message: `Per-key RPM limit reached. Retry after ${oaiRpmCheck.retryAfter}s.`, retryAfter: oaiRpmCheck.retryAfter });
+      }
+      const oaiTpmCheck = keyTpmLimiter.check(oaiKeyId);
+      if (!oaiTpmCheck.allowed) {
+        res.setHeader("Retry-After", String(oaiTpmCheck.retryAfter));
+        return sendJson(res, 429, { error: "rate_limit_exceeded", message: `Per-key TPM limit reached. Retry after ${oaiTpmCheck.retryAfter}s.`, retryAfter: oaiTpmCheck.retryAfter });
+      }
 
       const body = await parseBody(req, res);
       if (body === null) return;
@@ -1199,6 +1344,41 @@ const server = createServer(async (req, res) => {
         });
       }
 
+      // Plan guard
+      const oaiGatewayCheck = checkGatewayAllowed(auth.tenant);
+      if (!oaiGatewayCheck.allowed) {
+        return sendJson(res, 402, { error: oaiGatewayCheck.code, message: oaiGatewayCheck.reason, upgrade: oaiGatewayCheck.upgrade });
+      }
+      const oaiAgentName = body.agentName || "OpenAI Reasoning Agent";
+      const oaiPlanCheck = checkIngestAllowed(auth.tenant, context.runs, oaiAgentName);
+      if (!oaiPlanCheck.allowed) {
+        return sendJson(res, 402, { error: oaiPlanCheck.code, message: oaiPlanCheck.reason, usage: oaiPlanCheck.usage, upgrade: oaiPlanCheck.upgrade });
+      }
+
+      // Budget enforcement for OpenAI gateway
+      const oaiMonthlyBudgetUsd = parseFloat(
+        openAiConnector.config.monthlyBudgetUsd ||
+        process.env.GATEWAY_MONTHLY_BUDGET_USD ||
+        "0"
+      );
+      if (oaiMonthlyBudgetUsd > 0) {
+        const oaiMonthStart = new Date();
+        oaiMonthStart.setUTCDate(1);
+        oaiMonthStart.setUTCHours(0, 0, 0, 0);
+        const oaiMonthStartIso = oaiMonthStart.toISOString();
+        const oaiMonthSpend = context.runs
+          .filter(r => r.source === "openai" && (r.startTime || "") >= oaiMonthStartIso)
+          .reduce((sum, r) => sum + (r.costUsd || 0), 0);
+        if (oaiMonthSpend >= oaiMonthlyBudgetUsd) {
+          return sendJson(res, 402, {
+            error: "budget_exceeded",
+            message: `Monthly gateway budget of $${oaiMonthlyBudgetUsd.toFixed(2)} reached (spent $${oaiMonthSpend.toFixed(4)}). Increase GATEWAY_MONTHLY_BUDGET_USD or wait until next month.`,
+            spentUsd: Number(oaiMonthSpend.toFixed(4)),
+            budgetUsd: oaiMonthlyBudgetUsd
+          });
+        }
+      }
+
       const oaiRespMessages = Array.isArray(body.input) ? body.input : (body.messages || []);
       const oaiRespToolCount = Array.isArray(body.tools) ? body.tools.length : 0;
       const oaiRespTaskType = classifyTask(oaiRespMessages, { toolCount: oaiRespToolCount });
@@ -1206,14 +1386,16 @@ const server = createServer(async (req, res) => {
 
       const startTime = Date.now();
       try {
-        const openAiRes = await fetch("https://api.openai.com/v1/responses", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${openAiConnector.config.apiKey}`
-          },
-          body: JSON.stringify(body)
-        });
+        const openAiRes = await breakers.openai.execute(() =>
+          gatewayFetch("https://api.openai.com/v1/responses", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${openAiConnector.config.apiKey}`
+            },
+            body: JSON.stringify(body)
+          }, GATEWAY_TIMEOUT_OPENAI_MS)
+        );
 
         const openAiData = await openAiRes.json();
         const endTime = Date.now();
@@ -1223,6 +1405,7 @@ const server = createServer(async (req, res) => {
           const inputTokens = openAiData.usage?.input_tokens || 0;
           const outputTokens = openAiData.usage?.output_tokens || 0;
           const costUsd = estimateOpenAiCost({ inputTokens, outputTokens });
+          keyTpmLimiter.record(oaiKeyId, inputTokens + outputTokens);
           const runId = createId("run");
           const run = {
             id: runId,
@@ -1290,7 +1473,10 @@ const server = createServer(async (req, res) => {
         res.end(JSON.stringify(openAiData));
         return;
       } catch (err) {
-        return sendJson(res, 502, { error: "bad_gateway", message: err.message });
+        logError(req, err, tenantId);
+        if (err.isCircuitOpen) return sendJson(res, 503, { error: "provider_unavailable", message: scrubSecrets(err.message) });
+        if (err.isTimeout) return sendJson(res, 504, { error: "gateway_timeout", message: scrubSecrets(err.message) });
+        return sendJson(res, 502, { error: "bad_gateway", message: scrubSecrets(err.message) });
       }
     }
 
@@ -1319,14 +1505,16 @@ const server = createServer(async (req, res) => {
 
       const startTime = Date.now();
       try {
-        const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${openAiConnector.config.apiKey}`
-          },
-          body: JSON.stringify(body)
-        });
+        const openAiRes = await breakers.openai.execute(() =>
+          gatewayFetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${openAiConnector.config.apiKey}`
+            },
+            body: JSON.stringify(body)
+          }, GATEWAY_TIMEOUT_OPENAI_MS)
+        );
 
         const openAiData = await openAiRes.json();
         const endTime = Date.now();
@@ -1399,7 +1587,120 @@ const server = createServer(async (req, res) => {
         res.end(JSON.stringify(openAiData));
         return;
       } catch (err) {
-        return sendJson(res, 502, { error: "bad_gateway", message: err.message });
+        logError(req, err, tenantId);
+        if (err.isCircuitOpen) return sendJson(res, 503, { error: "provider_unavailable", message: scrubSecrets(err.message) });
+        if (err.isTimeout) return sendJson(res, 504, { error: "gateway_timeout", message: scrubSecrets(err.message) });
+        return sendJson(res, 502, { error: "bad_gateway", message: scrubSecrets(err.message) });
+      }
+    }
+
+    // ── Azure OpenAI proxy ──────────────────────────────────────────────────────
+    // Route: POST /v1/azure/chat/completions
+    // Connector: provider="azure_openai" with config.apiKey, config.endpoint, config.apiVersion
+    // Endpoint pattern: https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version={version}
+    if (req.method === "POST" && req.url.startsWith("/v1/azure/")) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+
+      const azKeyId = auth.apiKey?.id || auth.tenant.id;
+      const azRpmCheck = keyRpmLimiter.check(azKeyId);
+      if (!azRpmCheck.allowed) {
+        res.setHeader("Retry-After", String(azRpmCheck.retryAfter));
+        return sendJson(res, 429, { error: "rate_limit_exceeded", message: `Per-key RPM limit reached. Retry after ${azRpmCheck.retryAfter}s.`, retryAfter: azRpmCheck.retryAfter });
+      }
+
+      const body = await parseBody(req, res);
+      if (body === null) return;
+
+      const context = await listTenantContext(auth.tenant.id);
+      const azConnector = context.connectors.find((c) => c.provider === "azure_openai" && c.config?.apiKey);
+
+      if (!azConnector) {
+        return sendJson(res, 403, {
+          error: "forbidden",
+          message: "No Azure OpenAI connector configured. Add one in the Dashboard with provider=azure_openai, including endpoint, apiKey, and apiVersion."
+        });
+      }
+
+      const { apiKey, endpoint, apiVersion = "2024-02-01", deployment } = azConnector.config;
+      const deploy = deployment || body.model || "gpt-4o";
+      const azureUrl = `${endpoint.replace(/\/$/, "")}/openai/deployments/${deploy}/chat/completions?api-version=${apiVersion}`;
+
+      // Budget enforcement
+      const azBudgetUsd = parseFloat(azConnector.config.monthlyBudgetUsd || process.env.GATEWAY_MONTHLY_BUDGET_USD || "0");
+      if (azBudgetUsd > 0) {
+        const azMonthStart = new Date(); azMonthStart.setUTCDate(1); azMonthStart.setUTCHours(0, 0, 0, 0);
+        const azSpend = context.runs
+          .filter(r => r.source === "azure_openai" && (r.startTime || "") >= azMonthStart.toISOString())
+          .reduce((s, r) => s + (r.costUsd || 0), 0);
+        if (azSpend >= azBudgetUsd) {
+          return sendJson(res, 402, { error: "budget_exceeded", message: `Monthly Azure gateway budget of $${azBudgetUsd.toFixed(2)} reached.`, spentUsd: Number(azSpend.toFixed(4)), budgetUsd: azBudgetUsd });
+        }
+      }
+
+      const azMessages = body.messages || [];
+      const azToolCount = Array.isArray(body.tools) ? body.tools.length : 0;
+      const azTaskType = classifyTask(azMessages, { toolCount: azToolCount });
+      const startTime = Date.now();
+
+      try {
+        const azRes = await breakers.azure.execute(() =>
+          gatewayFetch(azureUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "api-key": apiKey
+            },
+            body: JSON.stringify(body)
+          }, GATEWAY_TIMEOUT_AZURE_MS)
+        );
+
+        const azData = await azRes.json();
+        const endTime = Date.now();
+        const latencyMs = endTime - startTime;
+
+        if (azRes.ok) {
+          const inputTokens = azData.usage?.prompt_tokens || 0;
+          const outputTokens = azData.usage?.completion_tokens || 0;
+          const costUsd = estimateOpenAiCost({ inputTokens, outputTokens });
+          keyTpmLimiter.record(azKeyId, inputTokens + outputTokens);
+
+          await upsertTenantRuns(auth.tenant.id, [{
+            id: createId("run"),
+            source: "azure_openai",
+            agentName: body.agentName || `Azure/${deploy}`,
+            provider: "Azure OpenAI",
+            model: deploy,
+            taskType: azTaskType,
+            status: "success",
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date(endTime).toISOString(),
+            latencyMs,
+            tokensIn: inputTokens,
+            tokensOut: outputTokens,
+            costUsd,
+            budgetUsd: azBudgetUsd || 0.05,
+            autonomyLevel: 0,
+            retryCount: 0,
+            toolCalls: azToolCount,
+            policyViolations: 0,
+            userSatisfaction: 0,
+            environment: "production",
+            workflow: body.workflow || "azure-gateway",
+            team: body.team || "engineering"
+          }]);
+        }
+
+        setSecurityHeaders(res);
+        res.setHeader("X-Agent-Prism-Task-Type", azTaskType);
+        res.writeHead(azRes.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(azData));
+        return;
+      } catch (err) {
+        logError(req, err, tenantId);
+        if (err.isCircuitOpen) return sendJson(res, 503, { error: "provider_unavailable", message: scrubSecrets(err.message) });
+        if (err.isTimeout) return sendJson(res, 504, { error: "gateway_timeout", message: scrubSecrets(err.message) });
+        return sendJson(res, 502, { error: "bad_gateway", message: scrubSecrets(err.message) });
       }
     }
 
@@ -1478,7 +1779,8 @@ ${prompt}`;
         if (runId) await savePromptAnalysis(auth.tenant.id, runId, promptHash, result).catch(() => {});
         return sendJson(res, 200, result);
       } catch (err) {
-        return sendJson(res, 502, { error: err.message });
+        logError(req, err, tenantId);
+        return sendJson(res, 502, { error: "advisor_error", message: scrubSecrets(err.message) });
       }
     }
 
@@ -1576,11 +1878,32 @@ ${prompt}`;
         return;
       }
       const context = await listTenantContext(auth.tenant.id);
+      const planDef = getPlan(auth.tenant.plan);
+      const usage = computeUsage(context.runs);
       return sendJson(res, 200, {
         tenant: context.tenant,
         users: context.users,
         connectors: context.connectors.map(sanitizeConnector),
-        runCount: context.runs.length
+        runCount: context.runs.length,
+        plan: {
+          name: planDef.name,
+          slug: auth.tenant.plan,
+          limits: {
+            maxAgents: planDef.maxAgents === Infinity ? null : planDef.maxAgents,
+            maxRunsPerMonth: planDef.maxRunsPerMonth === Infinity ? null : planDef.maxRunsPerMonth,
+            gatewayAccess: planDef.gatewayAccess,
+            aiAdvisor: planDef.aiAdvisor,
+            promptCapture: planDef.promptCapture,
+            teamMembers: planDef.teamMembers === Infinity ? null : planDef.teamMembers,
+            dataRetentionDays: planDef.dataRetentionDays === Infinity ? null : planDef.dataRetentionDays
+          },
+          usage: {
+            agents: usage.agentCount,
+            agentNames: usage.uniqueAgents,
+            monthlyRuns: usage.monthlyRuns
+          },
+          upgradeUrl: process.env.UPGRADE_URL || "https://agentprism.io/pricing"
+        }
       });
     }
 
@@ -1698,6 +2021,14 @@ ${prompt}`;
       const ingestErrors = validate(SCHEMAS.ingest, body);
       if (ingestErrors) return sendValidationError(res, ingestErrors);
       const normalizedRun = normalizePayload(body);
+
+      // Plan guard
+      const ingestCtx = await listTenantContext(auth.tenant.id);
+      const ingestPlanCheck = checkIngestAllowed(auth.tenant, ingestCtx.runs, normalizedRun.agentName);
+      if (!ingestPlanCheck.allowed) {
+        return sendJson(res, 402, { error: ingestPlanCheck.code, message: ingestPlanCheck.reason, usage: ingestPlanCheck.usage, upgrade: ingestPlanCheck.upgrade });
+      }
+
       const updated = await upsertTenantRuns(auth.tenant.id, [normalizedRun]);
       
       const ip = req.socket?.remoteAddress || "unknown";
@@ -1733,17 +2064,62 @@ ${prompt}`;
       if (!auth) return;
       const logs = await listAuditLogs(auth.tenant.id);
       const rows = [
-        ["timestamp", "actor", "action", "resource", "ip", "details"],
+        ["timestamp", "actor", "action", "resource", "ip", "details", "hash", "prevHash"],
         ...logs.map((log) => [
           log.timestamp,
           log.actor,
           log.action,
           log.resource,
           log.ip,
-          log.details || {}
+          log.details || {},
+          log.hash || "",
+          log.prevHash || ""
         ])
       ];
       return sendCsv(res, `agent-prism-audit-${auth.tenant.slug}.csv`, rows);
+    }
+
+    // ── GDPR / Data Subject Rights ────────────────────────────────────────────
+
+    if (req.method === "GET" && req.url === "/api/gdpr/export") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const [ctx, auditLogs, promptData] = await Promise.all([
+        listTenantContext(auth.tenant.id),
+        listAuditLogs(auth.tenant.id),
+        listPromptCaptures(auth.tenant.id, { limit: 10000 })
+      ]);
+      // Strip encrypted connector fields — return config keys without values
+      const connectors = (ctx.connectors || []).map(({ config: _cfg, ...rest }) => ({
+        ...rest,
+        config: Object.keys(_cfg || {}).reduce((acc, k) => ({ ...acc, [k]: "[REDACTED]" }), {})
+      }));
+      return sendJson(res, 200, {
+        exportedAt: new Date().toISOString(),
+        tenant: ctx.tenant,
+        users: (ctx.users || []).map(({ id, email, name, role, createdAt }) => ({ id, email, name, role, createdAt })),
+        connectors,
+        runs: ctx.runs || [],
+        auditLogs,
+        promptCaptures: promptData.captures || []
+      });
+    }
+
+    if (req.method === "DELETE" && req.url === "/api/gdpr/data") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      await Promise.all([
+        resetTenantRuns(auth.tenant.id),
+        resetPromptCaptures(auth.tenant.id)
+      ]);
+      await logAuditEvent(auth.tenant.id, {
+        actor: auth.apiKey?.prefix || "tenant",
+        action: "GDPR_DATA_ERASURE",
+        resource: `tenant:${auth.tenant.id}`,
+        details: { erasedAt: new Date().toISOString() },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+      return sendJson(res, 200, { status: "erased", tenant: auth.tenant.slug, erasedAt: new Date().toISOString() });
     }
 
     if (req.method === "POST" && req.url === "/api/reset") {
@@ -1923,6 +2299,11 @@ ${prompt}`;
       }
       const body = JSON.parse(rawBody || "{}");
       const run = normalizeClaudeRun(body);
+      const claudeIngestCtx = await listTenantContext(auth.tenant.id);
+      const claudePlanCheck = checkIngestAllowed(auth.tenant, claudeIngestCtx.runs, run.agentName);
+      if (!claudePlanCheck.allowed) {
+        return sendJson(res, 402, { error: claudePlanCheck.code, message: claudePlanCheck.reason, usage: claudePlanCheck.usage, upgrade: claudePlanCheck.upgrade });
+      }
       await upsertTenantRuns(auth.tenant.id, [run]);
       return sendJson(res, 201, { status: "ingested", source: "claude" });
     }
@@ -1943,6 +2324,11 @@ ${prompt}`;
       }
       const body = JSON.parse(rawBody || "{}");
       const run = normalizeCopilotRun(body);
+      const copilotIngestCtx = await listTenantContext(auth.tenant.id);
+      const copilotPlanCheck = checkIngestAllowed(auth.tenant, copilotIngestCtx.runs, run.agentName);
+      if (!copilotPlanCheck.allowed) {
+        return sendJson(res, 402, { error: copilotPlanCheck.code, message: copilotPlanCheck.reason, usage: copilotPlanCheck.usage, upgrade: copilotPlanCheck.upgrade });
+      }
       await upsertTenantRuns(auth.tenant.id, [run]);
       return sendJson(res, 201, { status: "ingested", source: "copilot" });
     }
@@ -1953,6 +2339,11 @@ ${prompt}`;
       const body = await parseBody(req, res);
       if (body === null) return;
       const run = normalizeGenericRun(body.payload || body);
+      const genericIngestCtx = await listTenantContext(auth.tenant.id);
+      const genericPlanCheck = checkIngestAllowed(auth.tenant, genericIngestCtx.runs, run.agentName);
+      if (!genericPlanCheck.allowed) {
+        return sendJson(res, 402, { error: genericPlanCheck.code, message: genericPlanCheck.reason, usage: genericPlanCheck.usage, upgrade: genericPlanCheck.upgrade });
+      }
       await upsertTenantRuns(auth.tenant.id, [run]);
       return sendJson(res, 201, { status: "ingested", source: "generic" });
     }
@@ -2036,12 +2427,49 @@ ${prompt}`;
     logError(req, error, tenantId);
     return sendJson(res, 500, {
       error: "server_error",
-      message: error.message
+      message: process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : scrubSecrets(error.message)
     });
   }
 });
 
 validateConfig();
+
+// ── Auto-migration (opt-in via RUN_MIGRATIONS_ON_STARTUP=true) ──────────────
+if (process.env.RUN_MIGRATIONS_ON_STARTUP === "true" && process.env.DATABASE_URL) {
+  import("./db/migrate.js").then(({ runMigrations }) =>
+    import("pg").then(({ Pool }) => {
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      return runMigrations(pool).then((r) => {
+        process.stderr.write(`[migrate] Startup: applied ${r.applied}/${r.total}\n`);
+        return pool.end();
+      });
+    })
+  ).catch((err) => {
+    process.stderr.write(`[migrate] Startup error: ${err.message}\n`);
+  });
+}
+
+// ── Data retention (DATA_RETENTION_DAYS=90 deletes runs/captures older than N days) ──
+const RETENTION_DAYS = Number(process.env.DATA_RETENTION_DAYS || 0);
+if (RETENTION_DAYS > 0) {
+  const runRetention = () =>
+    applyDataRetention(RETENTION_DAYS)
+      .then((r) => {
+        if (r.deletedRuns > 0 || r.deletedCaptures > 0) {
+          process.stderr.write(
+            JSON.stringify({ ts: new Date().toISOString(), level: "info",
+              message: `[retention] deleted ${r.deletedRuns} runs, ${r.deletedCaptures} captures older than ${RETENTION_DAYS}d` }) + "\n"
+          );
+        }
+      })
+      .catch((err) => process.stderr.write(`[retention] error: ${err.message}\n`));
+
+  // Run once at startup, then every 24h
+  runRetention();
+  setInterval(runRetention, 24 * 60 * 60 * 1000).unref();
+}
 
 server.listen(port, host, () => {
   process.stdout.write(JSON.stringify({

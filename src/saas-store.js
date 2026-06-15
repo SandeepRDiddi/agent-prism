@@ -103,6 +103,16 @@ export async function resetTenantRuns(tenantId) {
   return backend.resetTenantRuns(tenantId);
 }
 
+export async function resetPromptCaptures(tenantId) {
+  const backend = await getBackend();
+  return backend.resetPromptCaptures ? backend.resetPromptCaptures(tenantId) : null;
+}
+
+export async function applyDataRetention(daysToKeep) {
+  const backend = await getBackend();
+  return backend.applyDataRetention ? backend.applyDataRetention(daysToKeep) : { deletedRuns: 0, deletedCaptures: 0 };
+}
+
 export async function createSession(tenantId, data) {
   const backend = await getBackend();
   return backend.createSession(tenantId, data);
@@ -171,4 +181,14 @@ export async function listPromptCaptures(tenantId, opts) {
 export async function getModelFitnessStats(tenantId) {
   const backend = await getBackend();
   return backend.getModelFitnessStats ? backend.getModelFitnessStats(tenantId) : { fitnessBreakdown: [], topTaskModelPairs: [] };
+}
+
+export async function updateTenantPlan(tenantId, plan) {
+  const backend = await getBackend();
+  return backend.updateTenantPlan ? backend.updateTenantPlan(tenantId, plan) : null;
+}
+
+export async function pingDb() {
+  const backend = await getBackend();
+  return backend.pingDb ? backend.pingDb() : { ok: true, latencyMs: 0, note: "file backend — no DB" };
 }

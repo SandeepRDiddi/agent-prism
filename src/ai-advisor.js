@@ -161,6 +161,42 @@ async function callOllama(prompt) {
   }
 }
 
+async function callAnthropic(prompt) {
+  if (!config.aiAdvisor.anthropicApiKey) {
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.aiAdvisor.timeoutMs);
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": config.aiAdvisor.anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: config.aiAdvisor.anthropicModel,
+        max_tokens: 1024,
+        system: "You produce concise enterprise AI operations advice as valid JSON only.",
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`Anthropic returned HTTP ${response.status}${detail ? `: ${detail.slice(0, 180)}` : ""}`);
+    }
+
+    const data = await response.json();
+    return data.content?.[0]?.text || "";
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function callOpenRouter(prompt) {
   if (!config.aiAdvisor.openRouterApiKey) {
     throw new Error("OPENROUTER_API_KEY is not set");
@@ -226,14 +262,14 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
     };
   }
 
-  if (!["ollama", "openrouter"].includes(provider)) {
+  if (!["ollama", "openrouter", "anthropic"].includes(provider)) {
     return {
       status: "unavailable",
       source: "llm",
       provider,
       model,
       generatedAt: new Date().toISOString(),
-      message: `AI Advisor provider "${provider}" is not enabled in this build. Use "ollama" or "openrouter".`,
+      message: `AI Advisor provider "${provider}" is not supported. Use "anthropic", "openrouter", or "ollama".`,
       recommendations: []
     };
   }
@@ -241,7 +277,10 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
   const telemetry = buildAdvisorTelemetry({ tenant, snapshot, runs });
   try {
     const prompt = advisorPrompt(telemetry);
-    const content = provider === "openrouter" ? await callOpenRouter(prompt) : await callOllama(prompt);
+    let content;
+    if (provider === "openrouter") content = await callOpenRouter(prompt);
+    else if (provider === "anthropic") content = await callAnthropic(prompt);
+    else content = await callOllama(prompt);
     return {
       status: "ready",
       source: "llm",
@@ -263,6 +302,14 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
             OPENROUTER_API_KEY: "set in Render environment"
           }
         }
+      : provider === "anthropic"
+      ? {
+          env: {
+            AI_ADVISOR_PROVIDER: "anthropic",
+            ANTHROPIC_API_KEY: "set in Render environment",
+            AI_ADVISOR_ANTHROPIC_MODEL: "claude-haiku-4-5-20251001"
+          }
+        }
       : {
           install: "Install Ollama, then run: ollama pull llama3.1",
           run: "ollama serve",
@@ -272,13 +319,14 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
             OLLAMA_BASE_URL: "http://127.0.0.1:11434"
           }
         };
+    const providerLabel = provider === "openrouter" ? "OpenRouter" : provider === "anthropic" ? "Anthropic" : "Local Llama";
     return {
       status: "unavailable",
       source: "llm",
       provider,
       model,
       generatedAt: new Date().toISOString(),
-      message: `${provider === "openrouter" ? "OpenRouter advisor" : "Local Llama advisor"} is unavailable: ${error.message}. Check the provider key/settings, then refresh Token Coach.`,
+      message: `${providerLabel} advisor is unavailable: ${error.message}. Check the provider key/settings, then refresh Token Coach.`,
       setup,
       recommendations: []
     };
@@ -290,5 +338,6 @@ export async function generateAiAdvisor({ tenant, snapshot, runs }) {
 export async function callLlm(userContent) {
   const provider = config.aiAdvisor.provider;
   if (provider === "openrouter") return callOpenRouter(userContent);
+  if (provider === "anthropic") return callAnthropic(userContent);
   return callOllama(userContent);
 }

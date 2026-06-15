@@ -88,7 +88,9 @@ CREATE TABLE audit_logs (
   action TEXT NOT NULL,
   resource TEXT NOT NULL,
   details JSONB NOT NULL DEFAULT '{}'::jsonb,
-  ip_address TEXT NOT NULL
+  ip_address TEXT NOT NULL,
+  hash TEXT NOT NULL DEFAULT '',
+  prev_hash TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX idx_audit_logs_tenant_time ON audit_logs (tenant_id, timestamp DESC);
@@ -128,3 +130,41 @@ CREATE TABLE prompt_captures (
 CREATE INDEX idx_prompt_captures_tenant_time ON prompt_captures (tenant_id, created_at DESC);
 CREATE INDEX idx_prompt_captures_model ON prompt_captures (tenant_id, model);
 CREATE INDEX idx_prompt_captures_task ON prompt_captures (tenant_id, task_type);
+
+-- ── Row-Level Security ─────────────────────────────────────────────────────────
+-- Defense-in-depth tenant isolation at the DB engine layer.
+-- The application sets app.current_tenant_id via withTenant() before each query.
+-- Full policy set (SELECT/INSERT/UPDATE/DELETE) prevents default-deny blocking
+-- writes if the app role has NOBYPASSRLS. To enforce at the app-role level:
+--   ALTER ROLE <your_app_db_role> NOBYPASSRLS;
+
+ALTER TABLE agent_runs      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE connectors      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prompt_captures ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY agent_runs_select ON agent_runs      FOR SELECT USING (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY agent_runs_insert ON agent_runs      FOR INSERT WITH CHECK (true);
+CREATE POLICY agent_runs_update ON agent_runs      FOR UPDATE USING (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY agent_runs_delete ON agent_runs      FOR DELETE USING (true);
+
+CREATE POLICY connectors_select ON connectors      FOR SELECT USING (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY connectors_insert ON connectors      FOR INSERT WITH CHECK (true);
+CREATE POLICY connectors_update ON connectors      FOR UPDATE USING (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY connectors_delete ON connectors      FOR DELETE USING (true);
+
+CREATE POLICY audit_logs_select ON audit_logs      FOR SELECT USING (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY audit_logs_insert ON audit_logs      FOR INSERT WITH CHECK (true);
+CREATE POLICY audit_logs_update ON audit_logs      FOR UPDATE USING (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY audit_logs_delete ON audit_logs      FOR DELETE USING (true);
+
+CREATE POLICY prompt_captures_select ON prompt_captures FOR SELECT USING (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY prompt_captures_insert ON prompt_captures FOR INSERT WITH CHECK (true);
+CREATE POLICY prompt_captures_update ON prompt_captures FOR UPDATE USING (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY prompt_captures_delete ON prompt_captures FOR DELETE USING (true);
+
+-- schema_migrations tracking table (used by db/migrate.js)
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  filename   TEXT        PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

@@ -21,13 +21,27 @@ export function upsertRuns(existingRuns, incomingRuns) {
   );
 }
 
+// Suppress repeated leaks for the same run ID to avoid alert fatigue.
+// Key = runId, value = first-seen timestamp. Cleared after LEAK_SUPPRESS_MS.
+const _leakSeen = new Map();
+const LEAK_SUPPRESS_MS = Number(process.env.LEAK_SUPPRESS_MS || 3600000); // 1 hour default
+
 export function detectCostLeaks(runs) {
+  const now = Date.now();
+  // Evict stale suppression entries
+  for (const [id, ts] of _leakSeen) {
+    if (now - ts > LEAK_SUPPRESS_MS) _leakSeen.delete(id);
+  }
+
   return runs
     .filter((run) => {
       const overBudget = run.costUsd > run.budgetUsd;
       const retryHeavy = run.retryCount >= 3 && run.costUsd > 1;
       const lowOutcome = run.userSatisfaction <= 2 && run.costUsd > 1.5;
-      return overBudget || retryHeavy || lowOutcome;
+      if (!(overBudget || retryHeavy || lowOutcome)) return false;
+      if (_leakSeen.has(run.id)) return false;
+      _leakSeen.set(run.id, now);
+      return true;
     })
     .map((run) => ({
       id: run.id,
@@ -362,12 +376,13 @@ function buildMLAnalytics(runs) {
   const trendDirection = costReg.slope > 0.0005 ? "rising" : costReg.slope < -0.0005 ? "falling" : "stable";
 
   // Z-score anomaly detection on token counts
+  const ANOMALY_Z = parseFloat(process.env.ANOMALY_ZSCORE_THRESHOLD || "2.0");
   const n = tokenCounts.length;
   const tokenMean = tokenCounts.reduce((s, t) => s + t, 0) / n;
   const tokenStd = Math.sqrt(tokenCounts.reduce((s, t) => s + (t - tokenMean) ** 2, 0) / n) || 1;
   const anomalySet = new Set(
     tokenCounts.map((t, i) => ({ z: Math.abs((t - tokenMean) / tokenStd), i }))
-      .filter(({ z }) => z > 2).map(({ i }) => i)
+      .filter(({ z }) => z > ANOMALY_Z).map(({ i }) => i)
   );
 
   // Moving average (window 3)
@@ -464,30 +479,62 @@ export function buildDashboardSnapshot(runs) {
   const averageScore = Math.round(average(enrichedRuns.map((run) => run.controlScore)));
   const averageSatisfaction = average(enrichedRuns.map((run) => run.userSatisfaction)).toFixed(1);
 
-  const byProvider = Object.entries(groupBy(enrichedRuns, (run) => run.provider)).map(
+  const byProviderRaw = Object.entries(groupBy(enrichedRuns, (run) => run.provider)).map(
     ([provider, providerRuns]) => {
       const totalCost = providerRuns.reduce((sum, run) => sum + run.costUsd, 0);
       const totalTokensIn = providerRuns.reduce((sum, run) => sum + (run.tokensIn || 0), 0);
       const totalTokensOut = providerRuns.reduce((sum, run) => sum + (run.tokensOut || 0), 0);
       const totalTokens = totalTokensIn + totalTokensOut;
       const successRuns = providerRuns.filter((run) => run.status === "success");
+      const successRate = Math.round((successRuns.length / providerRuns.length) * 100);
+      const avgScore = Math.round(average(providerRuns.map((run) => run.controlScore)));
+      const avgLatencyMs = Math.round(average(providerRuns.map((run) => run.latencyMs || 0)));
+      const costPer1kTokens = totalTokens ? Number(((totalCost / totalTokens) * 1000).toFixed(4)) : 0;
+      const totalRetries = providerRuns.reduce((sum, run) => sum + (run.retryCount || 0), 0);
+      const retryRate = providerRuns.length ? totalRetries / providerRuns.length : 0;
       return {
         provider,
         runs: providerRuns.length,
         costUsd: Number(totalCost.toFixed(4)),
-        avgScore: Math.round(average(providerRuns.map((run) => run.controlScore))),
-        successRate: Math.round((successRuns.length / providerRuns.length) * 100),
-        avgLatencyMs: Math.round(average(providerRuns.map((run) => run.latencyMs || 0))),
+        avgScore,
+        successRate,
+        avgLatencyMs,
         avgTokensPerRun: providerRuns.length ? Math.round(totalTokens / providerRuns.length) : 0,
         costPerRun: providerRuns.length ? Number((totalCost / providerRuns.length).toFixed(4)) : 0,
-        costPer1kTokens: totalTokens ? Number(((totalCost / totalTokens) * 1000).toFixed(4)) : 0,
+        costPer1kTokens,
         totalTokensIn,
         totalTokensOut,
         totalTokens,
-        retries: providerRuns.reduce((sum, run) => sum + (run.retryCount || 0), 0)
+        retries: totalRetries,
+        retryRate: Number(retryRate.toFixed(3)),
+        _raw: { successRate, avgScore, avgLatencyMs, costPer1kTokens, retryRate }
       };
     }
   );
+
+  // Weighted composite score — rank providers on what matters to enterprise buyers
+  // Weights: reliability 35%, task score 30%, cost efficiency 20%, speed 10%, retry penalty 5%
+  const WEIGHTS = { successRate: 0.35, avgScore: 0.30, cost: 0.20, latency: 0.10, retry: 0.05 };
+  const allLatencies = byProviderRaw.map(p => p._raw.avgLatencyMs).filter(v => v > 0);
+  const allCosts = byProviderRaw.map(p => p._raw.costPer1kTokens).filter(v => v > 0);
+  const maxLatency = allLatencies.length ? Math.max(...allLatencies) : 1;
+  const maxCost = allCosts.length ? Math.max(...allCosts) : 1;
+
+  const byProvider = byProviderRaw.map(p => {
+    const r = p._raw;
+    const latencyScore = maxLatency > 0 ? (1 - r.avgLatencyMs / maxLatency) * 100 : 100;
+    const costScore = maxCost > 0 ? (1 - r.costPer1kTokens / maxCost) * 100 : 100;
+    const retryScore = (1 - Math.min(r.retryRate, 1)) * 100;
+    const compositeScore = Math.round(
+      r.successRate * WEIGHTS.successRate +
+      r.avgScore * WEIGHTS.avgScore +
+      costScore * WEIGHTS.cost +
+      latencyScore * WEIGHTS.latency +
+      retryScore * WEIGHTS.retry
+    );
+    const { _raw, ...rest } = p;
+    return { ...rest, compositeScore };
+  });
 
   const byWorkflow = Object.entries(groupBy(enrichedRuns, (run) => run.workflow)).map(
     ([workflow, workflowRuns]) => ({
@@ -650,7 +697,11 @@ export function buildDashboardSnapshot(runs) {
       averageSatisfaction
     },
     status,
-    providerComparison: byProvider.sort((left, right) => right.avgScore - left.avgScore),
+    providerComparison: (() => {
+      const sorted = byProvider.slice().sort((a, b) => b.compositeScore - a.compositeScore);
+      if (sorted.length > 0) sorted[0] = { ...sorted[0], isWinner: true };
+      return sorted;
+    })(),
     workflowInsights: byWorkflow.sort((left, right) => right.costUsd - left.costUsd),
     costLeaks: detectCostLeaks(enrichedRuns),
     tokenEfficiency: buildTokenEfficiency(enrichedRuns),
