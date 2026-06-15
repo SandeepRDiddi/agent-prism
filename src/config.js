@@ -1,3 +1,5 @@
+import { cpus } from "node:os";
+
 function envValue(key, fallback = "") {
   const raw = process.env[key] || fallback;
   const prefix = `${key}=`;
@@ -11,9 +13,14 @@ export const config = {
   storageBackend: envValue("STORAGE_BACKEND", "file"),
   databaseUrl: envValue("DATABASE_URL"),
   db: {
-    // Maximum connections in pool. Rule of thumb: (2 × cores) + effective_spindle_count.
-    // For a 4-core managed DB, 20 is a safe starting point. Raise only after profiling.
-    max: Number(envValue("DB_POOL_MAX", "20")),
+    // Maximum connections per worker. Auto-calculated: floor(80 / workers) capped at 20.
+    // Keeps total connections under 80 for typical managed Postgres (100-connection default).
+    // Override with DB_POOL_MAX env var.
+    get max() {
+      if (process.env.DB_POOL_MAX) return Number(envValue("DB_POOL_MAX", "10"));
+      const workers = Number(process.env.CLUSTER_WORKERS || cpus().length);
+      return Math.max(2, Math.min(20, Math.floor(80 / workers)));
+    },
     // Minimum connections kept alive (warm) to avoid cold-start latency on burst traffic.
     min: Number(envValue("DB_POOL_MIN", "2")),
     // Release idle connections after this many ms. Frees DB-side resources during quiet periods.

@@ -6,5 +6,8 @@ import { pricing } from "../pricing.js";
  * @returns {number} cost in USD
  */
 export function computeCopilotCost({ seatHours = 0 }) {
-  return seatHours * pricing.platforms.copilot.hourly_seat_rate;
+  const rate = pricing.platforms.copilot?.hourly_seat_rate;
+  if (!rate) return 0;
+  const cost = seatHours * rate;
+  return Number.isFinite(cost) ? cost : 0;
 }

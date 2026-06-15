@@ -48,7 +48,17 @@ import {
   listPromptCaptures,
   getModelFitnessStats,
   updateTenantPlan,
-  pingDb
+  pingDb,
+  getApiKeyStatus,
+  checkAndSetIdempotencyKey,
+  pruneIdempotencyKeys,
+  saveFailedIngest,
+  listPendingFailedIngests,
+  markFailedIngestAttempt,
+  createRefreshToken,
+  verifyAndRotateRefreshToken,
+  revokeAllRefreshTokens,
+  setApiKeyIpAllowlist
 } from "./src/saas-store.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -67,6 +77,8 @@ import { validate, SCHEMAS } from "./src/validation.js";
 import { logRequest, logError, scrubSecrets } from "./src/middleware/logger.js";
 import { incCounter, recordLatency, getMetricsText } from "./src/middleware/metrics.js";
 import { setupGracefulShutdown } from "./src/shutdown.js";
+import { attachRequestId } from "./src/middleware/request-id.js";
+import { generateCspNonce } from "./src/middleware/security-headers.js";
 import jwt from "jsonwebtoken";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -232,13 +244,12 @@ async function dispatchBudgetAlert(tenantId, run) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: message })
       }, 5000);
-      console.log(`[Alert Engine] Webhook dispatched to Slack for run ${run.id}`);
+      process.stderr.write(JSON.stringify({ ts: new Date().toISOString(), level: "info", event: "budget_alert_sent", tenantId, runId: run.id }) + "\n");
     } catch (err) {
-      console.error(`[Alert Engine] Failed to dispatch webhook:`, err.message);
+      process.stderr.write(JSON.stringify({ ts: new Date().toISOString(), level: "warn", event: "budget_alert_failed", error: scrubSecrets(err.message) }) + "\n");
     }
   } else {
-    // If no webhook URL is set, just log it as a simulation
-    console.log(`\n[Alert Engine] SIMULATED SLACK MESSAGE:\n${message}\n`);
+    process.stderr.write(JSON.stringify({ ts: new Date().toISOString(), level: "info", event: "budget_alert_simulated", tenantId, runId: run.id, message }) + "\n");
   }
 }
 
@@ -255,13 +266,21 @@ async function requireTenant(req, res, setTenantId) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || adminSecret);
       if (decoded.type === "access_token") {
+        // JWT revocation check: reject if the issuing API key was revoked/deleted
+        if (decoded.keyId) {
+          const keyStatus = await getApiKeyStatus(decoded.keyId);
+          if (keyStatus !== "active") {
+            sendJson(res, 401, { error: "unauthorized", message: "Token has been revoked." });
+            return null;
+          }
+        }
         const context = await listTenantContext(decoded.tenantId);
         if (context?.tenant) {
-          auth = { tenant: context.tenant, apiKey: { prefix: "JWT Auth" } };
+          auth = { tenant: context.tenant, apiKey: { id: decoded.keyId, prefix: "JWT Auth" } };
         }
       }
     } catch (e) {
-      // Invalid JWT falls through
+      // Invalid JWT falls through to API key auth
     }
   }
 
@@ -290,8 +309,22 @@ async function requireTenant(req, res, setTenantId) {
     return null;
   }
 
-  // Per-tenant rate limit on all authenticated endpoints
-  if (!checkRateLimit(tenantLimiter, auth.tenant.id, res)) return null;
+  // IP allowlist check — only enforced when a non-null allowlist is configured
+  if (auth.apiKey?.id && auth.apiKey.id !== "dashboard-session") {
+    const clientIp = req.socket?.remoteAddress || req.headers["x-forwarded-for"]?.split(",")[0].trim() || "";
+    const allowlist = auth.apiKey._ipAllowlist; // populated by authenticateTenantApiKey if stored
+    if (Array.isArray(allowlist) && allowlist.length > 0) {
+      if (!allowlist.some((allowed) => clientIp === allowed || clientIp.startsWith(allowed))) {
+        sendJson(res, 403, { error: "ip_not_allowed", message: "Client IP not in key allowlist." });
+        return null;
+      }
+    }
+  }
+
+  // Per-tenant rate limit — enforces plan-based RPM
+  const plan = getPlan(auth.tenant.plan);
+  const planRpm = plan.maxRequestsPerMinute === Infinity ? undefined : plan.maxRequestsPerMinute;
+  if (!checkRateLimit(tenantLimiter, auth.tenant.id, res, planRpm)) return null;
 
   if (typeof setTenantId === "function") setTenantId(auth.tenant.id);
   return auth;
@@ -311,8 +344,8 @@ function requireAdmin(req, res) {
   return true;
 }
 
-function checkRateLimit(limiter, key, res) {
-  const { allowed, retryAfter } = limiter.check(key);
+function checkRateLimit(limiter, key, res, maxOverride) {
+  const { allowed, retryAfter } = limiter.check(key, maxOverride);
   if (!allowed) {
     res.setHeader("Retry-After", String(retryAfter));
     sendJson(res, 429, {
@@ -846,6 +879,9 @@ const server = createServer(async (req, res) => {
   const startTime = performance.now();
   let tenantId = null;
 
+  // Attach trace ID early — available for all logs in this request lifecycle
+  attachRequestId(req, res);
+
   // Log every completed response and decrement in-flight counter
   res.on("finish", () => {
     inflightCount--;
@@ -882,6 +918,26 @@ const server = createServer(async (req, res) => {
         uptime: Math.floor(process.uptime()),
         memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
         pid: process.pid
+      });
+    }
+
+    // Liveness probe — is the process alive? No dependency checks.
+    if (req.method === "GET" && req.url === "/api/health/live") {
+      return sendJson(res, 200, { ok: true, pid: process.pid, uptime: Math.floor(process.uptime()) });
+    }
+
+    // Readiness probe — are all dependencies healthy?
+    // Returns 503 if DB is down or any circuit is OPEN (provider unavailable).
+    if (req.method === "GET" && req.url === "/api/health/ready") {
+      const [bootstrap, db] = await Promise.all([getBootstrapStatus(), pingDb()]);
+      const circuitStatuses = Object.values(breakers).map((b) => b.getStatus());
+      const anyCircuitOpen = circuitStatuses.some((s) => s.state === "OPEN");
+      const ready = db.ok && !anyCircuitOpen;
+      return sendJson(res, ready ? 200 : 503, {
+        ready,
+        db: { ok: db.ok, latencyMs: db.latencyMs, ...(db.error ? { error: db.error } : {}) },
+        circuits: circuitStatuses,
+        bootstrapped: bootstrap.bootstrapped
       });
     }
 
@@ -1141,9 +1197,12 @@ const server = createServer(async (req, res) => {
 
       const token = jwt.sign({
         tenantId: auth.tenant.id,
+        keyId: auth.apiKey.id,
         type: "access_token",
         scopes: auth.apiKey.scopes || ["*"]
       }, process.env.JWT_SECRET || adminSecret, { expiresIn: '1h' });
+
+      const refreshResult = await createRefreshToken(auth.tenant.id, auth.apiKey.id).catch(() => null);
 
       await logAuditEvent(auth.tenant.id, {
         actor: auth.apiKey.prefix,
@@ -1155,7 +1214,36 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, {
         access_token: token,
         token_type: "Bearer",
-        expires_in: 3600
+        expires_in: 3600,
+        refresh_token: refreshResult?.plainToken,
+        refresh_expires_in: 30 * 24 * 3600
+      });
+    }
+
+    // ── OAuth refresh token endpoint ───────────────────────────────────────────
+    if (req.method === "POST" && req.url === "/api/oauth/refresh") {
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const { refresh_token } = body;
+      if (!refresh_token) {
+        return sendJson(res, 400, { error: "invalid_request", message: "refresh_token is required" });
+      }
+      const rotated = await verifyAndRotateRefreshToken(refresh_token);
+      if (!rotated) {
+        return sendJson(res, 401, { error: "invalid_grant", message: "Refresh token is invalid, expired, or revoked" });
+      }
+      const newAccessToken = jwt.sign({
+        tenantId: rotated.tenantId,
+        keyId: rotated.apiKeyId,
+        type: "access_token",
+        scopes: ["*"]
+      }, process.env.JWT_SECRET || adminSecret, { expiresIn: "1h" });
+      return sendJson(res, 200, {
+        access_token: newAccessToken,
+        token_type: "Bearer",
+        expires_in: 3600,
+        refresh_token: rotated.newRefreshToken,
+        refresh_expires_in: 30 * 24 * 3600
       });
     }
 
@@ -2019,6 +2107,26 @@ ${prompt}`;
       return sendJson(res, 200, { deleted });
     }
 
+    // ── IP allowlist management ─────────────────────────────────────────────────
+    if (req.method === "PUT" && req.url.match(/^\/api\/tenant\/api-keys\/[^/]+\/ip-allowlist$/)) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const keyId = decodeURIComponent(req.url.slice("/api/tenant/api-keys/".length, -"/ip-allowlist".length));
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const ipList = Array.isArray(body.ip_allowlist) ? body.ip_allowlist.map(String) : null;
+      const updated = await setApiKeyIpAllowlist(auth.tenant.id, keyId, ipList);
+      if (!updated) return sendJson(res, 404, { error: "not_found", message: "API key not found." });
+      await logAuditEvent(auth.tenant.id, {
+        actor: auth.apiKey.prefix,
+        action: "API Key IP Allowlist Updated",
+        resource: keyId,
+        details: { ipCount: ipList ? ipList.length : 0 },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+      return sendJson(res, 200, { id: keyId, ip_allowlist: ipList });
+    }
+
     if (req.method === "POST" && req.url === "/api/connectors") {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) {
@@ -2053,6 +2161,13 @@ ${prompt}`;
       if (ingestErrors) return sendValidationError(res, ingestErrors);
       const normalizedRun = normalizePayload(body);
 
+      // Idempotency check — deduplicate webhook retries using Idempotency-Key header or run ID
+      const idempotencyKey = req.headers["idempotency-key"] || normalizedRun.id;
+      const idempResult = await checkAndSetIdempotencyKey(auth.tenant.id, idempotencyKey, normalizedRun.id);
+      if (idempResult.isDuplicate) {
+        return sendJson(res, 200, { status: "duplicate", runId: idempResult.runId });
+      }
+
       // Plan guard
       const ingestCtx = await listTenantContext(auth.tenant.id);
       const ingestPlanCheck = checkIngestAllowed(auth.tenant, ingestCtx.runs, normalizedRun.agentName);
@@ -2060,7 +2175,14 @@ ${prompt}`;
         return sendJson(res, 402, { error: ingestPlanCheck.code, message: ingestPlanCheck.reason, usage: ingestPlanCheck.usage, upgrade: ingestPlanCheck.upgrade });
       }
 
-      const updated = await upsertTenantRuns(auth.tenant.id, [normalizedRun]);
+      let updated;
+      try {
+        updated = await upsertTenantRuns(auth.tenant.id, [normalizedRun]);
+      } catch (dlqErr) {
+        await saveFailedIngest(auth.tenant.id, "generic", body, dlqErr.message).catch(() => {});
+        logError(req, dlqErr, tenantId);
+        return sendJson(res, 202, { status: "queued", message: "Run accepted but could not persist immediately. Will retry." });
+      }
       
       const ip = req.socket?.remoteAddress || "unknown";
       await logAuditEvent(auth.tenant.id, {
@@ -2112,27 +2234,37 @@ ${prompt}`;
 
     // ── GDPR / Data Subject Rights ────────────────────────────────────────────
 
-    if (req.method === "GET" && req.url === "/api/gdpr/export") {
+    if (req.method === "GET" && req.url.startsWith("/api/gdpr/export")) {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) return;
+      const searchParams = new URL(req.url, "http://localhost").searchParams;
+      const pageSize = Math.min(parseInt(searchParams.get("limit") || "1000", 10), 5000);
+      const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
+
       const [ctx, auditLogs, promptData] = await Promise.all([
         listTenantContext(auth.tenant.id),
         listAuditLogs(auth.tenant.id),
-        listPromptCaptures(auth.tenant.id, { limit: 10000 })
+        listPromptCaptures(auth.tenant.id, { limit: pageSize, offset })
       ]);
-      // Strip encrypted connector fields — return config keys without values
       const connectors = (ctx.connectors || []).map(({ config: _cfg, ...rest }) => ({
         ...rest,
         config: Object.keys(_cfg || {}).reduce((acc, k) => ({ ...acc, [k]: "[REDACTED]" }), {})
       }));
+      // Paginated: return page of runs matching offset/pageSize
+      const allRuns = ctx.runs || [];
+      const runsPage = allRuns.slice(offset, offset + pageSize);
       return sendJson(res, 200, {
         exportedAt: new Date().toISOString(),
         tenant: ctx.tenant,
         users: (ctx.users || []).map(({ id, email, name, role, createdAt }) => ({ id, email, name, role, createdAt })),
         connectors,
-        runs: ctx.runs || [],
+        runs: runsPage,
+        runsTotal: allRuns.length,
+        runsOffset: offset,
+        runsLimit: pageSize,
         auditLogs,
-        promptCaptures: promptData.captures || []
+        promptCaptures: promptData.captures || [],
+        promptCapturesTotal: promptData.total || 0
       });
     }
 
@@ -2444,9 +2576,13 @@ ${prompt}`;
       if (!requireBasicAuth(req, res)) return;
       const filePath = join(publicDir, "dashboard.html");
       try {
-        const file = await readFile(filePath);
+        const fileBytes = await readFile(filePath, "utf-8");
+        const nonce = generateCspNonce();
+        // Inject nonce into all inline <script> tags so CSP doesn't need unsafe-inline
+        const injected = fileBytes.replace(/<script(?!\s+src=)/g, `<script nonce="${nonce}"`);
+        setSecurityHeaders(res, nonce);
         res.writeHead(200, { "Content-Type": contentTypes[".html"] });
-        res.end(file);
+        res.end(injected);
       } catch {
         sendText(res, 404, "Dashboard not found");
       }
@@ -2509,6 +2645,28 @@ setInterval(() => {
   keyTpmLimiter.gc();
   bootstrapLimiter.gc();
 }, 60_000).unref();
+
+// ── Idempotency key cleanup — prune keys older than 24h every hour ──
+setInterval(() => {
+  pruneIdempotencyKeys().catch((err) =>
+    process.stderr.write(JSON.stringify({ ts: new Date().toISOString(), level: "warn", event: "idempotency_prune_error", error: err.message }) + "\n")
+  );
+}, 60 * 60 * 1000).unref();
+
+// ── DLQ retry — reattempt failed ingests every 5 minutes ──
+const runDlqRetry = async () => {
+  const pending = await listPendingFailedIngests(20).catch(() => []);
+  for (const item of pending) {
+    try {
+      const normalizedRun = normalizePayload(item.payload);
+      await upsertTenantRuns(item.tenant_id, [normalizedRun]);
+      await markFailedIngestAttempt(item.id, { succeeded: true });
+    } catch (err) {
+      await markFailedIngestAttempt(item.id, { succeeded: false, error: err.message }).catch(() => {});
+    }
+  }
+};
+setInterval(runDlqRetry, 5 * 60 * 1000).unref();
 
 server.listen(port, host, () => {
   process.stdout.write(JSON.stringify({

@@ -1,5 +1,5 @@
 import { createApiKey, createId, createSessionToken, hashPassword, verifyApiKey, verifyPassword } from "../auth.js";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { encryptConnectorConfig, decryptConnectorConfig } from "../crypto.js";
 import { config } from "../config.js";
 
@@ -377,6 +377,7 @@ export async function authenticateTenantApiKey(apiKeyValue) {
       name: keyRecord.name,
       prefix: keyRecord.prefix,
       status: keyRecord.status,
+      _ipAllowlist: keyRecord.ip_allowlist || null,
       createdAt: keyRecord.created_at?.toISOString?.() || keyRecord.created_at,
       lastUsedAt: keyRecord.last_used_at?.toISOString?.() || keyRecord.last_used_at
     }
@@ -798,4 +799,178 @@ export async function getModelFitnessStats(tenantId) {
       topTaskModelPairs: taskResult.rows
     };
   }, "REPEATABLE READ");
+}
+
+// ── API key status lookup (for JWT revocation check) ─────────────────────────
+export async function getApiKeyStatus(keyId) {
+  if (!keyId) return null;
+  const pool = await getPool();
+  const result = await pool.query(
+    "SELECT status FROM api_keys WHERE id = $1 LIMIT 1",
+    [keyId]
+  );
+  return result.rows[0]?.status || null;
+}
+
+// ── IP allowlist management ────────────────────────────────────────────────────
+export async function setApiKeyIpAllowlist(tenantId, keyId, ipList) {
+  const pool = await getPool();
+  const result = await pool.query(
+    "UPDATE api_keys SET ip_allowlist = $1 WHERE id = $2 AND tenant_id = $3 RETURNING id",
+    [ipList && ipList.length > 0 ? ipList : null, keyId, tenantId]
+  );
+  return result.rows[0] || null;
+}
+
+export async function getApiKeyIpAllowlist(keyId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    "SELECT ip_allowlist FROM api_keys WHERE id = $1 LIMIT 1",
+    [keyId]
+  );
+  return result.rows[0]?.ip_allowlist || null;
+}
+
+// ── Idempotency keys ──────────────────────────────────────────────────────────
+/**
+ * Atomic check-and-set. Returns { isDuplicate, runId }.
+ * If key already exists → isDuplicate=true, runId=existing run ID.
+ * If new → inserts row and returns isDuplicate=false.
+ * TTL of 24h enforced by cleanup job — keys older than 24h are pruned.
+ */
+export async function checkAndSetIdempotencyKey(tenantId, key, runId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    `INSERT INTO idempotency_keys (tenant_id, key, run_id)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (tenant_id, key) DO NOTHING
+     RETURNING run_id`,
+    [tenantId, key, runId]
+  );
+  if (result.rowCount > 0) {
+    return { isDuplicate: false, runId };
+  }
+  const existing = await pool.query(
+    "SELECT run_id FROM idempotency_keys WHERE tenant_id = $1 AND key = $2",
+    [tenantId, key]
+  );
+  return { isDuplicate: true, runId: existing.rows[0]?.run_id };
+}
+
+export async function pruneIdempotencyKeys() {
+  const pool = await getPool();
+  const result = await pool.query(
+    "DELETE FROM idempotency_keys WHERE created_at < NOW() - INTERVAL '24 hours'"
+  );
+  return result.rowCount;
+}
+
+// ── OAuth refresh tokens ───────────────────────────────────────────────────────
+export async function createRefreshToken(tenantId, apiKeyId) {
+  const pool = await getPool();
+  const id = createId("rft");
+  const plainToken = randomBytes(32).toString("base64url");
+  const tokenHash = createHash("sha256").update(plainToken).digest("hex");
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
+  await pool.query(
+    `INSERT INTO refresh_tokens (id, tenant_id, api_key_id, token_hash, expires_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, tenantId, apiKeyId, tokenHash, expiresAt]
+  );
+  return { id, plainToken, expiresAt };
+}
+
+export async function verifyAndRotateRefreshToken(plainToken) {
+  if (!plainToken) return null;
+  const pool = await getPool();
+  const tokenHash = createHash("sha256").update(plainToken).digest("hex");
+  const result = await pool.query(
+    `SELECT rt.*, ak.status AS key_status, t.plan, t.status AS tenant_status
+     FROM refresh_tokens rt
+     JOIN api_keys ak ON ak.id = rt.api_key_id
+     JOIN tenants t ON t.id = rt.tenant_id
+     WHERE rt.token_hash = $1
+       AND rt.revoked_at IS NULL
+       AND rt.expires_at > NOW()
+       AND ak.status = 'active'
+       AND t.status = 'active'
+     LIMIT 1`,
+    [tokenHash]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+
+  // Rotate: revoke old, issue new
+  await pool.query(
+    "UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1",
+    [row.id]
+  );
+  const newToken = await createRefreshToken(row.tenant_id, row.api_key_id);
+  return {
+    tenantId: row.tenant_id,
+    apiKeyId: row.api_key_id,
+    plan: row.plan,
+    newRefreshToken: newToken.plainToken,
+    newRefreshExpiresAt: newToken.expiresAt
+  };
+}
+
+export async function revokeAllRefreshTokens(tenantId, apiKeyId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    "UPDATE refresh_tokens SET revoked_at = NOW() WHERE tenant_id = $1 AND api_key_id = $2 AND revoked_at IS NULL",
+    [tenantId, apiKeyId]
+  );
+  return result.rowCount;
+}
+
+// ── Failed ingest DLQ ─────────────────────────────────────────────────────────
+export async function saveFailedIngest(tenantId, source, payload, error) {
+  const pool = await getPool();
+  const id = createId("dlq");
+  await pool.query(
+    `INSERT INTO failed_ingests (id, tenant_id, source, payload, error, next_retry_at)
+     VALUES ($1, $2, $3, $4::jsonb, $5, NOW() + INTERVAL '1 minute')`,
+    [id, tenantId, source, JSON.stringify(payload), String(error).slice(0, 2000)]
+  );
+  return id;
+}
+
+export async function listPendingFailedIngests(limit = 50) {
+  const pool = await getPool();
+  const result = await pool.query(
+    `SELECT * FROM failed_ingests
+     WHERE status IN ('pending', 'retrying') AND next_retry_at <= NOW()
+     ORDER BY next_retry_at ASC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows;
+}
+
+export async function markFailedIngestAttempt(id, { succeeded, error } = {}) {
+  const pool = await getPool();
+  if (succeeded) {
+    await pool.query(
+      "UPDATE failed_ingests SET status = 'done', last_attempt_at = NOW() WHERE id = $1",
+      [id]
+    );
+    return;
+  }
+  // Exponential backoff: 1m, 5m, 25m, 2h, permanently failed after 5 attempts
+  const result = await pool.query(
+    "SELECT attempts FROM failed_ingests WHERE id = $1",
+    [id]
+  );
+  const attempts = (result.rows[0]?.attempts || 0) + 1;
+  const backoffMinutes = Math.min(Math.pow(5, attempts - 1), 120);
+  const status = attempts >= 5 ? "failed" : "retrying";
+  await pool.query(
+    `UPDATE failed_ingests
+     SET status = $1, attempts = $2, last_attempt_at = NOW(),
+         next_retry_at = NOW() + ($3 * INTERVAL '1 minute'),
+         error = $4
+     WHERE id = $5`,
+    [status, attempts, backoffMinutes, String(error || "").slice(0, 2000), id]
+  );
 }

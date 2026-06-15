@@ -192,3 +192,60 @@ export async function pingDb() {
   const backend = await getBackend();
   return backend.pingDb ? backend.pingDb() : { ok: true, latencyMs: 0, note: "file backend — no DB" };
 }
+
+export async function getApiKeyStatus(keyId) {
+  const backend = await getBackend();
+  return backend.getApiKeyStatus ? backend.getApiKeyStatus(keyId) : "active";
+}
+
+export async function setApiKeyIpAllowlist(tenantId, keyId, ipList) {
+  const backend = await getBackend();
+  return backend.setApiKeyIpAllowlist ? backend.setApiKeyIpAllowlist(tenantId, keyId, ipList) : null;
+}
+
+export async function getApiKeyIpAllowlist(keyId) {
+  const backend = await getBackend();
+  return backend.getApiKeyIpAllowlist ? backend.getApiKeyIpAllowlist(keyId) : null;
+}
+
+export async function checkAndSetIdempotencyKey(tenantId, key, runId) {
+  const backend = await getBackend();
+  return backend.checkAndSetIdempotencyKey
+    ? backend.checkAndSetIdempotencyKey(tenantId, key, runId)
+    : { isDuplicate: false, runId };
+}
+
+export async function pruneIdempotencyKeys() {
+  const backend = await getBackend();
+  return backend.pruneIdempotencyKeys ? backend.pruneIdempotencyKeys() : 0;
+}
+
+export async function createRefreshToken(tenantId, apiKeyId) {
+  const backend = await getBackend();
+  return backend.createRefreshToken ? backend.createRefreshToken(tenantId, apiKeyId) : null;
+}
+
+export async function verifyAndRotateRefreshToken(plainToken) {
+  const backend = await getBackend();
+  return backend.verifyAndRotateRefreshToken ? backend.verifyAndRotateRefreshToken(plainToken) : null;
+}
+
+export async function revokeAllRefreshTokens(tenantId, apiKeyId) {
+  const backend = await getBackend();
+  return backend.revokeAllRefreshTokens ? backend.revokeAllRefreshTokens(tenantId, apiKeyId) : 0;
+}
+
+export async function saveFailedIngest(tenantId, source, payload, error) {
+  const backend = await getBackend();
+  return backend.saveFailedIngest ? backend.saveFailedIngest(tenantId, source, payload, error) : null;
+}
+
+export async function listPendingFailedIngests(limit) {
+  const backend = await getBackend();
+  return backend.listPendingFailedIngests ? backend.listPendingFailedIngests(limit) : [];
+}
+
+export async function markFailedIngestAttempt(id, opts) {
+  const backend = await getBackend();
+  return backend.markFailedIngestAttempt ? backend.markFailedIngestAttempt(id, opts) : null;
+}

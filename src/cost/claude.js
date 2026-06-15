@@ -7,5 +7,7 @@ import { pricing } from "../pricing.js";
  */
 export function computeClaudeCost({ inputTokens = 0, outputTokens = 0 }) {
   const rates = pricing.platforms.claude;
-  return (inputTokens * rates.input_price_per_token) + (outputTokens * rates.output_price_per_token);
+  if (!rates?.input_price_per_token || !rates?.output_price_per_token) return 0;
+  const cost = (inputTokens * rates.input_price_per_token) + (outputTokens * rates.output_price_per_token);
+  return Number.isFinite(cost) ? cost : 0;
 }

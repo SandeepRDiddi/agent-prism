@@ -9,7 +9,9 @@ export const PLANS = {
     aiAdvisor: false,
     teamMembers: 1,
     dataRetentionDays: 30,
-    support: "community"
+    support: "community",
+    maxRequestsPerMinute: 20,
+    maxTokensPerMinute: 10000
   },
   starter: {
     name: "Starter",
@@ -20,7 +22,9 @@ export const PLANS = {
     aiAdvisor: true,
     teamMembers: 5,
     dataRetentionDays: 90,
-    support: "email"
+    support: "email",
+    maxRequestsPerMinute: 60,
+    maxTokensPerMinute: 100000
   },
   pro: {
     name: "Pro",
@@ -31,7 +35,9 @@ export const PLANS = {
     aiAdvisor: true,
     teamMembers: 25,
     dataRetentionDays: 365,
-    support: "priority"
+    support: "priority",
+    maxRequestsPerMinute: 300,
+    maxTokensPerMinute: 1000000
   },
   enterprise: {
     name: "Enterprise",
@@ -42,9 +48,10 @@ export const PLANS = {
     aiAdvisor: true,
     teamMembers: Infinity,
     dataRetentionDays: Infinity,
-    support: "dedicated"
+    support: "dedicated",
+    maxRequestsPerMinute: Infinity,
+    maxTokensPerMinute: Infinity
   },
-  // Legacy value used by bootstrap — treat as enterprise
   "enterprise-trial": {
     name: "Enterprise Trial",
     maxAgents: Infinity,
@@ -54,7 +61,9 @@ export const PLANS = {
     aiAdvisor: true,
     teamMembers: Infinity,
     dataRetentionDays: 90,
-    support: "priority"
+    support: "priority",
+    maxRequestsPerMinute: Infinity,
+    maxTokensPerMinute: Infinity
   }
 };
 

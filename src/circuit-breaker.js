@@ -3,6 +3,24 @@ const CLOSED = "CLOSED";
 const OPEN = "OPEN";
 const HALF_OPEN = "HALF_OPEN";
 
+// Optional alert webhook — POST JSON payload on OPEN/CLOSED transitions.
+// Set CB_ALERT_WEBHOOK_URL to receive notifications.
+const CB_ALERT_WEBHOOK_URL = process.env.CB_ALERT_WEBHOOK_URL || "";
+
+async function sendCircuitAlert(payload) {
+  if (!CB_ALERT_WEBHOOK_URL) return;
+  try {
+    await fetch(CB_ALERT_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5000)
+    });
+  } catch {
+    // Alert delivery is best-effort — never let it crash the circuit logic
+  }
+}
+
 export class CircuitBreaker {
   constructor({
     name,
@@ -53,7 +71,14 @@ export class CircuitBreaker {
       this._successes++;
       if (this._successes >= this.successThreshold) {
         this._state = CLOSED;
-        process.stderr.write(`[circuit-breaker] "${this.name}" recovered — state CLOSED\n`);
+        const payload = {
+          ts: new Date().toISOString(),
+          level: "info",
+          event: "circuit_closed",
+          provider: this.name
+        };
+        process.stderr.write(JSON.stringify(payload) + "\n");
+        sendCircuitAlert(payload);
       }
     }
   }
@@ -62,12 +87,20 @@ export class CircuitBreaker {
     this._failures++;
     this._lastFailureAt = Date.now();
     if (this._failures >= this.failureThreshold) {
-      if (this._state !== OPEN) {
-        process.stderr.write(
-          `[circuit-breaker] "${this.name}" tripped after ${this._failures} failures — state OPEN\n`
-        );
-      }
+      const wasOpen = this._state === OPEN;
       this._state = OPEN;
+      if (!wasOpen) {
+        const payload = {
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "circuit_open",
+          provider: this.name,
+          failures: this._failures,
+          willResetAt: new Date(this._lastFailureAt + this.resetTimeoutMs).toISOString()
+        };
+        process.stderr.write(JSON.stringify(payload) + "\n");
+        sendCircuitAlert(payload);
+      }
     }
   }
 
