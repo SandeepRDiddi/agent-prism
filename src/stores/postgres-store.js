@@ -66,17 +66,22 @@ export async function pingDb() {
   }
 }
 
+const MAX_RUNS_PER_QUERY = parseInt(process.env.MAX_RUNS_PER_QUERY || "10000", 10);
+
 /**
  * Execute fn(client) inside a transaction with app.current_tenant_id set.
  * This satisfies the RLS SELECT policies on agent_runs, connectors, audit_logs,
  * and prompt_captures. The config key is local to the transaction (reverts on
  * commit/rollback), so pooled connections never carry stale context.
+ * @param {string} tenantId
+ * @param {(client: import('pg').PoolClient) => Promise<any>} fn
+ * @param {"READ COMMITTED"|"REPEATABLE READ"|"SERIALIZABLE"} [isolation]
  */
-async function withTenant(tenantId, fn) {
+async function withTenant(tenantId, fn, isolation = "READ COMMITTED") {
   const pool = await getPool();
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query(`BEGIN ISOLATION LEVEL ${isolation}`);
     await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [String(tenantId)]);
     const result = await fn(client);
     await client.query("COMMIT");
@@ -489,7 +494,7 @@ export async function listTenantContext(tenantId) {
       client.query("select * from tenants where id = $1", [tenantId]),
       client.query("select * from users where tenant_id = $1 order by created_at asc", [tenantId]),
       client.query("select * from connectors where tenant_id = $1 order by created_at asc", [tenantId]),
-      client.query("select * from agent_runs where tenant_id = $1 order by start_time desc", [tenantId])
+      client.query("select * from agent_runs where tenant_id = $1 order by start_time desc limit $2", [tenantId, MAX_RUNS_PER_QUERY])
     ]);
 
     return {
@@ -498,7 +503,7 @@ export async function listTenantContext(tenantId) {
       connectors: connectors.rows.map(mapConnector),
       runs: runs.rows.map(mapRun)
     };
-  });
+  }, "REPEATABLE READ");
 }
 
 export async function upsertTenantRuns(tenantId, incomingRuns) {
@@ -532,15 +537,15 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
             start_time = excluded.start_time,
             end_time = excluded.end_time,
             latency_ms = excluded.latency_ms,
-            tokens_in = excluded.tokens_in,
-            tokens_out = excluded.tokens_out,
-            user_prompt_tokens = excluded.user_prompt_tokens,
-            system_prompt_tokens = excluded.system_prompt_tokens,
-            context_tokens = excluded.context_tokens,
-            tool_result_tokens = excluded.tool_result_tokens,
-            memory_tokens = excluded.memory_tokens,
-            cost_usd = excluded.cost_usd,
-            budget_usd = excluded.budget_usd,
+            tokens_in = CASE WHEN excluded.tokens_in IS NOT NULL AND excluded.tokens_in > 0 THEN excluded.tokens_in ELSE agent_runs.tokens_in END,
+            tokens_out = CASE WHEN excluded.tokens_out IS NOT NULL AND excluded.tokens_out > 0 THEN excluded.tokens_out ELSE agent_runs.tokens_out END,
+            user_prompt_tokens = CASE WHEN excluded.user_prompt_tokens IS NOT NULL AND excluded.user_prompt_tokens > 0 THEN excluded.user_prompt_tokens ELSE agent_runs.user_prompt_tokens END,
+            system_prompt_tokens = CASE WHEN excluded.system_prompt_tokens IS NOT NULL AND excluded.system_prompt_tokens > 0 THEN excluded.system_prompt_tokens ELSE agent_runs.system_prompt_tokens END,
+            context_tokens = CASE WHEN excluded.context_tokens IS NOT NULL AND excluded.context_tokens > 0 THEN excluded.context_tokens ELSE agent_runs.context_tokens END,
+            tool_result_tokens = CASE WHEN excluded.tool_result_tokens IS NOT NULL AND excluded.tool_result_tokens > 0 THEN excluded.tool_result_tokens ELSE agent_runs.tool_result_tokens END,
+            memory_tokens = CASE WHEN excluded.memory_tokens IS NOT NULL AND excluded.memory_tokens > 0 THEN excluded.memory_tokens ELSE agent_runs.memory_tokens END,
+            cost_usd = CASE WHEN excluded.cost_usd IS NOT NULL AND excluded.cost_usd > 0 THEN excluded.cost_usd ELSE agent_runs.cost_usd END,
+            budget_usd = CASE WHEN excluded.budget_usd IS NOT NULL AND excluded.budget_usd > 0 THEN excluded.budget_usd ELSE agent_runs.budget_usd END,
             autonomy_level = excluded.autonomy_level,
             retry_count = excluded.retry_count,
             tool_calls = excluded.tool_calls,
@@ -703,7 +708,7 @@ export async function listAuditLogs(tenantId) {
       hash: row.hash || "",
       prevHash: row.prev_hash || ""
     }));
-  });
+  }, "REPEATABLE READ");
 }
 
 export async function savePromptCapture(tenantId, capture) {
@@ -759,7 +764,7 @@ export async function listPromptCaptures(tenantId, { limit = 100, offset = 0, ta
       })),
       total: countResult.rows[0]?.total || 0
     };
-  });
+  }, "REPEATABLE READ");
 }
 
 export async function updateTenantPlan(tenantId, plan) {
@@ -792,5 +797,5 @@ export async function getModelFitnessStats(tenantId) {
       fitnessBreakdown: result.rows,
       topTaskModelPairs: taskResult.rows
     };
-  });
+  }, "REPEATABLE READ");
 }

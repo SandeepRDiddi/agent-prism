@@ -4,24 +4,31 @@ const allowedOrigins = rawOrigins
   .map((o) => o.trim())
   .filter(Boolean);
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
 const ALLOWED_METHODS = "GET, POST, PATCH, DELETE, OPTIONS";
 const ALLOWED_HEADERS = "Content-Type, Authorization, X-API-Key, x-api-key, X-Admin-Secret";
-const MAX_AGE = "86400"; // 24 hours
+const MAX_AGE = "86400";
 
 /**
- * Apply CORS headers based on CORS_ALLOWED_ORIGINS env var.
- * Returns true if the request was a preflight and has been fully handled (caller should return).
- *
- * @param {import("node:http").IncomingMessage} req
- * @param {import("node:http").ServerResponse} res
- * @returns {boolean} true if preflight was handled and caller should stop processing
+ * Apply CORS headers. Enforces HTTPS-only origins in production.
+ * Returns true if request was a preflight and has been fully handled.
  */
 export function applyCors(req, res) {
   const origin = req.headers.origin;
 
-  // No origin header → same-origin request (e.g. curl, server-to-server) → no CORS headers needed
   if (!origin) {
     return handlePreflight(req, res, false);
+  }
+
+  // Reject non-HTTPS origins in production — credentials must not be sent over HTTP
+  if (IS_PRODUCTION && !origin.startsWith("https://")) {
+    if (req.method === "OPTIONS") {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("CORS: only HTTPS origins allowed in production");
+      return true;
+    }
+    return false;
   }
 
   const isAllowed = allowedOrigins.includes(origin);
@@ -38,10 +45,7 @@ export function applyCors(req, res) {
 function handlePreflight(req, res, isAllowed) {
   if (req.method !== "OPTIONS") return false;
 
-  if (!req.headers.origin) {
-    // OPTIONS without Origin → not a CORS preflight, let it through
-    return false;
-  }
+  if (!req.headers.origin) return false;
 
   if (isAllowed) {
     res.setHeader("Access-Control-Allow-Methods", ALLOWED_METHODS);
@@ -54,5 +58,5 @@ function handlePreflight(req, res, isAllowed) {
     res.end("CORS origin not allowed");
   }
 
-  return true; // caller must return immediately
+  return true;
 }

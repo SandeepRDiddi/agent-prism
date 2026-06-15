@@ -1,3 +1,5 @@
+import { cpus } from "node:os";
+
 const DEFAULT_ADMIN_SECRET = "change-me-before-production";
 const DEFAULT_DASHBOARD_PASSWORD = "change-me";
 const VALID_NODE_ENVS = ["development", "production", "test"];
@@ -98,6 +100,39 @@ export function validateConfig() {
       "CORS_ALLOWED_ORIGINS is not set. All origins will be accepted. " +
       "Set CORS_ALLOWED_ORIGINS to restrict cross-origin access in production."
     );
+  }
+
+  // ── JWT secret ────────────────────────────────────────────────────────────────
+  const jwtSecret = process.env.JWT_SECRET;
+  if (isProduction) {
+    if (!jwtSecret) {
+      fatal(
+        "JWT_SECRET is not set. Required in production for OAuth token signing. " +
+        "Generate: node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\""
+      );
+    } else if (jwtSecret === adminSecret) {
+      fatal(
+        "JWT_SECRET must differ from ACP_ADMIN_SECRET. " +
+        "Using the same secret for both creates a privilege escalation risk."
+      );
+    } else if (jwtSecret.length < 32) {
+      warn("JWT_SECRET is shorter than 32 characters. Use a longer random secret.");
+    }
+  } else if (jwtSecret && jwtSecret === adminSecret) {
+    warn("JWT_SECRET and ACP_ADMIN_SECRET are the same. Set them to different values before production.");
+  }
+
+  // ── Connection pool size in cluster mode ──────────────────────────────────────
+  if (storageBackend === "postgres") {
+    const poolMax = parseInt(process.env.DB_POOL_MAX || "10", 10);
+    const workerCount = parseInt(process.env.CLUSTER_WORKERS || String(cpus().length), 10);
+    const totalConnections = poolMax * workerCount;
+    if (totalConnections > 80) {
+      warn(
+        `DB_POOL_MAX=${poolMax} × CLUSTER_WORKERS=${workerCount} = ${totalConnections} total Postgres connections. ` +
+        "Most managed Postgres instances cap at 100. Reduce DB_POOL_MAX or set PgBouncer in front."
+      );
+    }
   }
 
   // ── Webhook signing secrets ───────────────────────────────────────────────────

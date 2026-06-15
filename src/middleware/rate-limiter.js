@@ -3,25 +3,23 @@ const WINDOW_MS = 60 * 1000; // 60 second sliding window
 /**
  * In-memory sliding-window rate limiter.
  * Not suitable for multi-process deployments without an external store.
+ * In cluster mode each worker has its own instance; effective limit = configured × workers.
+ * For true global limits, set up Redis and replace this with a Redis-backed limiter.
  */
 export class RateLimiter {
-  /**
-   * @param {number} maxRequests - Maximum requests per window
-   * @param {number} [windowMs] - Window size in ms (default 60,000)
-   */
   constructor(maxRequests, windowMs = WINDOW_MS) {
     this._max = maxRequests;
     this._windowMs = windowMs;
-    /** @type {Map<string, { count: number, windowStart: number }>} */
     this._buckets = new Map();
   }
 
   /**
-   * Check whether a key is within the rate limit.
-   * @param {string} key - Tenant ID, IP address, etc.
-   * @returns {{ allowed: boolean, retryAfter: number }} retryAfter in seconds
+   * @param {string} key
+   * @param {number} [maxOverride] - per-call limit override (e.g. per-plan limits)
+   * @returns {{ allowed: boolean, retryAfter: number }}
    */
-  check(key) {
+  check(key, maxOverride) {
+    const max = (maxOverride != null && Number.isFinite(maxOverride)) ? maxOverride : this._max;
     const now = Date.now();
     let bucket = this._buckets.get(key);
 
@@ -32,7 +30,7 @@ export class RateLimiter {
 
     bucket.count += 1;
 
-    if (bucket.count > this._max) {
+    if (bucket.count > max) {
       const retryAfter = Math.ceil((this._windowMs - (now - bucket.windowStart)) / 1000);
       return { allowed: false, retryAfter: Math.max(retryAfter, 1) };
     }
@@ -40,7 +38,6 @@ export class RateLimiter {
     return { allowed: true, retryAfter: 0 };
   }
 
-  /** Remove all expired buckets (optional GC, call periodically if needed) */
   gc() {
     const now = Date.now();
     for (const [key, bucket] of this._buckets) {
@@ -49,23 +46,12 @@ export class RateLimiter {
       }
     }
   }
+
+  get size() {
+    return this._buckets.size;
+  }
 }
 
-const rpmLimit = parseInt(process.env.RATE_LIMIT_REQUESTS_PER_MINUTE || "300", 10);
-const keyRpmLimit = parseInt(process.env.RATE_LIMIT_KEY_RPM || "60", 10);
-const keyTpmLimit = parseInt(process.env.RATE_LIMIT_KEY_TPM || "100000", 10);
-
-/** Per-tenant rate limiter for authenticated endpoints */
-export const tenantLimiter = new RateLimiter(rpmLimit);
-
-/** Per-API-key RPM limiter — enforced at gateway proxy before upstream call */
-export const keyRpmLimiter = new RateLimiter(keyRpmLimit);
-
-/**
- * Per-API-key TPM (token-per-minute) limiter.
- * Call keyTpmLimiter.recordTokens(keyId, tokens) after each response,
- * keyTpmLimiter.check(keyId) uses the token counter instead of request count.
- */
 export class TokenLimiter {
   constructor(maxTokens, windowMs = WINDOW_MS) {
     this._max = maxTokens;
@@ -96,9 +82,26 @@ export class TokenLimiter {
     }
     bucket.tokens += tokens;
   }
+
+  gc() {
+    const now = Date.now();
+    for (const [key, bucket] of this._buckets) {
+      if (now - bucket.windowStart >= this._windowMs) {
+        this._buckets.delete(key);
+      }
+    }
+  }
+
+  get size() {
+    return this._buckets.size;
+  }
 }
 
-export const keyTpmLimiter = new TokenLimiter(keyTpmLimit);
+const rpmLimit    = parseInt(process.env.RATE_LIMIT_REQUESTS_PER_MINUTE || "300", 10);
+const keyRpmLimit = parseInt(process.env.RATE_LIMIT_KEY_RPM || "60", 10);
+const keyTpmLimit = parseInt(process.env.RATE_LIMIT_KEY_TPM || "100000", 10);
 
-/** Per-IP limiter for the bootstrap endpoint: 5 attempts per 60 minutes */
+export const tenantLimiter    = new RateLimiter(rpmLimit);
+export const keyRpmLimiter    = new RateLimiter(keyRpmLimit);
+export const keyTpmLimiter    = new TokenLimiter(keyTpmLimit);
 export const bootstrapLimiter = new RateLimiter(5, 60 * 60 * 1000);

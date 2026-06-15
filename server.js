@@ -65,6 +65,7 @@ import { tenantLimiter, bootstrapLimiter, keyRpmLimiter, keyTpmLimiter } from ".
 import { checkIngestAllowed, checkGatewayAllowed, getPlan, computeUsage } from "./src/plans.js";
 import { validate, SCHEMAS } from "./src/validation.js";
 import { logRequest, logError, scrubSecrets } from "./src/middleware/logger.js";
+import { incCounter, recordLatency, getMetricsText } from "./src/middleware/metrics.js";
 import { setupGracefulShutdown } from "./src/shutdown.js";
 import jwt from "jsonwebtoken";
 
@@ -849,6 +850,9 @@ const server = createServer(async (req, res) => {
   res.on("finish", () => {
     inflightCount--;
     logRequest(req, res, startTime, tenantId);
+    incCounter("http_requests_total");
+    recordLatency("http_request_duration_ms", Math.round(performance.now() - startTime));
+    if (res.statusCode >= 500) incCounter("http_errors_total");
   });
 
   try {
@@ -879,6 +883,30 @@ const server = createServer(async (req, res) => {
         memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
         pid: process.pid
       });
+    }
+
+    if (req.method === "GET" && req.url === "/metrics") {
+      if (!requireAdmin(req, res)) return;
+      const mem = process.memoryUsage();
+      const gauges = {
+        process_uptime_seconds: Math.floor(process.uptime()),
+        process_memory_rss_bytes: mem.rss,
+        process_memory_heap_used_bytes: mem.heapUsed,
+        nodejs_active_handles: process._getActiveHandles?.()?.length ?? 0,
+        rate_limiter_tenant_buckets: tenantLimiter.size,
+        rate_limiter_key_rpm_buckets: keyRpmLimiter.size,
+        rate_limiter_key_tpm_buckets: keyTpmLimiter.size,
+        ...Object.fromEntries(
+          Object.values(breakers).map((b) => {
+            const s = b.getStatus();
+            return [`circuit_breaker_${s.name}_open`, s.state === "OPEN" ? 1 : 0];
+          })
+        )
+      };
+      setSecurityHeaders(res);
+      res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" });
+      res.end(getMetricsText(gauges));
+      return;
     }
 
     if (req.method === "GET" && req.url === "/api/bootstrap/status") {
@@ -1181,11 +1209,12 @@ const server = createServer(async (req, res) => {
       }
 
       // 4. Budget enforcement — reject before any upstream spend
-      const monthlyBudgetUsd = parseFloat(
+      const _rawBudget = parseFloat(
         anthropicConnector.config.monthlyBudgetUsd ||
         process.env.GATEWAY_MONTHLY_BUDGET_USD ||
         "0"
       );
+      const monthlyBudgetUsd = Number.isFinite(_rawBudget) ? _rawBudget : 0;
       if (monthlyBudgetUsd > 0) {
         const monthStart = new Date();
         monthStart.setUTCDate(1);
@@ -1290,7 +1319,7 @@ const server = createServer(async (req, res) => {
                 recommendedModel,
                 piiScrubbed: scrub,
                 createdAt: new Date().toISOString()
-              }).catch(() => {});
+              }).catch((err) => logError(req, err, tenantId));
             }
           }
         }
@@ -1356,11 +1385,12 @@ const server = createServer(async (req, res) => {
       }
 
       // Budget enforcement for OpenAI gateway
-      const oaiMonthlyBudgetUsd = parseFloat(
+      const _oaiRawBudget = parseFloat(
         openAiConnector.config.monthlyBudgetUsd ||
         process.env.GATEWAY_MONTHLY_BUDGET_USD ||
         "0"
       );
+      const oaiMonthlyBudgetUsd = Number.isFinite(_oaiRawBudget) ? _oaiRawBudget : 0;
       if (oaiMonthlyBudgetUsd > 0) {
         const oaiMonthStart = new Date();
         oaiMonthStart.setUTCDate(1);
@@ -1458,7 +1488,7 @@ const server = createServer(async (req, res) => {
                 recommendedModel: oaiRespFitness.recommendedModel,
                 piiScrubbed: scrub !== false,
                 createdAt: new Date().toISOString()
-              }).catch(() => {});
+              }).catch((err) => logError(req, err, tenantId));
             }
           }
         }
@@ -1572,7 +1602,7 @@ const server = createServer(async (req, res) => {
                 recommendedModel: chatFitness.recommendedModel,
                 piiScrubbed: scrub !== false,
                 createdAt: new Date().toISOString()
-              }).catch(() => {});
+              }).catch((err) => logError(req, err, tenantId));
             }
           }
         }
@@ -1627,7 +1657,8 @@ const server = createServer(async (req, res) => {
       const azureUrl = `${endpoint.replace(/\/$/, "")}/openai/deployments/${deploy}/chat/completions?api-version=${apiVersion}`;
 
       // Budget enforcement
-      const azBudgetUsd = parseFloat(azConnector.config.monthlyBudgetUsd || process.env.GATEWAY_MONTHLY_BUDGET_USD || "0");
+      const _azRawBudget = parseFloat(azConnector.config.monthlyBudgetUsd || process.env.GATEWAY_MONTHLY_BUDGET_USD || "0");
+      const azBudgetUsd = Number.isFinite(_azRawBudget) ? _azRawBudget : 0;
       if (azBudgetUsd > 0) {
         const azMonthStart = new Date(); azMonthStart.setUTCDate(1); azMonthStart.setUTCHours(0, 0, 0, 0);
         const azSpend = context.runs
@@ -1776,7 +1807,7 @@ ${prompt}`;
         try { result = JSON.parse(text); }
         catch { result = { score: 0, weakness: "Could not parse advisor response: " + text.slice(0, 120), rewrite: "" }; }
         // persist so repeat visits are instant
-        if (runId) await savePromptAnalysis(auth.tenant.id, runId, promptHash, result).catch(() => {});
+        if (runId) await savePromptAnalysis(auth.tenant.id, runId, promptHash, result).catch((err) => logError(req, err, tenantId));
         return sendJson(res, 200, result);
       } catch (err) {
         logError(req, err, tenantId);
@@ -2470,6 +2501,14 @@ if (RETENTION_DAYS > 0) {
   runRetention();
   setInterval(runRetention, 24 * 60 * 60 * 1000).unref();
 }
+
+// ── Rate-limiter GC — evict expired buckets every 60 s to prevent unbounded growth ──
+setInterval(() => {
+  tenantLimiter.gc();
+  keyRpmLimiter.gc();
+  keyTpmLimiter.gc();
+  bootstrapLimiter.gc();
+}, 60_000).unref();
 
 server.listen(port, host, () => {
   process.stdout.write(JSON.stringify({
