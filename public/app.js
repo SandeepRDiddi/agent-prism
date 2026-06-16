@@ -228,64 +228,56 @@ function renderSetupScreen(type, message = "") {
   }
 
   if (type === "login") {
+    let loginCfg = { ssoEnabled: false, ssoOnly: false };
+    try { loginCfg = await (await fetch("/api/login-config")).json(); } catch (_) {}
+    const { ssoEnabled, ssoOnly } = loginCfg;
+
     workspace.innerHTML = `
       <section class="setup-screen">
         <article class="panel setup-card setup-card--login">
-          <p class="eyebrow">Enterprise Login</p>
+          <p class="eyebrow">${ssoOnly ? "Enterprise Login" : "Sign in"}</p>
           <h2>Sign in to your tenant workspace</h2>
-          <p class="usp-summary">Use your company admin account. Agent API keys remain available for SDKs and automation.</p>
+          ${ssoEnabled ? `
           <a href="/auth/sso/login" class="btn-sso">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             Continue with SSO
-          </a>
-          <div class="sso-divider"><span>or sign in with password</span></div>
+          </a>` : ""}
+          ${!ssoOnly ? `
+          ${ssoEnabled ? `<div class="sso-divider"><span>or sign in with password</span></div>` : ""}
           <form id="login-form" class="field-stack">
             <input name="email" type="email" placeholder="Work email" required />
             <input name="password" type="password" placeholder="Password" minlength="8" required />
             <div class="setup-actions">
               <button type="submit">Sign in</button>
             </div>
-          </form>
-          <details class="setup-secondary">
-            <summary>Developer API key access</summary>
-            <form id="api-key-form" class="compact-auth-form">
-              <input name="apiKey" placeholder="Paste tenant API key, acp_..." />
-              <button type="submit">Connect</button>
-            </form>
-          </details>
-          <details class="setup-secondary">
-            <summary>Generate browser key with admin secret</summary>
-            <form id="generate-api-key-form" class="compact-auth-form">
-              <input name="adminSecret" type="password" placeholder="Admin secret" required />
-              <button type="submit">Generate key</button>
-            </form>
-          </details>
+          </form>` : ""}
           ${message ? `<p class="usp-summary">${message}</p>` : ""}
         </article>
       </section>
     `;
 
-    document.querySelector("#login-form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      try {
-        await request("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: form.get("email"),
-            password: form.get("password")
-          })
-        });
-        tenantApiKey = "";
-        localStorage.removeItem("acp_api_key");
-        await initializeApp();
-      } catch (error) {
-        renderSetupScreen("login", error.message);
-      }
-    });
+    if (!ssoOnly) {
+      document.querySelector("#login-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        try {
+          await request("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: form.get("email"),
+              password: form.get("password")
+            })
+          });
+          tenantApiKey = "";
+          localStorage.removeItem("acp_api_key");
+          await initializeApp();
+        } catch (error) {
+          renderSetupScreen("login", error.message);
+        }
+      });
+    }
 
-    attachApiKeySetupForms("login");
     return;
   }
 

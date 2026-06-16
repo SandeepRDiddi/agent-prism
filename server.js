@@ -1146,6 +1146,13 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    if (req.method === "GET" && req.url === "/api/login-config") {
+      return sendJson(res, 200, {
+        ssoEnabled: !!process.env.OIDC_ISSUER,
+        ssoOnly: process.env.SSO_ONLY === "true"
+      });
+    }
+
     if (req.method === "GET" && req.url === "/api/me") {
       const auth = await requireTenant(req, res, (id) => { tenantId = id; });
       if (!auth) return;
