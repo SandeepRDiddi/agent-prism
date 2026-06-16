@@ -171,7 +171,7 @@ function statusClass(status) {
   return `status-${status.toLowerCase()}`;
 }
 
-function renderSetupScreen(type, message = "") {
+async function renderSetupScreen(type, message = "") {
   const workspace = document.querySelector("#workspace");
 
   if (type === "bootstrap") {
