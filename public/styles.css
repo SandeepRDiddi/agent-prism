@@ -1341,7 +1341,6 @@ canvas {
   padding: 18px;
   border-radius: 10px;
   box-shadow: none;
-  overflow: hidden;
 }
 
 .provider-tiles {
