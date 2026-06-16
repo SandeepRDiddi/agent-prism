@@ -1086,7 +1086,7 @@ const server = createServer(async (req, res) => {
     // ── SSO: OIDC callback ───────────────────────────────────────────────────
     if (req.method === "GET" && req.url.startsWith("/auth/sso/callback")) {
       const redirect = (errCode) => {
-        res.writeHead(302, { Location: `/dashboard.html?sso_error=${encodeURIComponent(errCode)}` });
+        res.writeHead(302, { Location: `/?sso_error=${encodeURIComponent(errCode)}` });
         res.end();
       };
       try {
@@ -1138,7 +1138,7 @@ const server = createServer(async (req, res) => {
           details: { issuer: process.env.OIDC_ISSUER },
           ip: req.socket?.remoteAddress || "unknown"
         });
-        res.writeHead(302, { Location: "/dashboard.html" });
+        res.writeHead(302, { Location: "/" });
         return res.end();
       } catch (err) {
         logError("SSO callback error", err);
