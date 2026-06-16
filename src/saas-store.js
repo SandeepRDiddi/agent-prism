@@ -249,3 +249,8 @@ export async function markFailedIngestAttempt(id, opts) {
   const backend = await getBackend();
   return backend.markFailedIngestAttempt ? backend.markFailedIngestAttempt(id, opts) : null;
 }
+
+export async function upsertSsoUser({ email, name }) {
+  const backend = await getBackend();
+  return backend.upsertSsoUser ? backend.upsertSsoUser({ email, name }) : null;
+}

@@ -234,6 +234,11 @@ function renderSetupScreen(type, message = "") {
           <p class="eyebrow">Enterprise Login</p>
           <h2>Sign in to your tenant workspace</h2>
           <p class="usp-summary">Use your company admin account. Agent API keys remain available for SDKs and automation.</p>
+          <a href="/auth/sso/login" class="btn-sso">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Continue with SSO
+          </a>
+          <div class="sso-divider"><span>or sign in with password</span></div>
           <form id="login-form" class="field-stack">
             <input name="email" type="email" placeholder="Work email" required />
             <input name="password" type="password" placeholder="Password" minlength="8" required />
@@ -2997,7 +3002,9 @@ async function initializeApp() {
         const me = await request("/api/me");
         currentUser = me.user;
       } catch {
-        renderSetupScreen("login");
+        const ssoError = new URLSearchParams(window.location.search).get("sso_error");
+        const msg = ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "";
+        renderSetupScreen("login", msg);
         return;
       }
     }

@@ -948,6 +948,38 @@ export async function listPendingFailedIngests(limit = 50) {
   return result.rows;
 }
 
+export async function upsertSsoUser({ email, name }) {
+  const pool = await getPool();
+  const normalized = String(email || "").trim().toLowerCase();
+
+  const existing = await pool.query(
+    "SELECT u.*, t.id as tid FROM users u JOIN tenants t ON t.id = u.tenant_id WHERE lower(u.email) = $1 AND t.status = 'active' LIMIT 1",
+    [normalized]
+  );
+  if (existing.rows[0]) {
+    const row = existing.rows[0];
+    const tenant = await pool.query("SELECT * FROM tenants WHERE id = $1", [row.tenant_id]);
+    return { tenant: mapTenant(tenant.rows[0]), user: sanitizeUser(row) };
+  }
+
+  // Resolve target tenant
+  const defaultId = process.env.OIDC_DEFAULT_TENANT_ID;
+  const tenantRes = defaultId
+    ? await pool.query("SELECT * FROM tenants WHERE id = $1 AND status = 'active'", [defaultId])
+    : await pool.query("SELECT * FROM tenants WHERE status = 'active' LIMIT 2");
+
+  if (!tenantRes.rows[0] || (!defaultId && tenantRes.rows.length !== 1)) return null;
+  const tenant = tenantRes.rows[0];
+
+  const id = createId("user");
+  await pool.query(
+    "INSERT INTO users (id, tenant_id, email, name, role, created_at) VALUES ($1,$2,$3,$4,'member',NOW())",
+    [id, tenant.id, normalized, name || normalized]
+  );
+  const newUser = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+  return { tenant: mapTenant(tenant), user: sanitizeUser(newUser.rows[0]) };
+}
+
 export async function markFailedIngestAttempt(id, { succeeded, error } = {}) {
   const pool = await getPool();
   if (succeeded) {

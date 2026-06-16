@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { exec } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { promisify } from "node:util";
 import os from "node:os";
 import { dirname, extname, join, resolve as resolvePath } from "node:path";
@@ -58,7 +59,8 @@ import {
   createRefreshToken,
   verifyAndRotateRefreshToken,
   revokeAllRefreshTokens,
-  setApiKeyIpAllowlist
+  setApiKeyIpAllowlist,
+  upsertSsoUser
 } from "./src/saas-store.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -86,6 +88,20 @@ const __dirname = dirname(__filename);
 const publicDir = join(__dirname, "public");
 const { port, host, adminSecret, storageBackend } = config;
 const SESSION_COOKIE = "aps_session";
+
+// ── OIDC / SSO ────────────────────────────────────────────────────────────────
+const oidcStates = new Map(); // state hex → { createdAt }
+const OIDC_STATE_TTL_MS = 10 * 60 * 1000;
+let _oidcDiscovery = null;
+async function getOidcDiscovery() {
+  if (_oidcDiscovery) return _oidcDiscovery;
+  const issuer = process.env.OIDC_ISSUER;
+  if (!issuer) throw new Error("OIDC_ISSUER not set");
+  const res = await fetch(`${issuer.replace(/\/$/, "")}/.well-known/openid-configuration`);
+  if (!res.ok) throw new Error(`OIDC discovery failed (${res.status})`);
+  _oidcDiscovery = await res.json();
+  return _oidcDiscovery;
+}
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -1041,6 +1057,93 @@ const server = createServer(async (req, res) => {
         });
       }
       return sendJson(res, 200, { ok: true });
+    }
+
+    // ── SSO: initiate OIDC flow ──────────────────────────────────────────────
+    if (req.method === "GET" && req.url === "/auth/sso/login") {
+      try {
+        const oidc = await getOidcDiscovery();
+        const state = randomBytes(16).toString("hex");
+        oidcStates.set(state, { createdAt: Date.now() });
+        for (const [k, v] of oidcStates) {
+          if (Date.now() - v.createdAt > OIDC_STATE_TTL_MS) oidcStates.delete(k);
+        }
+        const params = new URLSearchParams({
+          client_id: process.env.OIDC_CLIENT_ID || "",
+          redirect_uri: process.env.OIDC_REDIRECT_URI || "",
+          response_type: "code",
+          scope: "openid email profile",
+          state
+        });
+        res.writeHead(302, { Location: `${oidc.authorization_endpoint}?${params}` });
+        return res.end();
+      } catch (err) {
+        logError("SSO login init failed", err);
+        return sendJson(res, 503, { error: "sso_unavailable", message: err.message });
+      }
+    }
+
+    // ── SSO: OIDC callback ───────────────────────────────────────────────────
+    if (req.method === "GET" && req.url.startsWith("/auth/sso/callback")) {
+      const redirect = (errCode) => {
+        res.writeHead(302, { Location: `/dashboard.html?sso_error=${encodeURIComponent(errCode)}` });
+        res.end();
+      };
+      try {
+        const cbUrl = new URL(req.url, `http://${req.headers.host}`);
+        const code = cbUrl.searchParams.get("code");
+        const state = cbUrl.searchParams.get("state");
+        const idpError = cbUrl.searchParams.get("error");
+
+        if (idpError) return redirect(idpError);
+        if (!state || !oidcStates.has(state)) return redirect("invalid_state");
+        oidcStates.delete(state);
+        if (!code) return redirect("missing_code");
+
+        const oidc = await getOidcDiscovery();
+        const tokenRes = await fetch(oidc.token_endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: process.env.OIDC_REDIRECT_URI || "",
+            client_id: process.env.OIDC_CLIENT_ID || "",
+            client_secret: process.env.OIDC_CLIENT_SECRET || ""
+          })
+        });
+        if (!tokenRes.ok) {
+          logError("SSO token exchange failed", { status: tokenRes.status });
+          return redirect("token_exchange_failed");
+        }
+        const tokens = await tokenRes.json();
+
+        // Decode id_token payload (trust exchanged directly with IDP — no sig verify needed here)
+        const [, b64Payload] = (tokens.id_token || "").split(".");
+        if (!b64Payload) return redirect("missing_id_token");
+        const claims = JSON.parse(Buffer.from(b64Payload, "base64url").toString("utf8"));
+        const email = claims.email || claims.preferred_username;
+        const name = claims.name || claims.given_name || email;
+        if (!email) return redirect("no_email_claim");
+
+        const auth = await upsertSsoUser({ email, name });
+        if (!auth) return redirect("user_not_provisioned");
+
+        const session = await createDashboardSession(auth.tenant.id, auth.user.id);
+        setSessionCookie(res, session.token);
+        await logAuditEvent(auth.tenant.id, {
+          actor: email,
+          action: "SSO Login",
+          resource: "Dashboard Session",
+          details: { issuer: process.env.OIDC_ISSUER },
+          ip: req.socket?.remoteAddress || "unknown"
+        });
+        res.writeHead(302, { Location: "/dashboard.html" });
+        return res.end();
+      } catch (err) {
+        logError("SSO callback error", err);
+        return redirect(encodeURIComponent(err.message));
+      }
     }
 
     if (req.method === "GET" && req.url === "/api/me") {

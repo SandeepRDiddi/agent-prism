@@ -326,6 +326,39 @@ export async function updateTenantPlan(tenantId, plan) {
   return { ...tenant };
 }
 
+export async function upsertSsoUser({ email, name }) {
+  const state = await readState();
+  const normalized = String(email || "").trim().toLowerCase();
+
+  const existing = state.users.find(u => u.email.toLowerCase() === normalized);
+  if (existing) {
+    const tenant = state.tenants.find(t => t.id === existing.tenantId && t.status === "active");
+    if (!tenant) return null;
+    return { tenant, user: sanitizeUser(existing) };
+  }
+
+  // Resolve target tenant: explicit env var, or single-tenant shortcut
+  const activeTenants = state.tenants.filter(t => t.status === "active");
+  const defaultId = process.env.OIDC_DEFAULT_TENANT_ID;
+  const tenant = defaultId
+    ? activeTenants.find(t => t.id === defaultId)
+    : activeTenants.length === 1 ? activeTenants[0] : null;
+  if (!tenant) return null;
+
+  const user = {
+    id: createId("user"),
+    tenantId: tenant.id,
+    email: normalized,
+    name: name || normalized,
+    role: "member",
+    passwordHash: null,
+    createdAt: now()
+  };
+  state.users.push(user);
+  await writeState(state);
+  return { tenant, user: sanitizeUser(user) };
+}
+
 export async function listTenantContext(tenantId) {
   const state = await readState();
   return {

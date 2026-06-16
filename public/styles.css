@@ -549,6 +549,44 @@ button.ghost {
   flex-wrap: wrap;
 }
 
+.btn-sso {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.7rem 1rem;
+  background: rgba(122, 145, 255, 0.12);
+  border: 1px solid rgba(122, 145, 255, 0.35);
+  border-radius: 10px;
+  color: #a0b4ff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-sso:hover {
+  background: rgba(122, 145, 255, 0.22);
+  border-color: rgba(122, 145, 255, 0.55);
+  color: #c8d4ff;
+}
+
+.sso-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  color: #5a6a8a;
+  font-size: 0.78rem;
+}
+.sso-divider::before,
+.sso-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(122, 145, 255, 0.14);
+}
+
 .setup-secondary {
   margin-top: 0.75rem;
   border: 1px solid rgba(122, 145, 255, 0.14);
