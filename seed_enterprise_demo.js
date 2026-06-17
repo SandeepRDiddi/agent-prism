@@ -59,6 +59,7 @@ const AGENTS = [
   {
     name: "PR Review Agent",
     workflow: "code-review",
+    taskType: "code",
     model: "claude-sonnet-4-6",
     provider: "Anthropic",
     team: "platform",
@@ -75,6 +76,7 @@ const AGENTS = [
   {
     name: "CI Gate Agent",
     workflow: "ci-validation",
+    taskType: "simple_qa",
     model: "claude-haiku-4-5",
     provider: "Anthropic",
     team: "platform",
@@ -91,6 +93,7 @@ const AGENTS = [
   {
     name: "Test Generator",
     workflow: "test-gen",
+    taskType: "code",
     model: "claude-haiku-4-5",
     provider: "Anthropic",
     team: "platform",
@@ -107,6 +110,7 @@ const AGENTS = [
   {
     name: "Infra Planner Agent",
     workflow: "iac-generation",
+    taskType: "code",
     model: "gpt-4.1-mini",
     provider: "OpenAI",
     team: "platform",
@@ -125,6 +129,7 @@ const AGENTS = [
   {
     name: "ETL Pipeline Agent",
     workflow: "data-pipeline",
+    taskType: "summarization",         // trivial CSV rename — no reasoning needed
     model: "claude-opus-4-8",          // ⚠ MODEL MISUSE — Haiku is 22× cheaper
     provider: "Anthropic",
     team: "data",
@@ -144,6 +149,7 @@ const AGENTS = [
   {
     name: "Data Quality Scanner",
     workflow: "data-quality",
+    taskType: "data",
     model: "claude-sonnet-4-6",
     provider: "Anthropic",
     team: "data",
@@ -160,6 +166,7 @@ const AGENTS = [
   {
     name: "BI Report Agent",
     workflow: "reporting",
+    taskType: "data",
     model: "gpt-4.1",
     provider: "OpenAI",
     team: "data",
@@ -178,6 +185,7 @@ const AGENTS = [
   {
     name: "Security Scanner",
     workflow: "sast-scan",
+    taskType: "summarization",
     model: "claude-haiku-4-5",
     provider: "Anthropic",
     team: "security",
@@ -194,6 +202,7 @@ const AGENTS = [
   {
     name: "Secrets Audit Agent",
     workflow: "secrets-scan",
+    taskType: "summarization",
     model: "claude-haiku-4-5",
     provider: "Anthropic",
     team: "security",
@@ -212,6 +221,7 @@ const AGENTS = [
   {
     name: "Docs Writer Agent",
     workflow: "documentation",
+    taskType: "summarization",         // API docs generation — Haiku/Sonnet sufficient
     model: "claude-opus-4-8",          // ⚠ MODEL MISUSE — Sonnet identical quality, 5× cheaper
     provider: "Anthropic",
     team: "product",
@@ -231,6 +241,7 @@ const AGENTS = [
   {
     name: "Feature Scaffolder",
     workflow: "feature-build",
+    taskType: "code",
     model: "gpt-4.1",
     provider: "OpenAI",
     team: "product",
@@ -247,6 +258,7 @@ const AGENTS = [
   {
     name: "UX Copy Agent",
     workflow: "copywriting",
+    taskType: "creative",
     model: "claude-sonnet-4-6",
     provider: "Anthropic",
     team: "product",
@@ -265,6 +277,7 @@ const AGENTS = [
   {
     name: "Copilot Workspace Agent",
     workflow: "copilot-feature",
+    taskType: "code",
     model: "gpt-4.1",
     provider: "OpenAI",
     team: "platform",
@@ -283,6 +296,7 @@ const AGENTS = [
   {
     name: "Refactor Agent",
     workflow: "refactoring",
+    taskType: "summarization",         // mechanical refactoring — no deep reasoning needed
     model: "claude-opus-4-8",          // ⚠ MODEL MISUSE — budget blown
     provider: "Anthropic",
     team: "platform",
@@ -331,6 +345,7 @@ function buildRun(agent, startTime) {
     payload: {
       agentName:   agent.name,
       workflow:    agent.workflow,
+      taskType:    agent.taskType || "general",
       model:       agent.model,
       provider:    agent.provider,
       status,

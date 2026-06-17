@@ -35,9 +35,9 @@ const TASK_PATTERNS = {
 // Model name normalization to tier
 function modelTier(model = "") {
   const m = model.toLowerCase();
-  if (/haiku|gpt-4o-mini|gpt-3\.5|gemini-flash|mistral-7b/.test(m)) return "fast";
-  if (/sonnet|gpt-4o(?!-mini)|gpt-4-turbo|gemini-pro/.test(m)) return "balanced";
-  if (/opus|gpt-4(?!o|-turbo)|o1|o3|claude-3-opus/.test(m)) return "powerful";
+  if (/haiku|gpt-4o-mini|gpt-4\.1-mini|gpt-3\.5|gemini-flash|mistral-7b/.test(m)) return "fast";
+  if (/sonnet|gpt-4o(?!-mini)|gpt-4\.1(?!-mini)|gpt-4-turbo|gemini-pro/.test(m)) return "balanced";
+  if (/opus|gpt-4(?!o|\.1|-turbo)|o1|o3|claude-3-opus/.test(m)) return "powerful";
   return "unknown";
 }
 
@@ -105,7 +105,11 @@ export function scoreFitness(model, taskType) {
 
   if (tier === "unknown") return { fitness: "unknown", penalty: 0 };
   if (gap === 0) return { fitness: "optimal", penalty: 0 };
-  if (gap === 1) return { fitness: "good", penalty: 5 };
+  if (gap === 1) {
+    // Powerful model on a balanced task wastes budget — flag it
+    if (tier === "powerful" && idealTier !== "powerful") return { fitness: "suboptimal", penalty: 8 };
+    return { fitness: "good", penalty: 5 };
+  }
 
   // gap >= 2: mismatch
   // fast model on complex task = quality risk; powerful model on simple = cost waste
