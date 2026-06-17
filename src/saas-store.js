@@ -13,6 +13,11 @@ async function getBackend() {
   return backendPromise;
 }
 
+export async function ensureSchemaPatches() {
+  const backend = await getBackend();
+  return backend.ensureSchemaPatches ? backend.ensureSchemaPatches() : null;
+}
+
 export async function readState() {
   const backend = await getBackend();
   return backend.readState ? backend.readState() : null;

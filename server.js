@@ -60,7 +60,8 @@ import {
   verifyAndRotateRefreshToken,
   revokeAllRefreshTokens,
   setApiKeyIpAllowlist,
-  upsertSsoUser
+  upsertSsoUser,
+  ensureSchemaPatches
 } from "./src/saas-store.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -2712,6 +2713,13 @@ ${prompt}`;
 });
 
 validateConfig();
+
+// ── Schema patches — run at startup for Postgres, no external file dependency ─
+if (process.env.DATABASE_URL && config.storageBackend === "postgres") {
+  ensureSchemaPatches().catch((err) => {
+    process.stderr.write(`[schema] Startup patch error: ${err.message}\n`);
+  });
+}
 
 // ── Auto-migration (opt-in via RUN_MIGRATIONS_ON_STARTUP=true) ──────────────
 if (process.env.RUN_MIGRATIONS_ON_STARTUP === "true" && process.env.DATABASE_URL) {

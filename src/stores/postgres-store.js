@@ -66,6 +66,68 @@ export async function pingDb() {
   }
 }
 
+/**
+ * Idempotent schema patch — runs at startup to ensure all columns and tables
+ * added by incremental migrations exist, even on DBs bootstrapped before
+ * those migrations were written. Safe to run on an up-to-date DB.
+ */
+export async function ensureSchemaPatches() {
+  const pool = await getPool();
+  await pool.query(`
+    -- migration 003: audit log hash chain
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS hash      TEXT NOT NULL DEFAULT '';
+    ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS prev_hash TEXT NOT NULL DEFAULT '';
+
+    -- migration 006: IP allowlist on api_keys
+    ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS ip_allowlist TEXT[] DEFAULT NULL;
+
+    -- migration 006: idempotency keys
+    CREATE TABLE IF NOT EXISTS idempotency_keys (
+      key        TEXT NOT NULL,
+      tenant_id  TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      run_id     TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (tenant_id, key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expiry ON idempotency_keys (created_at);
+
+    -- migration 006: OAuth refresh tokens
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id         TEXT PRIMARY KEY,
+      tenant_id  TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      api_key_id TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash   ON refresh_tokens (token_hash);
+    CREATE INDEX IF NOT EXISTS idx_refresh_tokens_tenant ON refresh_tokens (tenant_id, created_at DESC);
+
+    -- migration 006: failed ingest dead-letter queue
+    CREATE TABLE IF NOT EXISTS failed_ingests (
+      id              TEXT PRIMARY KEY,
+      tenant_id       TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      source          TEXT NOT NULL,
+      payload         JSONB NOT NULL,
+      error           TEXT NOT NULL,
+      attempts        INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at TIMESTAMPTZ,
+      next_retry_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      status          TEXT NOT NULL DEFAULT 'pending',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_failed_ingests_tenant ON failed_ingests (tenant_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_failed_ingests_retry  ON failed_ingests (next_retry_at) WHERE status IN ('pending', 'retrying');
+
+    -- migration 006: dashboard performance indexes
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_model  ON agent_runs (tenant_id, model);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_status ON agent_runs (tenant_id, status);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_agent  ON agent_runs (tenant_id, agent_name);
+  `);
+  process.stderr.write("[schema] Startup patches verified\n");
+}
+
 const MAX_RUNS_PER_QUERY = parseInt(process.env.MAX_RUNS_PER_QUERY || "10000", 10);
 
 /**
