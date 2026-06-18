@@ -2712,6 +2712,21 @@ ${prompt}`;
 
     // ── Dashboard page (Basic Auth gate) ─────────────────────────────────────
 
+    if (req.url === "/admin" || req.url === "/admin.html") {
+      const filePath = join(publicDir, "admin.html");
+      try {
+        const fileBytes = await readFile(filePath, "utf-8");
+        const nonce = generateCspNonce();
+        const injected = fileBytes.replace(/<script(?!\s+src=)/g, `<script nonce="${nonce}"`);
+        setSecurityHeaders(res, nonce);
+        res.writeHead(200, { "Content-Type": contentTypes[".html"] });
+        res.end(injected);
+      } catch {
+        sendText(res, 404, "Admin panel not found");
+      }
+      return;
+    }
+
     if (req.url === "/dashboard" || req.url === "/dashboard.html") {
       if (!requireBasicAuth(req, res)) return;
       const filePath = join(publicDir, "dashboard.html");
