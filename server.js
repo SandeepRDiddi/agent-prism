@@ -61,7 +61,9 @@ import {
   revokeAllRefreshTokens,
   setApiKeyIpAllowlist,
   upsertSsoUser,
-  ensureSchemaPatches
+  ensureSchemaPatches,
+  provisionTenant,
+  listTenants
 } from "./src/saas-store.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -1218,6 +1220,33 @@ const server = createServer(async (req, res) => {
         ip: req.socket?.remoteAddress || "unknown"
       });
       return sendJson(res, 200, { user });
+    }
+
+    // ── Admin: list all tenants ───────────────────────────────────────────────
+    if (req.method === "GET" && req.url === "/api/admin/tenants") {
+      if (!requireAdmin(req, res)) return;
+      const tenants = await listTenants();
+      return sendJson(res, 200, { tenants });
+    }
+
+    // ── Admin: provision new tenant workspace ─────────────────────────────────
+    if (req.method === "POST" && req.url === "/api/admin/tenants") {
+      if (!requireAdmin(req, res)) return;
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const { companyName, adminEmail, adminName, adminPassword, plan } = body;
+      if (!companyName || !adminEmail) {
+        return sendJson(res, 400, { error: "bad_request", message: "companyName and adminEmail are required" });
+      }
+      const result = await provisionTenant({ companyName, adminEmail, adminName, adminPassword, plan });
+      await logAuditEvent(result.tenant.id, {
+        actor: "Admin",
+        action: "Tenant Provisioned",
+        resource: result.tenant.id,
+        details: { companyName, adminEmail, plan: plan || "enterprise-trial" },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+      return sendJson(res, 201, result);
     }
 
     if (req.method === "GET" && req.url === "/api/connectors/catalog") {

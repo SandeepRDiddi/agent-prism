@@ -18,6 +18,16 @@ export async function ensureSchemaPatches() {
   return backend.ensureSchemaPatches ? backend.ensureSchemaPatches() : null;
 }
 
+export async function provisionTenant(payload) {
+  const backend = await getBackend();
+  return backend.provisionTenant(payload);
+}
+
+export async function listTenants() {
+  const backend = await getBackend();
+  return backend.listTenants ? backend.listTenants() : [];
+}
+
 export async function readState() {
   const backend = await getBackend();
   return backend.readState ? backend.readState() : null;

@@ -326,6 +326,57 @@ export async function bootstrapSaas({ companyName, adminEmail, adminName, adminP
   };
 }
 
+export async function provisionTenant({ companyName, adminEmail, adminName, adminPassword, plan = "enterprise-trial" }) {
+  const client = await (await getPool()).connect();
+  const tenantId    = createId("tenant");
+  const userId      = createId("user");
+  const apiKeyId    = createId("key");
+  const connectorId = createId("connector");
+  const apiKey      = createApiKey();
+  const slug = companyName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  try {
+    await client.query("begin");
+    await client.query(
+      "insert into tenants (id, name, slug, plan, status, created_at) values ($1, $2, $3, $4, $5, $6)",
+      [tenantId, companyName, slug || tenantId, plan, "active", now()]
+    );
+    await client.query(
+      "insert into users (id, tenant_id, email, name, role, password_hash, created_at) values ($1, $2, $3, $4, $5, $6, $7)",
+      [userId, tenantId, adminEmail, adminName || adminEmail, "owner", adminPassword ? hashPassword(adminPassword) : null, now()]
+    );
+    await client.query(
+      "insert into api_keys (id, tenant_id, name, prefix, key_hash, status, created_at) values ($1, $2, $3, $4, $5, $6, $7)",
+      [apiKeyId, tenantId, "Default ingest key", apiKey.prefix, apiKey.hash, "active", now()]
+    );
+    await client.query(
+      "insert into connectors (id, tenant_id, provider, name, mode, status, config, created_at) values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)",
+      [connectorId, tenantId, "github-copilot", "GitHub Copilot", "webhook", "ready", JSON.stringify({}), now()]
+    );
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  return {
+    tenant: mapTenant({ id: tenantId, name: companyName, slug: slug || tenantId, plan, status: "active", created_at: now() }),
+    user:   { id: userId, tenantId, email: adminEmail, name: adminName || adminEmail, role: "owner", createdAt: now() },
+    apiKey: apiKey.plainText
+  };
+}
+
+export async function listTenants() {
+  const pool = await getPool();
+  const result = await pool.query("select * from tenants order by created_at desc");
+  return result.rows.map(mapTenant);
+}
+
 export async function createTenantApiKey({ tenantId, name } = {}) {
   const pool = await getPool();
   const tenantResult = tenantId
