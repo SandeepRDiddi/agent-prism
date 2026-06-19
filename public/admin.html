@@ -490,8 +490,8 @@ function renderTable() {
             <td style="color:var(--muted)">${fmtDate(t.createdAt)}</td>
             <td>
               <div style="display:flex;gap:6px">
-                <button class="action-btn" onclick="openPlanModal('${esc(t.id)}','${esc(t.name)}','${esc(t.plan)}')">Change plan</button>
-                <button class="action-btn" onclick="copyId('${esc(t.id)}',this)">Copy ID</button>
+                <button class="action-btn js-plan-btn" data-id="${esc(t.id)}" data-name="${esc(t.name)}" data-plan="${esc(t.plan)}">Change plan</button>
+                <button class="action-btn js-copy-id-btn" data-id="${esc(t.id)}">Copy ID</button>
               </div>
             </td>
           </tr>
@@ -505,12 +505,21 @@ function esc(s) {
   return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-function copyId(id, btn) {
-  navigator.clipboard.writeText(id).then(() => {
-    btn.textContent = "Copied!";
-    setTimeout(() => btn.textContent = "Copy ID", 1500);
-  });
-}
+// Event delegation for table buttons (avoids CSP inline-handler block)
+document.getElementById("tenant-table-wrap").addEventListener("click", (e) => {
+  const planBtn = e.target.closest(".js-plan-btn");
+  if (planBtn) {
+    openPlanModal(planBtn.dataset.id, planBtn.dataset.name, planBtn.dataset.plan);
+    return;
+  }
+  const copyBtn = e.target.closest(".js-copy-id-btn");
+  if (copyBtn) {
+    navigator.clipboard.writeText(copyBtn.dataset.id).then(() => {
+      copyBtn.textContent = "Copied!";
+      setTimeout(() => { copyBtn.textContent = "Copy ID"; }, 1500);
+    });
+  }
+});
 
 // ── Load tenants ──────────────────────────────────────────────────────────────
 async function loadTenants() {
@@ -590,6 +599,12 @@ async function submitProvision() {
 }
 
 // ── Key reveal ────────────────────────────────────────────────────────────────
+function keyBox(label, value, style = "") {
+  return `<div class="field"><label>${label}</label>
+    <div class="key-box" style="${style}">${esc(value)}<button class="copy-btn js-copy-val" data-val="${esc(value)}">Copy</button></div>
+  </div>`;
+}
+
 function showKeyModal(result, email, password, company) {
   const key = result.apiKey || "—";
   const tenantId = result.tenant?.id || "—";
@@ -599,31 +614,24 @@ function showKeyModal(result, email, password, company) {
     <div class="field"><label>Company</label>
       <div style="padding:9px 12px;background:#1e2130;border:1px solid var(--border);border-radius:7px;font-size:13px">${esc(company)}</div>
     </div>
-    <div class="field"><label>Login URL</label>
-      <div class="key-box" style="color:var(--text)">${esc(loginUrl)}<button class="copy-btn" onclick="copy('${esc(loginUrl)}',this)">Copy</button></div>
-    </div>
-    <div class="field"><label>Email</label>
-      <div class="key-box" style="color:var(--text)">${esc(email)}<button class="copy-btn" onclick="copy('${esc(email)}',this)">Copy</button></div>
-    </div>
-    ${password ? `<div class="field"><label>Temporary Password</label>
-      <div class="key-box" style="color:var(--text)">${esc(password)}<button class="copy-btn" onclick="copy('${esc(password)}',this)">Copy</button></div>
-    </div>` : ""}
-    <div class="field"><label>ACP Key (Ingest / SDK)</label>
-      <div class="key-box">${esc(key)}<button class="copy-btn" onclick="copy('${esc(key)}',this)">Copy</button></div>
-    </div>
-    <div class="field"><label>Tenant ID</label>
-      <div class="key-box" style="color:var(--muted);font-size:11px">${esc(tenantId)}<button class="copy-btn" onclick="copy('${esc(tenantId)}',this)">Copy</button></div>
-    </div>
+    ${keyBox("Login URL", loginUrl, "color:var(--text)")}
+    ${keyBox("Email", email, "color:var(--text)")}
+    ${password ? keyBox("Temporary Password", password, "color:var(--text)") : ""}
+    ${keyBox("ACP Key (Ingest / SDK)", key)}
+    ${keyBox("Tenant ID", tenantId, "color:var(--muted);font-size:11px")}
   `;
   document.getElementById("key-overlay").classList.add("open");
 }
 
-function copy(text, btn) {
-  navigator.clipboard.writeText(text).then(() => {
+// Event delegation for copy buttons inside key modal
+document.getElementById("key-overlay").addEventListener("click", (e) => {
+  const btn = e.target.closest(".js-copy-val");
+  if (!btn) return;
+  navigator.clipboard.writeText(btn.dataset.val).then(() => {
     btn.textContent = "✓";
-    setTimeout(() => btn.textContent = "Copy", 1500);
+    setTimeout(() => { btn.textContent = "Copy"; }, 1500);
   });
-}
+});
 
 // ── Plan change ───────────────────────────────────────────────────────────────
 function openPlanModal(id, name, currentPlan) {
