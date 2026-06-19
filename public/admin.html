@@ -506,7 +506,7 @@ function esc(s) {
 }
 
 // Event delegation for table buttons (avoids CSP inline-handler block)
-document.getElementById("tenant-table-wrap").addEventListener("click", (e) => {
+document.getElementById("tenant-table-wrap")?.addEventListener("click", (e) => {
   const planBtn = e.target.closest(".js-plan-btn");
   if (planBtn) {
     openPlanModal(planBtn.dataset.id, planBtn.dataset.name, planBtn.dataset.plan);
@@ -523,13 +523,15 @@ document.getElementById("tenant-table-wrap").addEventListener("click", (e) => {
 
 // ── Load tenants ──────────────────────────────────────────────────────────────
 async function loadTenants() {
-  document.getElementById("tenant-table-wrap").innerHTML = `<div class="empty"><div class="spinner"></div></div>`;
+  const wrap = document.getElementById("tenant-table-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="empty"><div class="spinner"></div></div>`;
   try {
     const data = await adminFetch("GET", "/api/admin/tenants");
     tenants = data.tenants || [];
     renderTable();
   } catch (err) {
-    document.getElementById("tenant-table-wrap").innerHTML = `<div class="empty" style="color:var(--red)">Error: ${esc(err.message)}</div>`;
+    wrap.innerHTML = `<div class="empty" style="color:var(--red)">Error: ${esc(err.message)}</div>`;
   }
 }
 
@@ -624,7 +626,7 @@ function showKeyModal(result, email, password, company) {
 }
 
 // Event delegation for copy buttons inside key modal
-document.getElementById("key-overlay").addEventListener("click", (e) => {
+document.getElementById("key-overlay")?.addEventListener("click", (e) => {
   const btn = e.target.closest(".js-copy-val");
   if (!btn) return;
   navigator.clipboard.writeText(btn.dataset.val).then(() => {
