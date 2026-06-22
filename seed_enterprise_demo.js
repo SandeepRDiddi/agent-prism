@@ -416,6 +416,9 @@ async function main() {
         totalCost += cost;
       } else {
         failed++;
+        if (failed <= 3) {
+          process.stderr.write(`\n  [ERR] ${r.reason?.message || r.reason}\n`);
+        }
       }
     }
 
