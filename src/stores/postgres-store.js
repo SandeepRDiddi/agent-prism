@@ -462,6 +462,15 @@ export async function deleteTenantApiKey(tenantId, keyId) {
   return result.rows[0] || null;
 }
 
+export async function deleteAllTenantApiKeys(tenantId, excludeKeyId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    "delete from api_keys where tenant_id = $1 and id != $2 returning id, name, prefix",
+    [tenantId, excludeKeyId]
+  );
+  return result.rows;
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   if (!apiKeyValue) {
     return null;

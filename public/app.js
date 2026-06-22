@@ -2947,24 +2947,14 @@ async function deleteAllTenantKeys() {
   const btn = document.querySelector("#delete-all-keys-button");
   if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
   try {
-    const { keys } = await request("/api/tenant/api-keys");
-    const currentPrefix = tenantApiKey ? tenantApiKey.slice(0, 12) : null;
-    // exclude the key we're authenticated with (server blocks it anyway, but skip for clean count)
-    const targets = (keys || []).filter((k) => !currentPrefix || k.prefix !== currentPrefix);
-
-    const results = await Promise.allSettled(
-      targets.map((k) =>
-        request(`/api/tenant/api-keys/${encodeURIComponent(k.id)}/permanent`, { method: "DELETE" })
-      )
-    );
-    const deleted = results.filter((r) => r.status === "fulfilled").length;
-    adminActionMessage = `Deleted ${deleted} key${deleted !== 1 ? "s" : ""}. Workspace is clean.`;
+    const result = await request("/api/tenant/api-keys", { method: "DELETE" });
+    adminActionMessage = `Deleted ${result.deleted} key${result.deleted !== 1 ? "s" : ""}. Workspace is clean.`;
     await loadTenantSummary();
     await loadDashboard();
     currentView = "admin";
     renderCurrentView();
   } catch (error) {
-    adminActionMessage = error.message;
+    adminActionMessage = `Delete failed: ${error.message}`;
     if (btn) { btn.disabled = false; btn.textContent = "🗑 Delete all keys"; }
     renderCurrentView();
   }

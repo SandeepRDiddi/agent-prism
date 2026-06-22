@@ -68,6 +68,11 @@ export async function deleteTenantApiKey(tenantId, keyId) {
   return backend.deleteTenantApiKey ? backend.deleteTenantApiKey(tenantId, keyId) : null;
 }
 
+export async function deleteAllTenantApiKeys(tenantId, excludeKeyId) {
+  const backend = await getBackend();
+  return backend.deleteAllTenantApiKeys ? backend.deleteAllTenantApiKeys(tenantId, excludeKeyId) : [];
+}
+
 export async function authenticateTenantApiKey(apiKeyValue) {
   const backend = await getBackend();
   return backend.authenticateTenantApiKey(apiKeyValue);

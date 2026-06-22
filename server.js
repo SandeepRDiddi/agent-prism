@@ -25,6 +25,7 @@ import {
   listTenantApiKeys,
   revokeTenantApiKey,
   deleteTenantApiKey,
+  deleteAllTenantApiKeys,
   authenticateUser,
   createDashboardSession,
   authenticateDashboardSession,
@@ -2171,6 +2172,22 @@ ${prompt}`;
       if (!auth) return;
       const keys = await listTenantApiKeys(auth.tenant.id);
       return sendJson(res, 200, { keys });
+    }
+
+    // bulk delete — exact URL match first so /permanent and /:id routes don't interfere
+    if (req.method === "DELETE" && req.url === "/api/tenant/api-keys") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const excludeId = auth.apiKey.id;
+      const deleted = await deleteAllTenantApiKeys(auth.tenant.id, excludeId);
+      await logAuditEvent(auth.tenant.id, {
+        actor: `Admin (via ${auth.apiKey.prefix})`,
+        action: "All API Keys Deleted",
+        resource: "api_keys",
+        details: { count: deleted.length },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+      return sendJson(res, 200, { deleted: deleted.length });
     }
 
     if (req.method === "POST" && req.url === "/api/tenant/api-keys") {
