@@ -233,25 +233,32 @@ async function renderSetupScreen(type, message = "") {
     const { ssoEnabled, ssoOnly } = loginCfg;
 
     workspace.innerHTML = `
-      <section class="setup-screen">
-        <article class="panel setup-card setup-card--login">
-          <p class="eyebrow">${ssoOnly ? "Enterprise Login" : "Sign in"}</p>
-          <h2>Sign in to your tenant workspace</h2>
-          ${ssoEnabled ? `
-          <a href="/auth/sso/login" class="btn-sso">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            Continue with SSO
-          </a>` : ""}
-          ${!ssoOnly ? `
-          ${ssoEnabled ? `<div class="sso-divider"><span>or sign in with password</span></div>` : ""}
-          <form id="login-form" class="field-stack">
-            <input name="email" type="email" placeholder="Work email" required />
-            <input name="password" type="password" placeholder="Password" minlength="8" required />
-            <div class="setup-actions">
-              <button type="submit">Sign in</button>
-            </div>
-          </form>` : ""}
-          ${message ? `<p class="usp-summary">${message}</p>` : ""}
+      <section class="login-hero">
+        <div class="login-orbs">
+          <div class="orb orb-1"></div>
+          <div class="orb orb-2"></div>
+          <div class="orb orb-3"></div>
+        </div>
+        <div class="login-grid"></div>
+        <article class="login-card-glass">
+          <div class="login-logo-mark">AP</div>
+          <h1 class="login-headline">${ssoOnly ? "Enterprise" : "Command your"}<br><span class="login-gradient">${ssoOnly ? "Access Portal" : "AI fleet"}</span></h1>
+          <p class="login-sub">AI governance &middot; Real-time control &middot; Zero surprises</p>
+          <div class="login-form-wrap">
+            ${ssoEnabled ? `
+            <a href="/auth/sso/login" class="btn-sso" style="margin-bottom:1rem">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Continue with SSO
+            </a>` : ""}
+            ${!ssoOnly ? `
+            ${ssoEnabled ? `<div class="sso-divider"><span>or sign in with password</span></div>` : ""}
+            <form id="login-form">
+              <div class="login-field"><input name="email" type="email" placeholder="Work email" autocomplete="email" required /></div>
+              <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
+              <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
+            </form>` : ""}
+            ${message ? `<p class="login-error">${message}</p>` : ""}
+          </div>
         </article>
       </section>
     `;
@@ -3041,4 +3048,36 @@ document.querySelector("#logout").addEventListener("click", async () => {
   renderSetupScreen("login");
 });
 
-initializeApp();
+// ── Theme toggle ─────────────────────────────────────────────────────────────
+(function initTheme() {
+  const saved = localStorage.getItem("ap_theme") || "dark";
+  applyTheme(saved);
+})();
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("ap_theme", theme);
+  const iconDark  = document.querySelector(".theme-icon-dark");
+  const iconLight = document.querySelector(".theme-icon-light");
+  if (iconDark)  iconDark.style.display  = theme === "dark"  ? "inline" : "none";
+  if (iconLight) iconLight.style.display = theme === "light" ? "inline" : "none";
+}
+
+document.getElementById("theme-toggle")?.addEventListener("click", () => {
+  const current = document.documentElement.dataset.theme || "dark";
+  applyTheme(current === "dark" ? "light" : "dark");
+});
+
+// ── Dashboard entrance animation ──────────────────────────────────────────────
+function triggerDashEntrance() {
+  requestAnimationFrame(() => {
+    document.querySelectorAll(".business-card").forEach((card, i) => {
+      card.classList.add("dash-animate");
+      card.style.animationDelay = `${i * 55}ms`;
+    });
+  });
+}
+
+initializeApp().then(() => {
+  setTimeout(triggerDashEntrance, 200);
+}).catch(() => {});

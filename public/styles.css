@@ -3891,3 +3891,402 @@ strong.red   { color: #ff7f7f; }
     border-top: 1px solid var(--line);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   LIGHT MODE
+   ═══════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="light"] body {
+  background:
+    radial-gradient(circle at top left, rgba(79, 128, 255, 0.08), transparent 30%),
+    radial-gradient(circle at right top, rgba(141, 101, 255, 0.06), transparent 25%),
+    linear-gradient(180deg, #eef1ff 0%, #f4f6ff 40%, #f0f3ff 100%);
+  color: #0f1b3d;
+}
+
+html[data-theme="light"] {
+  --bg: #eef1ff;
+  --bg-strong: #e6eaff;
+  --panel: #ffffff;
+  --panel-2: #f4f6ff;
+  --panel-3: #edf0ff;
+  --line: rgba(79, 128, 255, 0.14);
+  --text: #0f1b3d;
+  --muted: #4a5a8a;
+  --blue: #2563eb;
+  --green: #16a34a;
+  --amber: #d97706;
+  --violet: #7c3aed;
+  --red: #dc2626;
+  --teal: #0d9488;
+  --shadow: 0 12px 40px rgba(79, 128, 255, 0.12);
+}
+
+html[data-theme="light"] .topbar {
+  background: rgba(238, 241, 255, 0.92);
+  border-bottom-color: rgba(79, 128, 255, 0.15);
+}
+
+html[data-theme="light"] .panel,
+html[data-theme="light"] .business-card,
+html[data-theme="light"] .metric-card {
+  background: #ffffff;
+  border-color: rgba(79, 128, 255, 0.12);
+}
+
+html[data-theme="light"] button {
+  border-color: rgba(79, 128, 255, 0.2);
+  background: linear-gradient(180deg, rgba(79, 128, 255, 0.08), rgba(79, 128, 255, 0.04));
+  color: #0f1b3d;
+}
+
+html[data-theme="light"] button.ghost,
+html[data-theme="light"] .topbar-link {
+  background: rgba(79, 128, 255, 0.05);
+  color: #2a3a6b;
+}
+
+html[data-theme="light"] .view-tab {
+  color: #4a5a8a;
+}
+
+html[data-theme="light"] .view-tab.active {
+  background: rgba(79, 128, 255, 0.12);
+  color: #2563eb;
+}
+
+html[data-theme="light"] .setup-card input {
+  background: rgba(79, 128, 255, 0.04);
+  border-color: rgba(79, 128, 255, 0.2);
+  color: #0f1b3d;
+}
+
+html[data-theme="light"] .setup-card input::placeholder { color: #7a8ab0; }
+
+html[data-theme="light"] .login-card-glass {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(79, 128, 255, 0.2);
+}
+
+html[data-theme="light"] .orb-1 {
+  background: radial-gradient(circle, rgba(79, 128, 255, 0.35) 0%, transparent 70%);
+}
+html[data-theme="light"] .orb-2 {
+  background: radial-gradient(circle, rgba(141, 101, 255, 0.3) 0%, transparent 70%);
+}
+html[data-theme="light"] .orb-3 {
+  background: radial-gradient(circle, rgba(25, 193, 193, 0.25) 0%, transparent 70%);
+}
+
+/* smooth transitions for everything on theme switch */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 0.25s;
+  transition-timing-function: ease;
+}
+/* but NOT transform / opacity (breaks animations) */
+.orb, .login-card-glass, .btn-sso { transition: none; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   THEME TOGGLE BUTTON
+   ═══════════════════════════════════════════════════════════════════ */
+
+.theme-toggle-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 1rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LOGIN REDESIGN — animated hero
+   ═══════════════════════════════════════════════════════════════════ */
+
+.login-hero {
+  position: relative;
+  min-height: calc(100dvh - 68px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* floating gradient orbs */
+.login-orbs { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  will-change: transform;
+}
+
+.orb-1 {
+  width: 560px;
+  height: 560px;
+  top: -120px;
+  left: -120px;
+  background: radial-gradient(circle, rgba(79, 128, 255, 0.28) 0%, transparent 70%);
+  animation: orbFloat1 14s ease-in-out infinite;
+}
+
+.orb-2 {
+  width: 480px;
+  height: 480px;
+  bottom: -80px;
+  right: -80px;
+  background: radial-gradient(circle, rgba(141, 101, 255, 0.26) 0%, transparent 70%);
+  animation: orbFloat2 18s ease-in-out infinite;
+}
+
+.orb-3 {
+  width: 320px;
+  height: 320px;
+  top: 40%;
+  left: 55%;
+  background: radial-gradient(circle, rgba(25, 193, 193, 0.2) 0%, transparent 70%);
+  animation: orbFloat3 22s ease-in-out infinite;
+}
+
+@keyframes orbFloat1 {
+  0%,100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(60px, 40px) scale(1.08); }
+  66%      { transform: translate(-30px, 70px) scale(0.95); }
+}
+@keyframes orbFloat2 {
+  0%,100% { transform: translate(0, 0) scale(1); }
+  40%      { transform: translate(-50px, -40px) scale(1.1); }
+  70%      { transform: translate(30px, -60px) scale(0.92); }
+}
+@keyframes orbFloat3 {
+  0%,100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(-40px, 50px) scale(1.15); }
+}
+
+/* subtle dot grid overlay */
+.login-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(154, 173, 255, 0.18) 1px, transparent 1px);
+  background-size: 32px 32px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* glassmorphism card */
+.login-card-glass {
+  position: relative;
+  z-index: 1;
+  width: min(460px, calc(100vw - 2.4rem));
+  padding: 2.6rem 2.4rem;
+  background: rgba(13, 23, 48, 0.72);
+  border: 1px solid rgba(154, 173, 255, 0.18);
+  border-radius: 20px;
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04) inset,
+    0 32px 80px rgba(0,0,0,0.45),
+    0 0 60px rgba(79, 128, 255, 0.08);
+  animation: cardEntrance 0.7s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+@keyframes cardEntrance {
+  from { opacity: 0; transform: translateY(28px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* logo mark on login */
+.login-logo-mark {
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, var(--violet), var(--blue));
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 1.3rem;
+  color: #fff;
+  margin-bottom: 1.6rem;
+  box-shadow: 0 8px 24px rgba(79, 128, 255, 0.4);
+  animation: logoPop 0.6s 0.2s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
+@keyframes logoPop {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.login-headline {
+  font-size: clamp(1.6rem, 3.5vw, 2.1rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 1.15;
+  margin: 0 0 0.5rem;
+  animation: fadeSlideUp 0.5s 0.25s ease both;
+}
+
+.login-gradient {
+  background: linear-gradient(135deg, var(--blue) 0%, var(--violet) 60%, var(--teal) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.login-sub {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin: 0 0 1.8rem;
+  animation: fadeSlideUp 0.5s 0.35s ease both;
+}
+
+.login-form-wrap {
+  animation: fadeSlideUp 0.5s 0.45s ease both;
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.login-field {
+  margin-bottom: 0.75rem;
+}
+.login-field input {
+  width: 100%;
+  padding: 0.78rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(154, 173, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.login-field input:focus {
+  border-color: rgba(79, 128, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(79, 128, 255, 0.12);
+}
+
+.login-submit-btn {
+  width: 100%;
+  padding: 0.82rem 1rem;
+  background: linear-gradient(135deg, var(--blue), var(--violet));
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 0.5rem;
+  letter-spacing: 0.01em;
+  position: relative;
+  overflow: hidden;
+  transition: opacity 0.15s, transform 0.15s !important;
+}
+.login-submit-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.login-submit-btn:hover { opacity: 0.92; transform: translateY(-1px); }
+.login-submit-btn:hover::before { opacity: 1; }
+.login-submit-btn:active { transform: translateY(0); }
+
+/* upgraded SSO button */
+.btn-sso {
+  position: relative;
+  overflow: hidden;
+}
+.btn-sso::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.5s;
+}
+.btn-sso:hover::after { transform: translateX(100%); }
+
+/* error message */
+.login-error {
+  color: var(--red);
+  font-size: 0.82rem;
+  margin-top: 0.6rem;
+  min-height: 1.1rem;
+  animation: fadeSlideUp 0.3s ease both;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DASHBOARD ENTRANCE ANIMATION
+   ═══════════════════════════════════════════════════════════════════ */
+
+@keyframes dashCardIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dash-animate {
+  animation: dashCardIn 0.45s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+/* stagger children */
+.metrics-grid.cockpit-metrics .business-card:nth-child(1) { animation-delay: 0ms; }
+.metrics-grid.cockpit-metrics .business-card:nth-child(2) { animation-delay: 60ms; }
+.metrics-grid.cockpit-metrics .business-card:nth-child(3) { animation-delay: 120ms; }
+.metrics-grid.cockpit-metrics .business-card:nth-child(4) { animation-delay: 180ms; }
+.metrics-grid.cockpit-metrics .business-card:nth-child(5) { animation-delay: 240ms; }
+.metrics-grid.cockpit-metrics .business-card:nth-child(6) { animation-delay: 300ms; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   COUNTER ROLL-UP
+   ═══════════════════════════════════════════════════════════════════ */
+
+.count-up {
+  display: inline-block;
+  animation: countPop 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes countPop {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TOPBAR BRAND POLISH
+   ═══════════════════════════════════════════════════════════════════ */
+
+.brand-mark {
+  background: linear-gradient(135deg, var(--violet) 0%, var(--blue) 100%);
+  box-shadow: 0 4px 14px rgba(79, 128, 255, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.18), transparent 60%);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CARD HOVER LIFT
+   ═══════════════════════════════════════════════════════════════════ */
+
+.business-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+.business-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(79, 128, 255, 0.12);
+}
