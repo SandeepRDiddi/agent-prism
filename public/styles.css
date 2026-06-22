@@ -1,4 +1,5 @@
 :root {
+  /* ── Core palette ── */
   --bg: #060b1b;
   --bg-strong: #091126;
   --panel: #0d1730;
@@ -14,6 +15,18 @@
   --red: #f04d5a;
   --teal: #19c1c1;
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+
+  /* ── Enterprise governance palette ── */
+  --bg-primary: #0a0f1d;
+  --bg-secondary: #111827;
+  --bg-surface: #1f2937;
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --accent-glow: #10b981;        /* Emerald = Safe/Compliant AI */
+  --accent-warning: #f59e0b;     /* Amber = Shadow AI / Guardrail Violation */
+  --accent-cyber: #3b82f6;       /* Tech Blue = Deep Observability */
+  --border-radius-ent: 8px;
+  --transition-smooth: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 * {
@@ -4289,4 +4302,240 @@ html[data-theme="light"] .orb-3 {
 .business-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 32px rgba(79, 128, 255, 0.12);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ENTERPRISE MATRIX GRID BACKGROUND (Gemini enhancement)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.matrix-grid-bg {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+  animation: gridScroll 20s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes gridScroll {
+  from { background-position: 0 0; }
+  to   { background-position: 0 40px; }
+}
+
+/* upgrade the existing login dot-grid to use scrolling version */
+.login-grid {
+  background-image:
+    linear-gradient(rgba(154,173,255,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(154,173,255,0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  animation: gridScroll 18s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   BADGE-GLOW + PULSE DOT (Gemini enhancement)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.badge-glow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 6px 16px;
+  border-radius: 100px;
+  color: var(--accent-glow);
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 1.4rem;
+  animation: fadeInUp 0.8s ease both;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-glow);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: dotPulse 2s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes dotPulse {
+  0%   { transform: scale(0.95); box-shadow: 0 0 0 0   rgba(16, 185, 129, 0.7); }
+  70%  { transform: scale(1);    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0   rgba(16, 185, 129, 0); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GOVERNANCE CARD — sweep border + hover lift (Gemini enhancement)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.governance-card,
+.business-card {
+  position: relative;
+  overflow: hidden;
+  transition: var(--transition-smooth) !important;
+  border-radius: var(--border-radius-ent);
+}
+
+.governance-card::before,
+.business-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+  transform: translateX(-100%);
+  transition: var(--transition-smooth);
+  z-index: 1;
+}
+
+.governance-card:hover,
+.business-card:hover {
+  transform: translateY(-4px) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.4), 0 0 20px rgba(16,185,129,0.06) !important;
+}
+
+.governance-card:hover::before,
+.business-card:hover::before {
+  transform: translateX(100%);
+  transition: transform 0.8s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   HERO ENTERPRISE SECTION
+   ═══════════════════════════════════════════════════════════════════ */
+
+.hero-enterprise {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, rgba(16,185,129,0.08) 0%, transparent 70%);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #3b82f6, #10b981);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.btn-primary-glow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  background: linear-gradient(135deg, var(--accent-cyber), var(--accent-glow));
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(16,185,129,0.3);
+  transition: var(--transition-smooth) !important;
+}
+.btn-primary-glow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(16,185,129,0.45);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 14px 28px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: var(--transition-smooth) !important;
+}
+.btn-secondary:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.22);
+}
+
+.cta-group {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 1.6rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SCROLL REVEAL (Gemini enhancement)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.reveal-on-scroll.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* staggered children inside a reveal wrapper */
+.reveal-on-scroll:nth-child(2) { transition-delay: 80ms; }
+.reveal-on-scroll:nth-child(3) { transition-delay: 160ms; }
+.reveal-on-scroll:nth-child(4) { transition-delay: 240ms; }
+.reveal-on-scroll:nth-child(5) { transition-delay: 320ms; }
+.reveal-on-scroll:nth-child(6) { transition-delay: 400ms; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   STATUS / COMPLIANCE INDICATORS — glow accents
+   ═══════════════════════════════════════════════════════════════════ */
+
+.status-dot {
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: dotPulse 2s infinite;
+}
+
+/* Metric card value gets emerald tint when showing healthy data */
+.metric-value.healthy { color: var(--accent-glow); }
+.metric-value.warning { color: var(--accent-warning); }
+.metric-value.cyber   { color: var(--accent-cyber); }
+
+/* Topbar status pill upgrade */
+.status-pill {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 100px;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  transition: var(--transition-smooth);
+}
+
+/* light-mode overrides for new vars */
+html[data-theme="light"] .badge-glow { background: rgba(16,185,129,0.08); color: #047857; }
+html[data-theme="light"] .btn-secondary { color: #1a2a5e; border-color: rgba(0,0,0,0.12); background: rgba(0,0,0,0.03); }
+html[data-theme="light"] .matrix-grid-bg {
+  background-image:
+    linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
 }

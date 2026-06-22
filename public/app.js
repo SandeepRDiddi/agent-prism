@@ -240,8 +240,10 @@ async function renderSetupScreen(type, message = "") {
           <div class="orb orb-3"></div>
         </div>
         <div class="login-grid"></div>
+        <div class="matrix-grid-bg"></div>
         <article class="login-card-glass">
           <div class="login-logo-mark">AP</div>
+          <div class="badge-glow"><span class="pulse-dot"></span>Enterprise AI Governance</div>
           <h1 class="login-headline">${ssoOnly ? "Enterprise" : "Command your"}<br><span class="login-gradient">${ssoOnly ? "Access Portal" : "AI fleet"}</span></h1>
           <p class="login-sub">AI governance &middot; Real-time control &middot; Zero surprises</p>
           <div class="login-form-wrap">
@@ -366,7 +368,7 @@ function renderMetrics(metrics) {
   document.querySelector("#metrics-grid").innerHTML = cards
     .map(
       ([label, value, detail, tone]) => `
-        <article class="metric-card">
+        <article class="metric-card reveal-on-scroll">
           <p class="eyebrow">${label}</p>
           <div class="metric-value ${tone}">${value}</div>
           <p>${detail}</p>
@@ -374,6 +376,7 @@ function renderMetrics(metrics) {
       `
     )
     .join("");
+  initScrollReveal();
 }
 
 function providerInitial(provider) {
@@ -3078,6 +3081,29 @@ function triggerDashEntrance() {
   });
 }
 
+// ── Scroll reveal (IntersectionObserver) ─────────────────────────────────────
+let _scrollObserver = null;
+function initScrollReveal() {
+  if (_scrollObserver) _scrollObserver.disconnect();
+  _scrollObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("revealed");
+          _scrollObserver.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.12 }
+  );
+  document.querySelectorAll(".reveal-on-scroll").forEach((el) => {
+    _scrollObserver.observe(el);
+  });
+}
+
 initializeApp().then(() => {
-  setTimeout(triggerDashEntrance, 200);
+  setTimeout(() => {
+    triggerDashEntrance();
+    initScrollReveal();
+  }, 200);
 }).catch(() => {});
