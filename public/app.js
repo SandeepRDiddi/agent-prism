@@ -2942,41 +2942,32 @@ async function revokeAllInactiveKeys() {
 }
 
 async function deleteAllTenantKeys() {
-  if (!confirm("Delete ALL access keys except the one you are using right now?\n\nThis permanently removes every other key and cannot be undone.")) return;
+  if (!confirm("Permanently delete ALL access keys except the one in use right now?\n\nThis cannot be undone.")) return;
   adminActionMessage = "";
+  const btn = document.querySelector("#delete-all-keys-button");
+  if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
   try {
-    const btn = document.querySelector("#delete-all-keys-button");
-    if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
-
     const { keys } = await request("/api/tenant/api-keys");
-    const others = (keys || []).filter((k) => k.id !== currentKeyId());
+    const currentPrefix = tenantApiKey ? tenantApiKey.slice(0, 12) : null;
+    // exclude the key we're authenticated with (server blocks it anyway, but skip for clean count)
+    const targets = (keys || []).filter((k) => !currentPrefix || k.prefix !== currentPrefix);
 
-    // Step 1: revoke any that are still active
-    const active = others.filter((k) => k.status === "active");
-    await Promise.all(active.map((k) =>
-      request(`/api/tenant/api-keys/${encodeURIComponent(k.id)}`, { method: "DELETE" }).catch(() => {})
-    ));
-
-    // Step 2: permanently delete all non-current keys
-    await Promise.all(others.map((k) =>
-      request(`/api/tenant/api-keys/${encodeURIComponent(k.id)}/permanent`, { method: "DELETE" }).catch(() => {})
-    ));
-
-    adminActionMessage = `Deleted ${others.length} key${others.length !== 1 ? "s" : ""}. Workspace is clean.`;
+    const results = await Promise.allSettled(
+      targets.map((k) =>
+        request(`/api/tenant/api-keys/${encodeURIComponent(k.id)}/permanent`, { method: "DELETE" })
+      )
+    );
+    const deleted = results.filter((r) => r.status === "fulfilled").length;
+    adminActionMessage = `Deleted ${deleted} key${deleted !== 1 ? "s" : ""}. Workspace is clean.`;
     await loadTenantSummary();
     await loadDashboard();
     currentView = "admin";
     renderCurrentView();
   } catch (error) {
     adminActionMessage = error.message;
+    if (btn) { btn.disabled = false; btn.textContent = "🗑 Delete all keys"; }
     renderCurrentView();
   }
-}
-
-function currentKeyId() {
-  const prefix = tenantApiKey ? tenantApiKey.slice(0, 12) : "";
-  const match = (tenantSummary?.apiKeys || []).find((k) => k.prefix === prefix);
-  return match?.id || null;
 }
 
 async function loadAuditLogTable() {
