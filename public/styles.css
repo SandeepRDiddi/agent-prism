@@ -2819,6 +2819,13 @@ strong.red   { color: #ff7f7f; }
   flex: 1;
 }
 
+.key-bulk-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .audit-log-wrap {
   margin-top: 8px;
 }

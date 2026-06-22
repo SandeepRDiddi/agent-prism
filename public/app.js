@@ -2410,9 +2410,14 @@ const response = await fetch("${window.location.origin}/v1/messages", {
             <input name="name" placeholder="Key name — e.g. Production agent" value="Demo agent key" />
             <button type="submit">Create key</button>
           </form>
-          ${tenantApiKeys.filter(k => k.status !== "active").length > 0
-            ? `<button id="revoke-all-button" class="ghost danger-ghost">Revoke all inactive</button>`
-            : ""}
+          <div class="key-bulk-actions">
+            ${tenantApiKeys.filter(k => k.status !== "active").length > 0
+              ? `<button id="revoke-all-button" class="ghost danger-ghost">Revoke all inactive</button>`
+              : ""}
+            ${tenantApiKeys.length > 1
+              ? `<button id="delete-all-keys-button" class="ghost danger-ghost">🗑 Delete all keys</button>`
+              : ""}
+          </div>
         </div>
         <p id="new-key-output" class="secret-output" hidden></p>
         <div class="admin-list">
@@ -2480,6 +2485,9 @@ const response = await fetch("${window.location.origin}/v1/messages", {
   });
   if (document.querySelector("#revoke-all-button")) {
     document.querySelector("#revoke-all-button").addEventListener("click", revokeAllInactiveKeys);
+  }
+  if (document.querySelector("#delete-all-keys-button")) {
+    document.querySelector("#delete-all-keys-button").addEventListener("click", deleteAllTenantKeys);
   }
   loadAuditLogTable();
   document.querySelectorAll(".connector-form").forEach((form) => {
@@ -2931,6 +2939,44 @@ async function revokeAllInactiveKeys() {
     adminActionMessage = error.message;
     renderCurrentView();
   }
+}
+
+async function deleteAllTenantKeys() {
+  if (!confirm("Delete ALL access keys except the one you are using right now?\n\nThis permanently removes every other key and cannot be undone.")) return;
+  adminActionMessage = "";
+  try {
+    const btn = document.querySelector("#delete-all-keys-button");
+    if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
+
+    const { keys } = await request("/api/tenant/api-keys");
+    const others = (keys || []).filter((k) => k.id !== currentKeyId());
+
+    // Step 1: revoke any that are still active
+    const active = others.filter((k) => k.status === "active");
+    await Promise.all(active.map((k) =>
+      request(`/api/tenant/api-keys/${encodeURIComponent(k.id)}`, { method: "DELETE" }).catch(() => {})
+    ));
+
+    // Step 2: permanently delete all non-current keys
+    await Promise.all(others.map((k) =>
+      request(`/api/tenant/api-keys/${encodeURIComponent(k.id)}/permanent`, { method: "DELETE" }).catch(() => {})
+    ));
+
+    adminActionMessage = `Deleted ${others.length} key${others.length !== 1 ? "s" : ""}. Workspace is clean.`;
+    await loadTenantSummary();
+    await loadDashboard();
+    currentView = "admin";
+    renderCurrentView();
+  } catch (error) {
+    adminActionMessage = error.message;
+    renderCurrentView();
+  }
+}
+
+function currentKeyId() {
+  const prefix = tenantApiKey ? tenantApiKey.slice(0, 12) : "";
+  const match = (tenantSummary?.apiKeys || []).find((k) => k.prefix === prefix);
+  return match?.id || null;
 }
 
 async function loadAuditLogTable() {
