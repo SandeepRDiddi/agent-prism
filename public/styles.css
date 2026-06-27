@@ -5646,3 +5646,254 @@ html[data-theme="light"] .leak-badge--low    { background: rgba(22,163,74,0.1); 
 }
 
 .cert-loading { color: var(--muted); font-size: 0.88rem; padding: 1rem 0; }
+
+/* ── Tier legend strip ───────────────────────────────────────────────────────── */
+.cert-tier-legend {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.cert-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ── Agent cards ─────────────────────────────────────────────────────────────── */
+.cert-cards { display: flex; flex-direction: column; gap: 14px; }
+
+.cert-card {
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: rgba(255,255,255,0.02);
+  transition: border-color 0.2s;
+}
+.cert-card--needs-action {
+  border-color: rgba(255,180,50,0.2);
+  background: rgba(255,180,50,0.03);
+}
+.cert-card:hover { border-color: rgba(255,255,255,0.12); }
+
+.cert-card-top {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.cert-card-identity { flex: 1; min-width: 0; }
+.cert-card-name {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+.cert-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.cert-card-type { font-size: 0.78rem; color: var(--muted); }
+.cert-card-sep  { color: rgba(255,255,255,0.2); font-size: 0.75rem; }
+.cert-card-biz  { font-size: 0.8rem; color: var(--muted); line-height: 1.4; max-width: 560px; }
+
+.cert-card-status-col {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.cert-card-env-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cert-card-env-label {
+  font-size: 0.73rem;
+  color: var(--muted);
+  width: 68px;
+  text-align: right;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Tool pills ──────────────────────────────────────────────────────────────── */
+.cert-card-tools-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cert-card-tools-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  padding-top: 3px;
+  min-width: 36px;
+}
+.cert-card-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.cert-tool-pill {
+  font-size: 0.74rem;
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1px solid;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+/* ── Metrics row ─────────────────────────────────────────────────────────────── */
+.cert-card-metrics {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.cert-card-metric { display: flex; align-items: center; gap: 10px; }
+.cert-card-metric-label {
+  font-size: 0.73rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.cert-card-score-wrap { display: flex; align-items: center; gap: 8px; }
+.cert-card-score-val  { font-size: 0.8rem; color: var(--muted); }
+
+/* ── Card actions ────────────────────────────────────────────────────────────── */
+.cert-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Cert review screen ──────────────────────────────────────────────────────── */
+.cert-review-screen { max-width: 700px; }
+
+.cert-review-back {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0 0 14px;
+  display: block;
+}
+.cert-review-back:hover { color: var(--text); }
+
+.cert-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.cert-review-tier-block {
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.cert-review-tier-block strong { display: block; margin-bottom: 4px; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.cert-review-tier-block p { margin: 0; }
+.cert-review-tier-block--0, .cert-review-tier-block--1 { background: rgba(52,211,153,0.07); border: 1px solid rgba(52,211,153,0.2); color: #9de8c4; }
+.cert-review-tier-block--2 { background: rgba(255,180,50,0.07); border: 1px solid rgba(255,180,50,0.2); color: #ffd580; }
+.cert-review-tier-block--3 { background: rgba(255,120,50,0.07); border: 1px solid rgba(255,120,50,0.2); color: #ffae80; }
+.cert-review-tier-block--4 { background: rgba(220,38,38,0.07);  border: 1px solid rgba(220,38,38,0.25); color: #ff9a9a; }
+
+.cert-review-section { margin-bottom: 20px; }
+.cert-review-section-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.cert-review-tools { display: flex; flex-direction: column; gap: 8px; }
+.cert-review-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.cert-review-tool-icon { font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0; }
+.cert-review-risk-pill {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.cert-review-risk-pill--safe     { background: rgba(52,211,153,0.12); color: #6ee7b7; }
+.cert-review-risk-pill--low      { background: rgba(79,128,255,0.12); color: #7ba7ff; }
+.cert-review-risk-pill--medium   { background: rgba(255,180,50,0.12); color: #ffd580; }
+.cert-review-risk-pill--high     { background: rgba(255,120,50,0.12); color: #ffae80; }
+.cert-review-risk-pill--critical { background: rgba(220,38,38,0.12);  color: #ff9a9a; }
+.cert-review-risk-pill--unknown  { background: rgba(200,200,200,0.08);color: #aaa; }
+
+.cert-review-checklist {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.86rem;
+  line-height: 1.8;
+  color: var(--muted);
+}
+.cert-review-checklist li strong { color: var(--text); }
+
+.cert-review-blocked {
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: rgba(220,38,38,0.08);
+  border: 1px solid rgba(220,38,38,0.25);
+  color: #ff9a9a;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.cert-review-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-top: 8px;
+}
+.cert-review-confirm {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(52,211,153,0.12);
+  border: 1px solid rgba(52,211,153,0.35);
+  color: #6ee7b7;
+  transition: background 0.15s;
+}
+.cert-review-confirm:hover { background: rgba(52,211,153,0.2); }
+.cert-review-cancel {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--muted);
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+.cert-review-cancel:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }

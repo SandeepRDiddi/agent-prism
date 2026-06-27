@@ -1111,6 +1111,32 @@ function renderActivityView() {
 
 // ── Certification helpers ─────────────────────────────────────────────────────
 
+const CERT_TIER_INFO = {
+  0: { label: "Observer",  short: "T0", color: "0", biz: "Read-only agent. Views data but never modifies or deletes anything. Lowest possible risk." },
+  1: { label: "Low Risk",  short: "T1", color: "1", biz: "Writes to internal systems only. No external calls, no deletions. Safe for most workflows." },
+  2: { label: "Medium",    short: "T2", color: "2", biz: "Makes external API calls or performs minor deletions. Requires review before production." },
+  3: { label: "High Risk", short: "T3", color: "3", biz: "Reads secrets, sends messages externally, or batch-mutates data. Needs human approval on key actions." },
+  4: { label: "Critical",  short: "T4", color: "4", biz: "Can destroy infrastructure or escalate system privileges. Cannot be promoted to production under any circumstance." }
+};
+
+const CERT_TOOL_LABELS = {
+  "read":           { icon: "◎", label: "Read only",             risk: "Safe" },
+  "internal-write": { icon: "✎", label: "Writes internal data",  risk: "Low" },
+  "external-call":  { icon: "↗", label: "Calls external service",risk: "Medium" },
+  "destructive":    { icon: "✕", label: "Deletes data",          risk: "High" },
+  "process-exec":   { icon: "⚡", label: "Executes code/commands",risk: "High" },
+  "secret-access":  { icon: "⬡", label: "Reads secrets/keys",   risk: "High" },
+  "bulk-mutation":  { icon: "⚠", label: "Bulk data changes",     risk: "High" },
+  "infra-mutate":   { icon: "☁", label: "Changes infrastructure",risk: "Critical" },
+  "privilege-esc":  { icon: "▲", label: "Escalates privileges",  risk: "Critical" },
+  "unclassified":   { icon: "?", label: "Unclassified",          risk: "Unknown" }
+};
+
+const CERT_RISK_COLORS = {
+  "Safe": "var(--green)", "Low": "var(--blue)", "Medium": "var(--amber)",
+  "High": "var(--red)", "Critical": "var(--red)", "Unknown": "var(--muted)"
+};
+
 async function loadCertifications() {
   try {
     const data = await request("/api/agents");
@@ -1121,45 +1147,117 @@ async function loadCertifications() {
 }
 
 function certStatusChip(status) {
-  const labels = { certified: "✓ Certified", uncertified: "⚠ Uncertified", revoked: "✗ Revoked" };
-  const label = labels[status] || "Unknown";
-  return `<span class="cert-status-chip cert-status-chip--${status || "uncertified"}">${label}</span>`;
-}
-
-function tierBadge(tier) {
-  const names = ["T0", "T1", "T2", "T3", "T4"];
-  return `<span class="tier-badge tier-badge--${tier}" title="Risk Tier ${tier}">${names[tier] ?? "T?"}</span>`;
-}
-
-function dangerBar(score) {
-  const pct = Math.min(100, Math.round(score));
-  const cls = pct <= 20 ? "low" : pct <= 50 ? "medium" : pct <= 75 ? "high" : "crit";
-  return `
-    <div class="danger-bar-wrap">
-      <div class="danger-bar"><div class="danger-bar-fill danger-bar-fill--${cls}" style="width:${pct}%"></div></div>
-      <span style="font-size:0.78rem;color:var(--muted)">${pct}</span>
-    </div>`;
-}
-
-function hitlPct(pct) {
-  const cls = pct >= 80 ? "good" : pct >= 50 ? "ok" : "poor";
-  return `<span class="hitl-pct hitl-pct--${cls}">${pct}%</span>`;
+  const cfg = {
+    certified:   { icon: "✓", label: "Certified" },
+    uncertified: { icon: "⚠", label: "Not Certified" },
+    revoked:     { icon: "✕", label: "Revoked" }
+  };
+  const c = cfg[status] || cfg.uncertified;
+  return `<span class="cert-status-chip cert-status-chip--${status || "uncertified"}">${c.icon} ${c.label}</span>`;
 }
 
 function certPanelStatus(msg, isError = false) {
   const el = document.querySelector("#cert-panel-body");
   if (!el) { console.error("Cert:", msg); return; }
-  const bar = el.querySelector(".cert-status-bar") || (() => {
-    const d = document.createElement("div");
-    d.className = "cert-status-bar";
-    d.style.cssText = "padding:8px 12px;margin-bottom:10px;border-radius:6px;font-size:0.83rem;font-weight:600;";
-    el.prepend(d);
-    return d;
-  })();
+  let bar = el.querySelector(".cert-status-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "cert-status-bar";
+    bar.style.cssText = "padding:10px 14px;margin-bottom:14px;border-radius:8px;font-size:0.84rem;font-weight:600;";
+    el.prepend(bar);
+  }
   bar.textContent = msg;
   bar.style.background = isError ? "rgba(255,80,80,0.12)" : "rgba(52,211,153,0.10)";
   bar.style.color = isError ? "var(--red)" : "var(--green)";
-  if (!isError) setTimeout(() => bar.remove(), 4000);
+  if (!isError) setTimeout(() => bar?.remove(), 5000);
+}
+
+// Show inline review screen before certifying — gives business user context
+function showCertReview(agentName, env = "staging") {
+  const agent = (certificationData || []).find((a) => a.agentName === agentName);
+  if (!agent) { certPanelStatus(`Agent ${agentName} not found`, true); return; }
+
+  const tier = agent.effectiveTier ?? 0;
+  const tierInfo = CERT_TIER_INFO[tier] || CERT_TIER_INFO[0];
+  const tools = agent.tools || [];
+  const isBlocked = tier === 4 && env === "production";
+
+  const toolRows = tools.map((t) => {
+    const cat = t.danger_category || "unclassified";
+    const lbl = CERT_TOOL_LABELS[cat] || CERT_TOOL_LABELS.unclassified;
+    const lvl = t.danger_level ?? 0;
+    const lvlLabel = ["Safe", "Low", "Medium", "High", "Critical"][lvl] || "Unknown";
+    return `
+      <div class="cert-review-tool">
+        <span class="cert-review-tool-icon" style="color:${CERT_RISK_COLORS[lbl.risk]}">${lbl.icon}</span>
+        <div>
+          <strong style="font-size:0.88rem">${t.tool_name || t.name}</strong>
+          <span style="color:var(--muted);font-size:0.8rem;margin-left:8px">${lbl.label}</span>
+        </div>
+        <span class="cert-review-risk-pill cert-review-risk-pill--${lvlLabel.toLowerCase()}">${lvlLabel} risk</span>
+      </div>`;
+  }).join("") || `<p style="color:var(--muted);font-size:0.85rem">No tool manifest recorded. Agent cannot be fully classified.</p>`;
+
+  const hitlRequired = tools.some((t) => t.requires_hitl);
+  const approvalNote = hitlRequired
+    ? "This agent carries tools that require a human to approve each action before it runs."
+    : "This agent does not require human approval on individual actions.";
+
+  const el = document.querySelector("#cert-panel-body");
+  if (!el) return;
+
+  el.innerHTML = `
+    <div class="cert-review-screen">
+      <button class="cert-review-back" onclick="renderCertPanel()">← Back to all agents</button>
+
+      <div class="cert-review-header">
+        <div>
+          <h3 style="margin:0 0 4px;font-size:1.1rem">${agentName}</h3>
+          <span style="color:var(--muted);font-size:0.85rem">${agent.agentType || "custom"} · ${tools.length} tool${tools.length !== 1 ? "s" : ""} · ${agent.runCount || 0} runs recorded</span>
+        </div>
+        <span class="tier-badge tier-badge--${tier}" style="font-size:0.88rem;padding:5px 12px">
+          ${tierInfo.short} ${tierInfo.label}
+        </span>
+      </div>
+
+      <div class="cert-review-tier-block cert-review-tier-block--${tier}">
+        <strong>What this risk tier means for your business</strong>
+        <p>${tierInfo.biz}</p>
+        ${tier === 4 ? `<p style="margin-top:6px;font-weight:700;color:var(--red)">⚠ Tier 4 agents cannot be promoted to production. Staging certification only.</p>` : ""}
+      </div>
+
+      <div class="cert-review-section">
+        <p class="cert-review-section-title">Tools this agent is authorised to use</p>
+        <p style="color:var(--muted);font-size:0.82rem;margin-bottom:12px">
+          These are the capabilities this agent carries every time it runs. By certifying, you confirm you have reviewed and accepted these capabilities.
+        </p>
+        <div class="cert-review-tools">${toolRows}</div>
+      </div>
+
+      <div class="cert-review-section">
+        <p class="cert-review-section-title">What you are approving</p>
+        <ul class="cert-review-checklist">
+          <li>This agent is classified as <strong>Tier ${tier} — ${tierInfo.label}</strong></li>
+          <li>${approvalNote}</li>
+          <li>Certification is valid for <strong>30 days</strong>, then re-evaluation is required</li>
+          <li>If the agent starts using a new high-risk tool after certification, its certificate is automatically revoked</li>
+          ${env === "production" ? `<li>Production certification requires a minimum number of successful staging runs first</li>` : ""}
+        </ul>
+      </div>
+
+      ${isBlocked ? `
+        <div class="cert-review-blocked">
+          ✕ This agent cannot be certified for production. Remove destructive or privilege-escalation tools first.
+        </div>
+      ` : `
+        <div class="cert-review-actions">
+          <button class="cert-review-confirm" onclick="certifyAgent(${JSON.stringify(agentName)}, ${JSON.stringify(env)})">
+            ✓ I have reviewed this agent — Certify for ${env === "production" ? "Production" : "Staging"}
+          </button>
+          <button class="cert-review-cancel" onclick="renderCertPanel()">Cancel</button>
+        </div>
+      `}
+    </div>`;
 }
 
 async function certifyAgent(agentName, env = "staging") {
@@ -1179,6 +1277,33 @@ async function certifyAgent(agentName, env = "staging") {
 }
 
 async function promoteAgent(agentName) {
+  const agent = (certificationData || []).find((a) => a.agentName === agentName);
+  const el = document.querySelector("#cert-panel-body");
+  if (el && agent) {
+    el.innerHTML = `
+      <div class="cert-review-screen">
+        <button class="cert-review-back" onclick="renderCertPanel()">← Back to all agents</button>
+        <div class="cert-review-header">
+          <h3 style="margin:0 0 4px;font-size:1.1rem">${agentName}</h3>
+          <span style="color:var(--muted);font-size:0.85rem">Promoting staging cert → production</span>
+        </div>
+        <div class="cert-review-tier-block cert-review-tier-block--2">
+          <strong>What production promotion means</strong>
+          <p>This agent will be allowed to ingest live production runs. Any production run from an uncertified or revoked agent is blocked automatically. You can revoke at any time.</p>
+        </div>
+        <div class="cert-review-actions">
+          <button class="cert-review-confirm" onclick="doPromoteAgent(${JSON.stringify(agentName)})">
+            ✓ Promote ${agentName} to Production
+          </button>
+          <button class="cert-review-cancel" onclick="renderCertPanel()">Cancel</button>
+        </div>
+      </div>`;
+    return;
+  }
+  await doPromoteAgent(agentName);
+}
+
+async function doPromoteAgent(agentName) {
   certPanelStatus(`Promoting ${agentName} to production…`);
   try {
     await request(`/api/agents/${encodeURIComponent(agentName)}/promote`, {
@@ -1195,13 +1320,27 @@ async function promoteAgent(agentName) {
 }
 
 async function revokeAgentCert(agentName, env = "production") {
-  const wrap = document.querySelector(`[data-revoke-wrap="${agentName}"]`);
-  if (wrap) {
-    wrap.innerHTML = `
-      <span style="font-size:0.78rem;color:var(--red);margin-right:6px">Revoke cert?</span>
-      <button class="cert-action-btn cert-action-btn--revoke" style="margin-right:4px"
-              onclick="doRevokeConfirmed(${JSON.stringify(agentName)},${JSON.stringify(env)})">Yes</button>
-      <button class="cert-action-btn" onclick="renderGovernanceView()">No</button>`;
+  const el = document.querySelector("#cert-panel-body");
+  if (el) {
+    el.innerHTML = `
+      <div class="cert-review-screen">
+        <button class="cert-review-back" onclick="renderCertPanel()">← Back to all agents</button>
+        <div class="cert-review-header">
+          <h3 style="margin:0 0 4px;font-size:1.1rem">${agentName}</h3>
+          <span style="color:var(--muted);font-size:0.85rem">Revoking ${env} certificate</span>
+        </div>
+        <div class="cert-review-tier-block cert-review-tier-block--4">
+          <strong>What revocation means</strong>
+          <p>This agent's ${env} certificate will be revoked immediately. Any ${env} run from this agent will be blocked at ingest until it is re-certified. This action is logged in the audit trail.</p>
+        </div>
+        <div class="cert-review-actions">
+          <button class="cert-review-confirm" style="background:rgba(220,38,38,0.15);border-color:rgba(220,38,38,0.4);color:var(--red)"
+                  onclick="doRevokeConfirmed(${JSON.stringify(agentName)},${JSON.stringify(env)})">
+            ✕ Revoke ${agentName} — ${env} certificate
+          </button>
+          <button class="cert-review-cancel" onclick="renderCertPanel()">Cancel</button>
+        </div>
+      </div>`;
     return;
   }
   await doRevokeConfirmed(agentName, env);
@@ -1236,72 +1375,122 @@ function renderCertPanel() {
   if (certificationData.length === 0) {
     el.innerHTML = `
       <div class="cert-empty">
-        <p>No agents registered yet.</p>
-        <p style="margin-top:6px;font-size:0.82rem">Agents appear here once they submit a run with a <code>toolManifest</code> array.</p>
+        <p style="font-weight:600;margin-bottom:6px">No agents registered yet.</p>
+        <p style="font-size:0.83rem">Agents appear here once they submit a run that includes a <code>toolManifest</code> array. Run <code>node demo_cert_agents.js</code> to populate with example agents.</p>
       </div>`;
     return;
   }
 
-  el.innerHTML = `
-    <table class="cert-table">
-      <thead>
-        <tr>
-          <th>Agent</th>
-          <th>Type</th>
-          <th>Tier</th>
-          <th>Staging</th>
-          <th>Production</th>
-          <th>Danger Score</th>
-          <th>HITL</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${certificationData.map((agent) => {
-          const stagingStatus = agent.stagingCert || "uncertified";
-          const prodStatus    = agent.prodCert    || "uncertified";
-          const tools         = agent.tools || [];
-          const maxDanger     = tools.length > 0 ? Math.max(0, ...tools.map((t) => (t.danger_level ?? 0) * 15)) : 0;
-          const hitlCoverage  = tools.filter((t) => t.requires_hitl).length > 0
-            ? Math.round((tools.filter((t) => t.requires_hitl && t.run_count > 0).length / tools.filter((t) => t.requires_hitl).length) * 100)
-            : 100;
-          const canPromote = stagingStatus === "certified" && prodStatus !== "certified";
-          const canRevoke  = prodStatus === "certified" || prodStatus === "revoked";
-          const name = agent.agentName;
+  // Sort: uncertified first (needs action), then certified, then revoked
+  const sorted = [...certificationData].sort((a, b) => {
+    const order = { uncertified: 0, revoked: 1, certified: 2 };
+    return (order[a.stagingCert] ?? 0) - (order[b.stagingCert] ?? 0);
+  });
 
-          return `
-            <tr>
-              <td><strong>${name}</strong></td>
-              <td style="color:var(--muted);font-size:0.8rem">${agent.agentType || "custom"}</td>
-              <td>${tierBadge(agent.effectiveTier ?? 0)}</td>
-              <td>${certStatusChip(stagingStatus)}</td>
-              <td>${certStatusChip(prodStatus)}</td>
-              <td>${dangerBar(maxDanger)}</td>
-              <td>${hitlPct(hitlCoverage)}</td>
-              <td>
-                <div class="cert-actions">
-                  <button class="cert-action-btn cert-action-btn--certify"
-                          onclick="certifyAgent(${JSON.stringify(name)}, 'staging')">
-                    Certify
-                  </button>
-                  <button class="cert-action-btn cert-action-btn--promote"
-                          onclick="promoteAgent(${JSON.stringify(name)})"
-                          ${canPromote ? "" : "disabled"}>
-                    Promote
-                  </button>
-                  <span data-revoke-wrap="${name}">
-                    <button class="cert-action-btn cert-action-btn--revoke"
-                            onclick="revokeAgentCert(${JSON.stringify(name)})"
-                            ${canRevoke ? "" : "disabled"}>
-                      Revoke
-                    </button>
-                  </span>
+  el.innerHTML = `
+    <div class="cert-tier-legend">
+      ${Object.entries(CERT_TIER_INFO).map(([t, info]) =>
+        `<div class="cert-legend-item">
+          <span class="tier-badge tier-badge--${t}">${info.short}</span>
+          <span>${info.label}</span>
+        </div>`
+      ).join("")}
+    </div>
+
+    <div class="cert-cards">
+      ${sorted.map((agent) => {
+        const stagingStatus = agent.stagingCert || "uncertified";
+        const prodStatus    = agent.prodCert    || "uncertified";
+        const tier          = agent.effectiveTier ?? 0;
+        const tierInfo      = CERT_TIER_INFO[tier] || CERT_TIER_INFO[0];
+        const tools         = agent.tools || [];
+        const dangerScore   = tools.length > 0 ? Math.min(100, tools.reduce((s, t) => s + ([0,5,15,35,75][t.danger_level ?? 0] ?? 0), 0)) : 0;
+        const scoreClass    = dangerScore <= 20 ? "low" : dangerScore <= 50 ? "medium" : dangerScore <= 75 ? "high" : "crit";
+        const hitlTools     = tools.filter((t) => t.requires_hitl);
+        const hitlCoverage  = hitlTools.length > 0
+          ? Math.round((hitlTools.filter((t) => t.run_count > 0).length / hitlTools.length) * 100)
+          : 100;
+        const canPromote    = stagingStatus === "certified" && prodStatus !== "certified";
+        const canRevoke     = prodStatus === "certified";
+        const name          = agent.agentName;
+        const needsAction   = stagingStatus !== "certified";
+
+        const toolPills = tools.slice(0, 5).map((t) => {
+          const cat = t.danger_category || "unclassified";
+          const lbl = CERT_TOOL_LABELS[cat] || CERT_TOOL_LABELS.unclassified;
+          return `<span class="cert-tool-pill" style="border-color:${CERT_RISK_COLORS[lbl.risk]}22;color:${CERT_RISK_COLORS[lbl.risk]}">${lbl.icon} ${t.tool_name || t.name}</span>`;
+        }).join("") + (tools.length > 5 ? `<span class="cert-tool-pill" style="color:var(--muted)">+${tools.length - 5} more</span>` : "");
+
+        return `
+          <div class="cert-card ${needsAction ? "cert-card--needs-action" : ""}">
+            <div class="cert-card-top">
+              <div class="cert-card-identity">
+                <div class="cert-card-name">${name}</div>
+                <div class="cert-card-meta">
+                  <span class="tier-badge tier-badge--${tier}">${tierInfo.short}</span>
+                  <span class="cert-card-type">${tierInfo.label}</span>
+                  <span class="cert-card-sep">·</span>
+                  <span class="cert-card-type">${agent.agentType || "custom"}</span>
+                  <span class="cert-card-sep">·</span>
+                  <span class="cert-card-type">${agent.runCount || 0} runs</span>
                 </div>
-              </td>
-            </tr>`;
-        }).join("")}
-      </tbody>
-    </table>`;
+                <div class="cert-card-biz">${tierInfo.biz}</div>
+              </div>
+              <div class="cert-card-status-col">
+                <div class="cert-card-env-row">
+                  <span class="cert-card-env-label">Staging</span>
+                  ${certStatusChip(stagingStatus)}
+                </div>
+                <div class="cert-card-env-row">
+                  <span class="cert-card-env-label">Production</span>
+                  ${certStatusChip(prodStatus)}
+                </div>
+              </div>
+            </div>
+
+            ${tools.length > 0 ? `
+            <div class="cert-card-tools-row">
+              <span class="cert-card-tools-label">Tools</span>
+              <div class="cert-card-tools">${toolPills}</div>
+            </div>` : ""}
+
+            <div class="cert-card-metrics">
+              <div class="cert-card-metric">
+                <span class="cert-card-metric-label">Risk Score</span>
+                <div class="cert-card-score-wrap">
+                  <div class="danger-bar" style="width:120px">
+                    <div class="danger-bar-fill danger-bar-fill--${scoreClass}" style="width:${dangerScore}%"></div>
+                  </div>
+                  <span class="cert-card-score-val">${dangerScore}/100</span>
+                </div>
+              </div>
+              <div class="cert-card-metric">
+                <span class="cert-card-metric-label">Human Review Coverage</span>
+                <span class="hitl-pct hitl-pct--${hitlCoverage >= 80 ? "good" : hitlCoverage >= 50 ? "ok" : "poor"}">${hitlCoverage}%</span>
+              </div>
+            </div>
+
+            <div class="cert-card-actions">
+              <button class="cert-action-btn cert-action-btn--certify"
+                      onclick="showCertReview(${JSON.stringify(name)}, 'staging')">
+                Review &amp; Certify
+              </button>
+              <button class="cert-action-btn cert-action-btn--promote"
+                      onclick="promoteAgent(${JSON.stringify(name)})"
+                      ${canPromote ? "" : "disabled"}
+                      title="${canPromote ? "Promote staging cert to production" : "Certify in staging first"}">
+                Promote to Production
+              </button>
+              <button class="cert-action-btn cert-action-btn--revoke"
+                      onclick="revokeAgentCert(${JSON.stringify(name)})"
+                      ${canRevoke ? "" : "disabled"}
+                      title="${canRevoke ? "Revoke production certificate" : "No active production cert to revoke"}">
+                Revoke
+              </button>
+            </div>
+          </div>`;
+      }).join("")}
+    </div>`;
 }
 
 function renderGovernanceView() {
@@ -1311,7 +1500,7 @@ function renderGovernanceView() {
         <div class="panel-title">
           <p class="eyebrow">Security Gate</p>
           <h2>Agent Certification</h2>
-          <p class="panel-subtitle">Certify agents before promoting to production. Uncertified agents are blocked at ingest.</p>
+          <p class="panel-subtitle">Before an AI agent can run in production, it must be certified here. Certification confirms you have reviewed the agent's tool access, risk tier, and human-in-loop coverage. Uncertified agents are automatically blocked from ingesting production data.</p>
         </div>
         <div id="cert-panel-body"></div>
       </article>
