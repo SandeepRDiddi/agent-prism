@@ -336,7 +336,7 @@ function buildRun(agent, startTime) {
   const endTime   = new Date(startTime.getTime() + latencyMs);
 
   const succeeded = Math.random() < agent.successRate;
-  const status    = succeeded ? "completed" : pick(["failed", "timeout"]);
+  const status    = succeeded ? "success" : pick(["failed", "timeout"]);
   const retries   = succeeded ? agent.retries : agent.retries + randInt(1, 3);
   const budgetOk  = costUsd <= agent.budgetUsd;
 

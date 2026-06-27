@@ -11,8 +11,12 @@ function clamp(value, min = 0, max = 100) {
   return Math.max(min, Math.min(max, value));
 }
 
+export function isSuccess(status) {
+  return status === "success" || status === "completed";
+}
+
 export function computeControlScore(run) {
-  const successScore = run.status === "success" ? 100 : 35;
+  const successScore = isSuccess(run.status) ? 100 : 35;
   const budgetEfficiency = clamp(
     100 - ((run.costUsd / Math.max(run.budgetUsd, 0.01)) * 100 - 100),
     0,
@@ -54,7 +58,7 @@ export function summarizeStatus(runs) {
   return runs.reduce(
     (accumulator, run) => {
       accumulator.total += 1;
-      accumulator.success += run.status === "success" ? 1 : 0;
+      accumulator.success += isSuccess(run.status) ? 1 : 0;
       accumulator.failed += run.status === "failed" ? 1 : 0;
       accumulator.running += run.status === "running" ? 1 : 0;
       return accumulator;

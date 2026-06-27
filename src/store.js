@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { computeControlScore, classifyHealth, summarizeStatus, average } from "./scoring.js";
+import { computeControlScore, classifyHealth, summarizeStatus, average, isSuccess } from "./scoring.js";
 import { scoreFitness, getModelRecommendation } from "./model-classifier.js";
 
 const samplePath = join(process.cwd(), "data", "sample-runs.json");
@@ -485,7 +485,7 @@ export function buildDashboardSnapshot(runs) {
       const totalTokensIn = providerRuns.reduce((sum, run) => sum + (run.tokensIn || 0), 0);
       const totalTokensOut = providerRuns.reduce((sum, run) => sum + (run.tokensOut || 0), 0);
       const totalTokens = totalTokensIn + totalTokensOut;
-      const successRuns = providerRuns.filter((run) => run.status === "success");
+      const successRuns = providerRuns.filter((run) => isSuccess(run.status));
       const successRate = Math.round((successRuns.length / providerRuns.length) * 100);
       const avgScore = Math.round(average(providerRuns.map((run) => run.controlScore)));
       const avgLatencyMs = Math.round(average(providerRuns.map((run) => run.latencyMs || 0)));
@@ -567,7 +567,7 @@ export function buildDashboardSnapshot(runs) {
         0
       );
       const avgLatencyMs = Math.round(average(agentRuns.map((run) => run.latencyMs)));
-      const tasksDone = agentRuns.filter((run) => run.status === "success").length;
+      const tasksDone = agentRuns.filter((run) => isSuccess(run.status)).length;
       return {
         agentName,
         provider: latestRun.provider,
@@ -619,7 +619,7 @@ export function buildDashboardSnapshot(runs) {
                       text.toLowerCase().includes("parsed") ||
                       text.toLowerCase().includes("loaded")
                     ? "info"
-                    : run.status === "success"
+                    : isSuccess(run.status)
                       ? "success"
                       : "tool",
             message: text,
@@ -658,16 +658,16 @@ export function buildDashboardSnapshot(runs) {
         events.push({
           time: run.endTime || run.startTime,
           agentName: run.agentName,
-          level: run.status === "success" ? "success" : "error",
-          message: `${run.status === "success" ? "Completed" : "Failed"} — ${(run.tokensIn || 0).toLocaleString()} in + ${(run.tokensOut || 0).toLocaleString()} out = ${totalTokens.toLocaleString()} tokens · $${(run.costUsd || 0).toFixed(4)} · ${run.latencyMs}ms`,
+          level: isSuccess(run.status) ? "success" : "error",
+          message: `${isSuccess(run.status) ? "Completed" : "Failed"} — ${(run.tokensIn || 0).toLocaleString()} in + ${(run.tokensOut || 0).toLocaleString()} out = ${totalTokens.toLocaleString()} tokens · $${(run.costUsd || 0).toFixed(4)} · ${run.latencyMs}ms`,
           ...runMeta
         });
       } else {
         events.push({
           time: run.endTime || run.startTime,
           agentName: run.agentName,
-          level: run.status === "success" ? "success" : "error",
-          message: `${run.status === "success" ? "Completed" : "Failed"} in ${run.latencyMs}ms`,
+          level: isSuccess(run.status) ? "success" : "error",
+          message: `${isSuccess(run.status) ? "Completed" : "Failed"} in ${run.latencyMs}ms`,
           ...runMeta
         });
       }

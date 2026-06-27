@@ -4796,14 +4796,15 @@ html[data-theme="light"] .matrix-grid-bg {
 @media (min-width: 1280px) {
   .dash-top-row {
     flex-direction: row;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
   }
   .command-ribbon {
     flex: 1;
     margin-bottom: 0;
-    max-width: 640px;
+    max-width: 580px;
+    padding: 8px 16px;
   }
 }
 
