@@ -10,21 +10,18 @@
  * Run: node demo_cert_agents.js
  */
 
-import { AgentPrism } from "./src/sdk/index.js";
-
 // Accepts both naming conventions:
-//   AGENT_PRISM_ENDPOINT / PRISM_URL   — server base URL
-//   AGENT_PRISM_API_KEY  / PRISM_KEY   — tenant API key
+//   AGENT_PRISM_ENDPOINT / PRISM_URL  — server base URL
+//   AGENT_PRISM_API_KEY  / PRISM_KEY  — tenant API key (acp_...)
 const ENDPOINT = process.env.AGENT_PRISM_ENDPOINT || process.env.PRISM_URL || "http://localhost:3000";
 const API_KEY  = process.env.AGENT_PRISM_API_KEY  || process.env.PRISM_KEY;
 
 if (!API_KEY) {
-  console.error("ERROR: No API key set.\nRun with: PRISM_KEY=acp_... node demo_cert_agents.js");
+  console.error("ERROR: No API key.\nRun with: PRISM_KEY=acp_... node demo_cert_agents.js");
   process.exit(1);
 }
 
 console.log(`  Target: ${ENDPOINT}\n`);
-const prism = new AgentPrism({ endpoint: ENDPOINT, clientSecret: API_KEY });
 
 // ── Agent definitions ─────────────────────────────────────────────────────────
 // Three agents at different risk tiers.  The script shows which pass, which
@@ -71,23 +68,23 @@ const AGENTS = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function getAuthToken() {
-  return prism._authenticate();
-}
+// Use X-API-Key directly — skips OAuth entirely, works on all environments.
 
 async function apiCall(method, path, body) {
-  const token = await getAuthToken();
-  const res = await fetch(`${prism.endpoint}${path}`, {
+  const res = await fetch(`${ENDPOINT}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
+      "X-API-Key": API_KEY
     },
     body: body ? JSON.stringify(body) : undefined
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
+}
+
+async function ingestRun(payload) {
+  return apiCall("POST", "/api/ingest", payload);
 }
 
 function buildStagingRun(agent, index) {
@@ -135,11 +132,11 @@ async function main() {
     process.stdout.write(`  ${pad(agent.name, 24)} `);
     let ok = 0;
     for (let i = 0; i < agent.stagingRuns; i++) {
-      try {
-        await prism.logRun(buildStagingRun(agent, i));
+      const { ok: success, status, data } = await ingestRun(buildStagingRun(agent, i));
+      if (success) {
         ok++;
-      } catch (err) {
-        process.stdout.write("E");
+      } else {
+        process.stdout.write(`E(${status}:${data?.error || "?"})`);
       }
     }
     console.log(`${ok}/${agent.stagingRuns} runs ingested   (${agent.description})`);
