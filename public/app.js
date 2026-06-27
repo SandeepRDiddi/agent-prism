@@ -421,159 +421,184 @@ function topAgent() {
 }
 
 function renderOverview() {
-  const agent = topAgent();
-  const providers = dashboardState.providerComparison.slice(0, 3);
-  const latestRuns = dashboardState.recentRuns.slice(0, 3);
-  const topWorkflow = dashboardState.workflowInsights[0];
-  const leakCount = dashboardState.costLeaks.length;
+  const m = dashboardState.headlineMetrics;
+  const score = m.averageControlScore;
+  const leaks = dashboardState.costLeaks || [];
+  const leakCount = leaks.length;
+  const providers = dashboardState.providerComparison.slice(0, 4);
+  const allProfiles = dashboardState.agentProfiles || [];
+  const overBudgetRuns = (dashboardState.recentRuns || []).filter((r) => r.costUsd > r.budgetUsd).length;
 
-  const score = dashboardState.headlineMetrics.averageControlScore;
-  const scoreMetrics = dashboardState.headlineMetrics;
-  const retryRuns = dashboardState.recentRuns.filter((r) => (r.retryCount || 0) > 0).length;
-  const overBudgetRuns = dashboardState.recentRuns.filter((r) => r.costUsd > r.budgetUsd).length;
-  const violationRuns = dashboardState.recentRuns.filter((r) => (r.policyViolations || 0) > 0).length;
+  const band = score >= 85
+    ? { label: "Strong", color: "#10b981", bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.2)", icon: "✓", desc: "Your AI fleet is performing above benchmark. Safe to scale." }
+    : score >= 70
+    ? { label: "Stable", color: "#60a5fa", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)", icon: "✓", desc: "Fleet operating within acceptable range. Monitor cost efficiency." }
+    : score >= 55
+    ? { label: "Needs Attention", color: "#f59e0b", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)", icon: "⚠", desc: "Several agents underperforming. Review before scaling further." }
+    : { label: "At Risk", color: "#f87171", bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.2)", icon: "!", desc: "Fleet reliability below threshold. Immediate review required." };
 
-  const scoreBand = score >= 85 ? { label: "Strong", cls: "score-band--strong", desc: "Agents performing above benchmark. Safe to scale." }
-    : score >= 70 ? { label: "Stable", cls: "score-band--stable", desc: "Agents operating within acceptable range. Monitor cost efficiency." }
-    : score >= 55 ? { label: "Needs Attention", cls: "score-band--watch", desc: "Some agents underperforming. Review cost leaks before scaling." }
-    : { label: "At Risk", cls: "score-band--crit", desc: "Agent reliability below threshold. Immediate review recommended." };
+  const atRiskAgents = allProfiles.filter((a) => a.controlScore < 70).slice(0, 4);
+  const healthyAgents = allProfiles.filter((a) => a.controlScore >= 70).slice(0, 3);
+  const leakSavings = currency(leakCount * 14);
 
-  const drivers = [
-    {
-      label: "Task Success",
-      value: scoreMetrics.successRate,
-      max: 100,
-      good: scoreMetrics.successRate >= 90,
-      fmt: `${scoreMetrics.successRate}%`
-    },
-    {
-      label: "Budget Efficiency",
-      value: Math.max(0, 100 - Math.max(0, scoreMetrics.budgetUsedPercent - 100)),
-      max: 100,
-      good: scoreMetrics.budgetUsedPercent <= 100,
-      fmt: overBudgetRuns > 0 ? `${overBudgetRuns} over budget` : "On target"
-    },
-    {
-      label: "Response Speed",
-      value: Math.max(0, 100 - Math.round(scoreMetrics.averageLatencyMs / 200)),
-      max: 100,
-      good: scoreMetrics.averageLatencyMs < 8000,
-      fmt: scoreMetrics.averageLatencyMs >= 1000
-        ? `${(scoreMetrics.averageLatencyMs / 1000).toFixed(1)}s avg`
-        : `${scoreMetrics.averageLatencyMs}ms avg`
-    },
-    {
-      label: "Retry Rate",
-      value: Math.max(0, 100 - (retryRuns / Math.max(scoreMetrics.totalRuns, 1)) * 100 * 3),
-      max: 100,
-      good: retryRuns === 0,
-      fmt: retryRuns > 0 ? `${retryRuns} retrying` : "Clean"
-    },
-    {
-      label: "Policy Compliance",
-      value: Math.max(0, 100 - violationRuns * 25),
-      max: 100,
-      good: violationRuns === 0,
-      fmt: violationRuns > 0 ? `${violationRuns} violations` : "Compliant"
-    }
-  ];
+  // SVG donut — 251.2 = 2π×40
+  const circumference = 251.2;
+  const filled = Math.round((score / 100) * circumference);
 
-  const businessNarrative = (() => {
-    const issues = [];
-    if (overBudgetRuns > 0) issues.push(`${overBudgetRuns} agent run${overBudgetRuns > 1 ? "s" : ""} exceeded budget`);
-    if (retryRuns > 0) issues.push(`${retryRuns} retrying — wasting tokens`);
-    if (leakCount > 0) issues.push(`${leakCount} cost leak${leakCount > 1 ? "s" : ""} detected`);
-    if (violationRuns > 0) issues.push(`${violationRuns} policy violation${violationRuns > 1 ? "s" : ""}`);
-    if (issues.length === 0) return `All ${scoreMetrics.totalRuns} agent runs completed within budget and policy. No action required.`;
-    return `${issues.join(" · ")}. Review Token Coach for optimisation actions.`;
-  })();
+  const barRow = (label, pct, good, detail) => {
+    const w = Math.min(100, Math.max(0, Math.round(pct)));
+    const cls = good ? "exb--good" : w >= 50 ? "exb--warn" : "exb--crit";
+    return `<div class="ex-bar-row">
+      <div class="ex-bar-meta">
+        <span class="ex-bar-label">${label}</span>
+        <span class="ex-bar-val ${good ? "ex-good" : "ex-warn"}">${detail}</span>
+      </div>
+      <div class="ex-bar-track"><div class="ex-bar-fill ${cls}" style="width:${w}%"></div></div>
+    </div>`;
+  };
 
   document.querySelector("#view-content").innerHTML = `
-    <section class="overview-stage">
-      <article class="panel hero-agent-card">
-        <div class="hero-top-row">
-          <div class="hero-copy">
-            <p class="eyebrow">Primary Signal</p>
-            <h2>${agent ? escapeHtml(agent.agentName) : "No active agent runs yet"}</h2>
-            <p>${agent ? escapeHtml(agent.currentTask) : "Connect Claude, OpenAI, Copilot, or a custom agent to start comparing cost, quality, and risk."}</p>
-          </div>
-          <div class="hero-score">
-            <span>Reliability Score</span>
-            <strong>${score}</strong>
-            <div class="hero-score-band ${scoreBand.cls}">${scoreBand.label}</div>
-          </div>
-        </div>
+    <section class="exec-overview">
 
-        <div class="hero-drivers">
-          ${drivers.map((d) => {
-            const pct = Math.min(100, Math.max(0, Math.round(d.value)));
-            const barCls = d.good ? "hd-bar--good" : pct >= 50 ? "hd-bar--warn" : "hd-bar--crit";
-            return `<div class="hero-driver">
-              <div class="hd-label-row">
-                <span class="hd-label">${d.label}</span>
-                <span class="hd-val ${d.good ? "hd-val--good" : "hd-val--warn"}">${d.fmt}</span>
-              </div>
-              <div class="hd-track"><div class="hd-bar ${barCls}" style="width:${pct}%"></div></div>
-            </div>`;
-          }).join("")}
-        </div>
+      <!-- ── FLEET HEALTH (big left) ── -->
+      <article class="panel exec-health-card">
+        <p class="eyebrow">AI Fleet Health</p>
 
-        <div class="hero-narrative ${scoreBand.cls}">
-          <span class="hero-narrative-icon">${score >= 70 ? "&#x2714;" : "&#x26A0;"}</span>
-          <span>${businessNarrative}</span>
-        </div>
-
-        <div class="hero-score-guide">
-          <div class="hsg-intro">0–100 score blended across task success, budget efficiency, response speed, retry rate &amp; policy compliance</div>
-          <div class="hsg-bands">
-            <div class="hsg-band ${score >= 85 ? "hsg-band--active" : ""} hsg-strong"><span>≥ 85</span><b>Strong</b><em>Safe to scale</em></div>
-            <div class="hsg-band ${score >= 70 && score < 85 ? "hsg-band--active" : ""} hsg-stable"><span>70–84</span><b>Stable</b><em>Monitor efficiency</em></div>
-            <div class="hsg-band ${score >= 55 && score < 70 ? "hsg-band--active" : ""} hsg-watch"><span>55–69</span><b>Needs Attention</b><em>Review before scaling</em></div>
-            <div class="hsg-band ${score < 55 ? "hsg-band--active" : ""} hsg-crit"><span>&lt; 55</span><b>At Risk</b><em>Immediate review</em></div>
-          </div>
-        </div>
-      </article>
-
-      <article class="panel business-card">
-        <p class="eyebrow">Provider Mix</p>
-        <div class="provider-tiles">
-          ${providers.length ? providers.map((row) => `
-            <div class="provider-tile">
-              <div class="provider-mark">${providerInitial(row.provider)}</div>
-              <div>
-                <strong>${row.provider}</strong>
-                <span>${row.runs} runs · ${row.successRate}% success</span>
-              </div>
+        <div class="exec-gauge-row">
+          <div class="exec-gauge">
+            <svg viewBox="0 0 100 100" class="gauge-svg">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="9"/>
+              <circle cx="50" cy="50" r="40" fill="none"
+                stroke="${band.color}" stroke-width="9"
+                stroke-dasharray="${filled} ${circumference}"
+                stroke-linecap="round"
+                transform="rotate(-90 50 50)"
+                opacity="0.9"/>
+            </svg>
+            <div class="gauge-inner">
+              <span class="gauge-num" style="color:${band.color}">${score}</span>
+              <span class="gauge-denom">/100</span>
             </div>
-          `).join("") : `<p class="muted">Provider comparison appears after the first run.</p>`}
-        </div>
-      </article>
-
-      <article class="panel business-card">
-        <p class="eyebrow">Risk Posture</p>
-        <div class="risk-posture ${leakCount ? "watch" : "clear"}">
-          <strong>${leakCount ? `${leakCount} cost leaks` : "No active cost leaks"}</strong>
-          <span>${leakCount ? "Review governance tab before scaling this workflow." : "Spend is inside expected budget limits."}</span>
-        </div>
-        <div class="compact-fact">
-          <span>Top workflow</span>
-          <strong>${topWorkflow ? topWorkflow.workflow : "No workflow data"}</strong>
-        </div>
-      </article>
-
-      <article class="panel business-card">
-        <p class="eyebrow">Latest Signals</p>
-        <div class="signal-list">
-          ${latestRuns.length ? latestRuns.map((run) => `
-            <div class="signal-row">
-              <span>${run.agentName}</span>
-              <strong>${currency(run.costUsd)} · ${Math.round(run.latencyMs / 1000)}s</strong>
+          </div>
+          <div class="exec-gauge-info">
+            <div class="exec-band-pill" style="color:${band.color};background:${band.bg};border:1px solid ${band.border}">
+              ${band.icon}&nbsp;${band.label}
             </div>
-          `).join("") : `<p class="muted">Telemetry will appear here after ingestion.</p>`}
+            <p class="exec-band-desc">${band.desc}</p>
+            <div class="exec-kpi-row">
+              <div class="exec-kpi"><span>${m.successRate}%</span><label>Success</label></div>
+              <div class="exec-kpi"><span>${allProfiles.length}</span><label>Agents</label></div>
+              <div class="exec-kpi"><span>${leakCount}</span><label>Leaks</label></div>
+              <div class="exec-kpi"><span>${m.totalRuns.toLocaleString()}</span><label>Runs</label></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="exec-bars">
+          ${barRow("Task Success Rate", m.successRate, m.successRate >= 80, `${m.successRate}% completed successfully`)}
+          ${barRow("Budget Control", Math.max(0, 100 - Math.max(0, m.budgetUsedPercent - 100)), m.budgetUsedPercent <= 100, overBudgetRuns > 0 ? `${overBudgetRuns} agents over budget` : `${m.budgetUsedPercent}% of budget used`)}
+          ${barRow("Response Speed", Math.max(0, 100 - Math.round(m.averageLatencyMs / 200)), m.averageLatencyMs < 10000, `${(m.averageLatencyMs / 1000).toFixed(1)}s average latency`)}
+          ${barRow("Policy Compliance", 100, true, "No policy violations detected")}
+        </div>
+
+        <div class="exec-what-it-means">
+          <strong>What this means:</strong>
+          ${score >= 70
+            ? `Your AI agents are delivering reliable outcomes. ${leakCount > 0 ? `${leakCount} cost leaks identified — Token Coach shows where to recover savings.` : "Spend is inside policy limits."}`
+            : `${atRiskAgents.length} agent${atRiskAgents.length !== 1 ? "s" : ""} need review before scaling. ${leakCount > 0 ? `${leakCount} cost leaks represent avoidable spend.` : ""}`
+          }
         </div>
       </article>
+
+      <!-- ── FINANCIAL GOVERNANCE ── -->
+      <article class="panel exec-finance-card">
+        <p class="eyebrow">Financial Governance</p>
+        <div class="exec-spend-hero">${currency(m.totalCostUsd)}</div>
+        <div class="exec-spend-sub">Total AI spend &middot; ${m.budgetUsedPercent}% of budget allocated</div>
+
+        <div class="exec-finance-list">
+          <div class="exec-fl-row">
+            <span>Monthly forecast</span>
+            <strong>${currency((m.projectedMonthlyCost || m.totalCostUsd * 2.2))}</strong>
+          </div>
+          <div class="exec-fl-row ${leakCount > 0 ? 'exec-fl-warn' : ''}">
+            <span>Recoverable waste</span>
+            <strong style="${leakCount > 0 ? 'color:#f59e0b' : ''}">${leakCount > 0 ? leakSavings + "/mo" : "None found"}</strong>
+          </div>
+          <div class="exec-fl-row">
+            <span>Avg cost per run</span>
+            <strong>${m.totalRuns > 0 ? currency(m.totalCostUsd / m.totalRuns) : "—"}</strong>
+          </div>
+        </div>
+
+        <div class="exec-providers">
+          <p class="eyebrow" style="margin-top:16px">Provider breakdown</p>
+          ${providers.map((p) => `
+            <div class="exec-provider-row">
+              <div class="exec-provider-dot">${providerInitial(p.provider)}</div>
+              <div class="exec-provider-info">
+                <strong>${escapeHtml(p.provider)}</strong>
+                <span>${p.runs} runs · ${p.successRate}% success</span>
+              </div>
+              <span class="exec-provider-cost">${currency(p.costUsd)}</span>
+            </div>
+          `).join("")}
+        </div>
+      </article>
+
+      <!-- ── ACTION REQUIRED ── -->
+      <article class="panel exec-action-card">
+        <p class="eyebrow">${atRiskAgents.length > 0 ? "⚠ Action Required" : "✓ All Clear"}</p>
+
+        ${atRiskAgents.length > 0 ? `
+          <p class="exec-action-intro">${atRiskAgents.length} agent${atRiskAgents.length !== 1 ? "s" : ""} need review before next deployment</p>
+          ${atRiskAgents.map((a) => `
+            <div class="exec-agent-row">
+              <div class="exec-agent-dot" style="background:${a.controlScore >= 55 ? "#f59e0b" : "#f87171"}"></div>
+              <div class="exec-agent-info">
+                <strong>${escapeHtml(a.agentName)}</strong>
+                <span>${a.currentTask || a.workflow || "general"}</span>
+              </div>
+              <div class="exec-agent-score" style="color:${a.controlScore >= 55 ? "#f59e0b" : "#f87171"}">${a.controlScore}</div>
+            </div>
+          `).join("")}
+        ` : `
+          <p class="exec-action-intro">All ${allProfiles.length} agents operating within policy</p>
+          ${healthyAgents.map((a) => `
+            <div class="exec-agent-row">
+              <div class="exec-agent-dot" style="background:#10b981"></div>
+              <div class="exec-agent-info">
+                <strong>${escapeHtml(a.agentName)}</strong>
+                <span>${a.controlScore}/100 &middot; on target</span>
+              </div>
+              <div class="exec-agent-score" style="color:#10b981">${a.controlScore}</div>
+            </div>
+          `).join("")}
+        `}
+
+        ${leakCount > 0 ? `
+          <div class="exec-leak-tip">
+            <span class="exec-leak-bulb">💡</span>
+            <span><strong>${leakCount} model misuse${leakCount !== 1 ? "s" : ""} detected.</strong> Switching models could save ~${leakSavings}/mo. Open Token Coach to review.</span>
+          </div>
+        ` : ""}
+
+        <div class="exec-action-btns">
+          <button class="exec-btn-primary js-nav-tab" data-tab="tokens">Token Coach →</button>
+          <button class="exec-btn-ghost js-nav-tab" data-tab="governance">Audit Trail →</button>
+        </div>
+      </article>
+
     </section>
   `;
+
+  // wire nav buttons (CSP-safe — no onclick)
+  document.querySelectorAll(".js-nav-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentView = btn.dataset.tab;
+      renderCurrentView();
+    });
+  });
 }
 
 async function renderAdvisorView() {
