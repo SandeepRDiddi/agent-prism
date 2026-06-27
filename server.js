@@ -64,8 +64,17 @@ import {
   upsertSsoUser,
   ensureSchemaPatches,
   provisionTenant,
-  listTenants
+  listTenants,
+  listAgentDefinitions,
+  getAgentDefinition,
+  getAgentRunsForCert,
+  saveCertification,
+  getCertification,
+  listCertifications,
+  revokeCertification,
+  createPromotion
 } from "./src/saas-store.js";
+import { evaluateAgent } from "./src/certification/certifier.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
 import { computeCopilotCost } from "./src/cost/copilot.js";
@@ -248,6 +257,65 @@ function normalizePayload(body) {
   }
 
   return normalizeGenericRun(body.payload || body);
+}
+
+// ── Production certification gate ─────────────────────────────────────────────
+// Returns true (pass) or sends 403 and returns false (blocked).
+async function enforceProductionCertGate(tenantId, agentName, environment, res) {
+  if (environment !== "production") return true;
+
+  let cert = null;
+  try { cert = await getCertification(tenantId, agentName, "production"); } catch (_) {}
+
+  if (!cert || cert.certStatus !== "certified") {
+    sendJson(res, 403, {
+      error: "agent_not_certified",
+      message: `Agent "${agentName}" is not certified for production. ` +
+               `POST /api/agents/${encodeURIComponent(agentName)}/certify then /promote to certify.`,
+      certStatus: cert?.certStatus || "uncertified",
+      failures: cert?.failureReasons || []
+    });
+    return false;
+  }
+
+  if (cert.expiresAt && new Date(cert.expiresAt) < new Date()) {
+    sendJson(res, 403, {
+      error: "cert_expired",
+      message: `Production cert for "${agentName}" expired at ${cert.expiresAt}. Re-certify.`,
+      certStatus: "expired",
+      expiredAt: cert.expiresAt
+    });
+    return false;
+  }
+
+  return true;
+}
+
+// Auto-revoke if a prod run introduces new high-danger tools not seen at cert time.
+async function checkAutoRevoke(tenantId, run, ip) {
+  if (run.environment !== "production") return;
+  if (!run.toolManifest || run.toolManifest.length === 0) return;
+
+  let cert = null;
+  try { cert = await getCertification(tenantId, run.agentName, "production"); } catch (_) {}
+  if (!cert || cert.certStatus !== "certified") return;
+
+  const certifiedNames = new Set((cert.dangerFlags || []).map((t) => t.name || t.tool).filter(Boolean));
+  const newHigh = run.toolManifest.filter((t) => t.dangerLevel >= 3 && !certifiedNames.has(t.name));
+
+  if (newHigh.length === 0) return;
+
+  const reason = `New high-risk tool(s) in production run: ${newHigh.map((t) => `${t.name} (${t.dangerCategory}, level ${t.dangerLevel})`).join(", ")}`;
+  try {
+    await revokeCertification(tenantId, run.agentName, "production", reason, "system");
+    await logAuditEvent(tenantId, {
+      actor: "System (Auto-Revoke)",
+      action: "Agent Cert Auto-Revoked",
+      resource: run.agentName,
+      details: { reason, newTools: newHigh.map((t) => t.name), runId: run.id },
+      ip: ip || "system"
+    });
+  } catch (_) {}
 }
 
 // ---------------------------------------------------------
@@ -2335,6 +2403,10 @@ ${prompt}`;
         return sendJson(res, 402, { error: ingestPlanCheck.code, message: ingestPlanCheck.reason, usage: ingestPlanCheck.usage, upgrade: ingestPlanCheck.upgrade });
       }
 
+      // Production certification gate
+      const certPass = await enforceProductionCertGate(auth.tenant.id, normalizedRun.agentName, normalizedRun.environment, res);
+      if (!certPass) return;
+
       let updated;
       try {
         updated = await upsertTenantRuns(auth.tenant.id, [normalizedRun]);
@@ -2343,7 +2415,7 @@ ${prompt}`;
         logError(req, dlqErr, tenantId);
         return sendJson(res, 202, { status: "queued", message: "Run accepted but could not persist immediately. Will retry." });
       }
-      
+
       const ip = req.socket?.remoteAddress || "unknown";
       await logAuditEvent(auth.tenant.id, {
         actor: `API Key (${auth.apiKey.prefix})`,
@@ -2352,6 +2424,9 @@ ${prompt}`;
         details: { agentName: normalizedRun.agentName, costUsd: normalizedRun.costUsd },
         ip
       });
+
+      // Auto-revoke if prod run introduces new high-danger tools
+      await checkAutoRevoke(auth.tenant.id, normalizedRun, ip);
 
       if (normalizedRun.costUsd > normalizedRun.budgetUsd) {
         await dispatchBudgetAlert(auth.tenant.id, normalizedRun);
@@ -2627,7 +2702,9 @@ ${prompt}`;
       if (!claudePlanCheck.allowed) {
         return sendJson(res, 402, { error: claudePlanCheck.code, message: claudePlanCheck.reason, usage: claudePlanCheck.usage, upgrade: claudePlanCheck.upgrade });
       }
+      if (!await enforceProductionCertGate(auth.tenant.id, run.agentName, run.environment, res)) return;
       await upsertTenantRuns(auth.tenant.id, [run]);
+      await checkAutoRevoke(auth.tenant.id, run, req.socket?.remoteAddress || "unknown");
       return sendJson(res, 201, { status: "ingested", source: "claude" });
     }
 
@@ -2652,7 +2729,9 @@ ${prompt}`;
       if (!copilotPlanCheck.allowed) {
         return sendJson(res, 402, { error: copilotPlanCheck.code, message: copilotPlanCheck.reason, usage: copilotPlanCheck.usage, upgrade: copilotPlanCheck.upgrade });
       }
+      if (!await enforceProductionCertGate(auth.tenant.id, run.agentName, run.environment, res)) return;
       await upsertTenantRuns(auth.tenant.id, [run]);
+      await checkAutoRevoke(auth.tenant.id, run, req.socket?.remoteAddress || "unknown");
       return sendJson(res, 201, { status: "ingested", source: "copilot" });
     }
 
@@ -2667,7 +2746,9 @@ ${prompt}`;
       if (!genericPlanCheck.allowed) {
         return sendJson(res, 402, { error: genericPlanCheck.code, message: genericPlanCheck.reason, usage: genericPlanCheck.usage, upgrade: genericPlanCheck.upgrade });
       }
+      if (!await enforceProductionCertGate(auth.tenant.id, run.agentName, run.environment, res)) return;
       await upsertTenantRuns(auth.tenant.id, [run]);
+      await checkAutoRevoke(auth.tenant.id, run, req.socket?.remoteAddress || "unknown");
       return sendJson(res, 201, { status: "ingested", source: "generic" });
     }
 
@@ -2728,6 +2809,152 @@ ${prompt}`;
       }
       const pids = await killPort(port).catch((err) => { throw new Error(`kill failed: ${err.message}`); });
       return sendJson(res, 200, { killed: pids, port });
+    }
+
+    // ── Agent Certification ───────────────────────────────────────────────────
+
+    // List all registered agents with tier + cert status
+    if (req.method === "GET" && req.url === "/api/agents") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const agents = await listAgentDefinitions(auth.tenant.id);
+      return sendJson(res, 200, { agents });
+    }
+
+    // Tenant-wide cert summary — must come before /api/agents/:name
+    if (req.method === "GET" && req.url === "/api/agents/certifications") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const certs = await listCertifications(auth.tenant.id);
+      return sendJson(res, 200, { certifications: certs });
+    }
+
+    // Single agent detail
+    if (req.method === "GET" && req.url.startsWith("/api/agents/") && !req.url.includes("/cert") && !req.url.includes("/certify") && !req.url.includes("/promote") && !req.url.includes("/revoke")) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const agentName = decodeURIComponent(req.url.slice("/api/agents/".length));
+      const agent = await getAgentDefinition(auth.tenant.id, agentName);
+      if (!agent) return sendJson(res, 404, { error: "not_found", message: `Agent "${agentName}" not registered.` });
+      return sendJson(res, 200, { agent });
+    }
+
+    // Get current cert for an agent
+    if (req.method === "GET" && req.url.match(/^\/api\/agents\/[^/]+\/cert$/)) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const urlObj = new URL(req.url, "http://localhost");
+      const agentName = decodeURIComponent(req.url.slice("/api/agents/".length, req.url.lastIndexOf("/cert")));
+      const environment = urlObj.searchParams.get("env") || "production";
+      const cert = await getCertification(auth.tenant.id, agentName, environment);
+      if (!cert) return sendJson(res, 200, { cert: { agentName, environment, certStatus: "uncertified" } });
+      return sendJson(res, 200, { cert });
+    }
+
+    // Trigger cert evaluation
+    if (req.method === "POST" && req.url.match(/^\/api\/agents\/[^/]+\/certify$/)) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const agentName = decodeURIComponent(req.url.slice("/api/agents/".length, req.url.lastIndexOf("/certify")));
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const environment = body.environment || "staging";
+
+      const agentRuns = await getAgentRunsForCert(auth.tenant.id, agentName);
+      const evalResult = evaluateAgent(agentName, agentRuns, environment);
+
+      let cert;
+      try {
+        cert = await saveCertification(
+          auth.tenant.id, agentName, environment, evalResult,
+          auth.user?.email || auth.apiKey?.prefix || "system"
+        );
+      } catch (err) {
+        return sendJson(res, 404, { error: "not_found", message: err.message });
+      }
+
+      const actor = auth.user?.email || auth.apiKey?.prefix || "system";
+      await logAuditEvent(auth.tenant.id, {
+        actor,
+        action: evalResult.status === "certified" ? "Agent Certified" : "Agent Certification Failed",
+        resource: agentName,
+        details: { environment, status: evalResult.status, tier: evalResult.effectiveTier, failures: evalResult.failureReasons.length },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
+      return sendJson(res, 200, { cert, evaluation: evalResult });
+    }
+
+    // Promote agent from staging to production
+    if (req.method === "POST" && req.url.match(/^\/api\/agents\/[^/]+\/promote$/)) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const agentName = decodeURIComponent(req.url.slice("/api/agents/".length, req.url.lastIndexOf("/promote")));
+
+      // Run production cert evaluation
+      const agentRuns = await getAgentRunsForCert(auth.tenant.id, agentName);
+      const evalResult = evaluateAgent(agentName, agentRuns, "production");
+
+      const actor = auth.user?.email || auth.apiKey?.prefix || "system";
+
+      let cert;
+      try {
+        cert = await saveCertification(auth.tenant.id, agentName, "production", evalResult, actor);
+      } catch (err) {
+        return sendJson(res, 404, { error: "not_found", message: err.message });
+      }
+
+      const promotion = await createPromotion(auth.tenant.id, agentName, {
+        fromEnv: "staging",
+        toEnv: "production",
+        requestedBy: actor,
+        certSnapshot: cert,
+        blockingChecks: evalResult.failureReasons
+      }).catch(() => null);
+
+      await logAuditEvent(auth.tenant.id, {
+        actor,
+        action: evalResult.status === "certified" ? "Agent Promoted to Production" : "Agent Promotion Blocked",
+        resource: agentName,
+        details: { status: evalResult.status, tier: evalResult.effectiveTier, failures: evalResult.failureReasons },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
+      if (evalResult.status !== "certified") {
+        return sendJson(res, 422, {
+          error: "certification_failed",
+          message: `Agent "${agentName}" cannot be promoted — ${evalResult.failureReasons.length} blocking check(s) failed.`,
+          failures: evalResult.failureReasons,
+          evaluation: evalResult
+        });
+      }
+
+      return sendJson(res, 200, { status: "promoted", cert, promotion, evaluation: evalResult });
+    }
+
+    // Revoke cert (tenant auth — caller must own the agent)
+    if (req.method === "POST" && req.url.match(/^\/api\/agents\/[^/]+\/revoke$/)) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const agentName = decodeURIComponent(req.url.slice("/api/agents/".length, req.url.lastIndexOf("/revoke")));
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const environment = body.environment || "production";
+      const reason = body.reason || "Manually revoked";
+      const actor = auth.user?.email || auth.apiKey?.prefix || "system";
+
+      const revoked = await revokeCertification(auth.tenant.id, agentName, environment, reason, actor);
+      if (!revoked) return sendJson(res, 404, { error: "not_found", message: `No cert found for "${agentName}" in ${environment}.` });
+
+      await logAuditEvent(auth.tenant.id, {
+        actor,
+        action: "Agent Cert Revoked",
+        resource: agentName,
+        details: { environment, reason },
+        ip: req.socket?.remoteAddress || "unknown"
+      });
+
+      return sendJson(res, 200, { status: "revoked", agentName, environment, reason });
     }
 
     // ── Dashboard page (Basic Auth gate) ─────────────────────────────────────

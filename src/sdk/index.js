@@ -79,7 +79,14 @@ export class AgentPrism {
 
   /**
    * Pushes an agent run telemetry payload to the control plane.
-   * @param {Object} payload 
+   *
+   * Certification fields (optional):
+   *   toolManifest    Array<{name, type?, dangerCategory?, dangerLevel?, requiresHitl?}>
+   *                   Tools the agent carries. Platform classifies danger automatically.
+   *   humanApprovals  Array<{step, approvedBy, at, toolCalled?, actionSummary?}>
+   *                   HITL checkpoints hit during this run.
+   *
+   * @param {Object} payload
    * @returns {Promise<Object>} The server response
    */
   async logRun(payload) {

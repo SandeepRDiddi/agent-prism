@@ -5389,3 +5389,158 @@ html[data-theme="light"] .matrix-grid-bg {
   letter-spacing: 0.05em;
   color: rgba(200,215,255,0.38);
 }
+
+/* ── Agent Certification Panel ──────────────────────────────────────────────── */
+
+.cert-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.cert-status-chip--certified {
+  background: rgba(52, 211, 153, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+.cert-status-chip--uncertified {
+  background: rgba(255, 180, 50, 0.10);
+  color: #ffd580;
+  border: 1px solid rgba(255, 180, 50, 0.28);
+}
+.cert-status-chip--revoked {
+  background: rgba(255, 80, 80, 0.10);
+  color: #ff9a9a;
+  border: 1px solid rgba(255, 80, 80, 0.28);
+}
+.cert-status-chip--expired {
+  background: rgba(200, 200, 200, 0.08);
+  color: #aaa;
+  border: 1px solid rgba(200,200,200,0.18);
+}
+
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.tier-badge--0 { background: rgba(79,128,255,0.10); color: #7ba7ff; }
+.tier-badge--1 { background: rgba(52,211,153,0.10); color: #6ee7b7; }
+.tier-badge--2 { background: rgba(255,180,50,0.12); color: #ffd580; }
+.tier-badge--3 { background: rgba(255,120,50,0.12); color: #ffae80; }
+.tier-badge--4 { background: rgba(255,60,60,0.12);  color: #ff8080; }
+
+.cert-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.cert-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 0 12px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  font-weight: 600;
+}
+.cert-table td {
+  padding: 10px 12px;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.cert-table tr:last-child td { border-bottom: none; }
+.cert-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+.danger-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 80px;
+}
+.danger-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.danger-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.danger-bar-fill--low    { background: #6ee7b7; }
+.danger-bar-fill--medium { background: #ffd580; }
+.danger-bar-fill--high   { background: #ffae80; }
+.danger-bar-fill--crit   { background: #ff8080; }
+
+.hitl-pct {
+  font-size: 0.8rem;
+  font-weight: 700;
+  min-width: 38px;
+  text-align: right;
+}
+.hitl-pct--good   { color: #6ee7b7; }
+.hitl-pct--ok     { color: #ffd580; }
+.hitl-pct--poor   { color: #ff9a9a; }
+
+.cert-action-btn {
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.cert-action-btn--certify {
+  border-color: rgba(79,128,255,0.4);
+  color: #7ba7ff;
+}
+.cert-action-btn--certify:hover { background: rgba(79,128,255,0.12); }
+.cert-action-btn--promote {
+  border-color: rgba(52,211,153,0.4);
+  color: #6ee7b7;
+}
+.cert-action-btn--promote:hover { background: rgba(52,211,153,0.10); }
+.cert-action-btn--revoke {
+  border-color: rgba(255,80,80,0.3);
+  color: #ff9a9a;
+}
+.cert-action-btn--revoke:hover { background: rgba(255,80,80,0.08); }
+.cert-action-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+
+.cert-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.cert-failure-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: #ff9a9a;
+}
+.cert-failure-list li::before { content: "✗ "; font-weight: 700; }
+
+.cert-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.cert-loading { color: var(--muted); font-size: 0.88rem; padding: 1rem 0; }

@@ -1,3 +1,5 @@
+import { classifyManifest, inferAgentType } from "./certification/danger-classifier.js";
+
 function isoNow() {
   return new Date().toISOString();
 }
@@ -50,7 +52,23 @@ function baseRun(payload) {
     team: payload.team || "platform",
     tags: payload.tags || [],
     breadcrumbs: payload.breadcrumbs || [],
-    notes: payload.notes || ""
+    notes: payload.notes || "",
+    // certification fields — computed on ingest
+    ...enrichCertification(payload)
+  };
+}
+
+function enrichCertification(payload) {
+  const rawManifest = payload.toolManifest || payload.tool_manifest || [];
+  const humanApprovals = payload.humanApprovals || payload.human_approvals || [];
+  const { classifiedTools, dangerScore, agentTier } = classifyManifest(rawManifest);
+
+  return {
+    toolManifest: classifiedTools,
+    humanApprovals: Array.isArray(humanApprovals) ? humanApprovals : [],
+    dangerScore,
+    agentTier,
+    certStatus: payload.certStatus || payload.cert_status || "uncertified"
   };
 }
 

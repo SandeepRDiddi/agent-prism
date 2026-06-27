@@ -8,6 +8,7 @@ let currentUser = null;
 let adminActionMessage = "";
 let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
+let certificationData = null; // lazy-loaded when Governance tab opens
 
 // ── Token Coach: collapse/expand + savings detection ──────────────────────────
 const expandedCoachCards = new Set(); // persists across re-renders
@@ -1069,9 +1070,176 @@ function renderActivityView() {
   });
 }
 
+// ── Certification helpers ─────────────────────────────────────────────────────
+
+async function loadCertifications() {
+  try {
+    const data = await request("/api/agents");
+    certificationData = data.agents || [];
+  } catch (_) {
+    certificationData = [];
+  }
+}
+
+function certStatusChip(status) {
+  const labels = { certified: "✓ Certified", uncertified: "⚠ Uncertified", revoked: "✗ Revoked" };
+  const label = labels[status] || "Unknown";
+  return `<span class="cert-status-chip cert-status-chip--${status || "uncertified"}">${label}</span>`;
+}
+
+function tierBadge(tier) {
+  const names = ["T0", "T1", "T2", "T3", "T4"];
+  return `<span class="tier-badge tier-badge--${tier}" title="Risk Tier ${tier}">${names[tier] ?? "T?"}</span>`;
+}
+
+function dangerBar(score) {
+  const pct = Math.min(100, Math.round(score));
+  const cls = pct <= 20 ? "low" : pct <= 50 ? "medium" : pct <= 75 ? "high" : "crit";
+  return `
+    <div class="danger-bar-wrap">
+      <div class="danger-bar"><div class="danger-bar-fill danger-bar-fill--${cls}" style="width:${pct}%"></div></div>
+      <span style="font-size:0.78rem;color:var(--muted)">${pct}</span>
+    </div>`;
+}
+
+function hitlPct(pct) {
+  const cls = pct >= 80 ? "good" : pct >= 50 ? "ok" : "poor";
+  return `<span class="hitl-pct hitl-pct--${cls}">${pct}%</span>`;
+}
+
+async function certifyAgent(agentName, env = "staging") {
+  try {
+    await request(`/api/agents/${encodeURIComponent(agentName)}/certify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ environment: env })
+    });
+    await loadCertifications();
+    renderGovernanceView();
+  } catch (err) {
+    alert(`Certify failed: ${err.message}`);
+  }
+}
+
+async function promoteAgent(agentName) {
+  try {
+    await request(`/api/agents/${encodeURIComponent(agentName)}/promote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    });
+    await loadCertifications();
+    renderGovernanceView();
+  } catch (err) {
+    alert(`Promote failed: ${err.message}`);
+  }
+}
+
+async function revokeAgentCert(agentName, env = "production") {
+  if (!confirm(`Revoke production cert for "${agentName}"?`)) return;
+  try {
+    await request(`/api/agents/${encodeURIComponent(agentName)}/revoke`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ environment: env, reason: "Manually revoked via dashboard" })
+    });
+    await loadCertifications();
+    renderGovernanceView();
+  } catch (err) {
+    alert(`Revoke failed: ${err.message}`);
+  }
+}
+
+function renderCertPanel() {
+  const el = document.querySelector("#cert-panel-body");
+  if (!el) return;
+
+  if (!certificationData) {
+    el.innerHTML = `<p class="cert-loading">Loading certification data…</p>`;
+    loadCertifications().then(() => renderCertPanel());
+    return;
+  }
+
+  if (certificationData.length === 0) {
+    el.innerHTML = `
+      <div class="cert-empty">
+        <p>No agents registered yet.</p>
+        <p style="margin-top:6px;font-size:0.82rem">Agents appear here once they submit a run with a <code>toolManifest</code> array.</p>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <table class="cert-table">
+      <thead>
+        <tr>
+          <th>Agent</th>
+          <th>Type</th>
+          <th>Tier</th>
+          <th>Staging</th>
+          <th>Production</th>
+          <th>Danger Score</th>
+          <th>HITL</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${certificationData.map((agent) => {
+          const stagingStatus = agent.stagingCert || "uncertified";
+          const prodStatus    = agent.prodCert    || "uncertified";
+          const tools         = agent.tools || [];
+          const maxDanger     = tools.length > 0 ? Math.max(0, ...tools.map((t) => (t.danger_level ?? 0) * 15)) : 0;
+          const hitlCoverage  = tools.filter((t) => t.requires_hitl).length > 0
+            ? Math.round((tools.filter((t) => t.requires_hitl && t.run_count > 0).length / tools.filter((t) => t.requires_hitl).length) * 100)
+            : 100;
+          const canPromote = stagingStatus === "certified" && prodStatus !== "certified";
+          const canRevoke  = prodStatus === "certified" || prodStatus === "revoked";
+          const name = agent.agentName;
+
+          return `
+            <tr>
+              <td><strong>${name}</strong></td>
+              <td style="color:var(--muted);font-size:0.8rem">${agent.agentType || "custom"}</td>
+              <td>${tierBadge(agent.effectiveTier ?? 0)}</td>
+              <td>${certStatusChip(stagingStatus)}</td>
+              <td>${certStatusChip(prodStatus)}</td>
+              <td>${dangerBar(maxDanger)}</td>
+              <td>${hitlPct(hitlCoverage)}</td>
+              <td>
+                <div class="cert-actions">
+                  <button class="cert-action-btn cert-action-btn--certify"
+                          onclick="certifyAgent(${JSON.stringify(name)}, 'staging')">
+                    Certify
+                  </button>
+                  <button class="cert-action-btn cert-action-btn--promote"
+                          onclick="promoteAgent(${JSON.stringify(name)})"
+                          ${canPromote ? "" : "disabled"}>
+                    Promote
+                  </button>
+                  <button class="cert-action-btn cert-action-btn--revoke"
+                          onclick="revokeAgentCert(${JSON.stringify(name)})"
+                          ${canRevoke ? "" : "disabled"}>
+                    Revoke
+                  </button>
+                </div>
+              </td>
+            </tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
+}
+
 function renderGovernanceView() {
   document.querySelector("#view-content").innerHTML = `
     <section class="tab-stage governance-stage">
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Security Gate</p>
+          <h2>Agent Certification</h2>
+          <p class="panel-subtitle">Certify agents before promoting to production. Uncertified agents are blocked at ingest.</p>
+        </div>
+        <div id="cert-panel-body"></div>
+      </article>
       <article class="panel wide-panel provider-compare-panel">
         <div class="panel-title">
           <p class="eyebrow">Provider Benchmark</p>
@@ -1101,6 +1269,7 @@ function renderGovernanceView() {
       </article>
     </section>
   `;
+  renderCertPanel();
   renderProviderScorecard(dashboardState.providerComparison);
   renderLeaks(dashboardState.costLeaks);
   renderAuditLogs(dashboardAuditLogs);

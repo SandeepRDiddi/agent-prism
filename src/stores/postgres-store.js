@@ -1,4 +1,5 @@
 import { createApiKey, createId, createSessionToken, hashPassword, verifyApiKey, verifyPassword } from "../auth.js";
+import { inferAgentType } from "../certification/danger-classifier.js";
 import { createHash, randomBytes } from "node:crypto";
 import { encryptConnectorConfig, decryptConnectorConfig } from "../crypto.js";
 import { config } from "../config.js";
@@ -124,6 +125,125 @@ export async function ensureSchemaPatches() {
     CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_model  ON agent_runs (tenant_id, model);
     CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_status ON agent_runs (tenant_id, status);
     CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_agent  ON agent_runs (tenant_id, agent_name);
+
+    -- migration 007: agent certification phase 1
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS tool_manifest   JSONB        NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS human_approvals JSONB        NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS danger_score    NUMERIC(6,2) NOT NULL DEFAULT 0;
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS agent_tier      INTEGER      NOT NULL DEFAULT 0;
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS cert_status     TEXT         NOT NULL DEFAULT 'uncertified';
+
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_tier   ON agent_runs (tenant_id, agent_tier DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_cert   ON agent_runs (tenant_id, cert_status);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_danger ON agent_runs (tenant_id, danger_score DESC);
+
+    CREATE TABLE IF NOT EXISTS agent_definitions (
+      id              TEXT        PRIMARY KEY,
+      tenant_id       TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      agent_name      TEXT        NOT NULL,
+      agent_type      TEXT        NOT NULL DEFAULT 'custom',
+      declared_tier   INTEGER     NOT NULL DEFAULT 0,
+      computed_tier   INTEGER     NOT NULL DEFAULT 0,
+      effective_tier  INTEGER     NOT NULL DEFAULT 0,
+      description     TEXT        NOT NULL DEFAULT '',
+      owner_team      TEXT        NOT NULL DEFAULT '',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(tenant_id, agent_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_definitions_tenant ON agent_definitions (tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_definitions_tier   ON agent_definitions (tenant_id, effective_tier DESC);
+
+    CREATE TABLE IF NOT EXISTS agent_tools (
+      id                  TEXT        PRIMARY KEY,
+      agent_definition_id TEXT        NOT NULL REFERENCES agent_definitions(id) ON DELETE CASCADE,
+      tenant_id           TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      tool_name           TEXT        NOT NULL,
+      tool_type           TEXT        NOT NULL DEFAULT 'function',
+      danger_category     TEXT        NOT NULL DEFAULT 'unclassified',
+      danger_level        INTEGER     NOT NULL DEFAULT 0,
+      requires_hitl       BOOLEAN     NOT NULL DEFAULT FALSE,
+      first_seen_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      run_count           INTEGER     NOT NULL DEFAULT 1,
+      UNIQUE(agent_definition_id, tool_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_tools_agent  ON agent_tools (agent_definition_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_tools_danger ON agent_tools (tenant_id, danger_level DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_tools_hitl   ON agent_tools (tenant_id, requires_hitl) WHERE requires_hitl = TRUE;
+
+    -- migration 008: agent certification phase 2
+    CREATE TABLE IF NOT EXISTS agent_certifications (
+      id                  TEXT         PRIMARY KEY,
+      tenant_id           TEXT         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      agent_definition_id TEXT         NOT NULL REFERENCES agent_definitions(id) ON DELETE CASCADE,
+      environment         TEXT         NOT NULL,
+      cert_status         TEXT         NOT NULL DEFAULT 'uncertified',
+      effective_tier      INTEGER      NOT NULL DEFAULT 0,
+      danger_score        NUMERIC(6,2) NOT NULL DEFAULT 0,
+      hitl_coverage_pct   NUMERIC(5,2) NOT NULL DEFAULT 0,
+      runs_evaluated      INTEGER      NOT NULL DEFAULT 0,
+      runs_passed         INTEGER      NOT NULL DEFAULT 0,
+      failure_reasons     JSONB        NOT NULL DEFAULT '[]'::jsonb,
+      danger_flags        JSONB        NOT NULL DEFAULT '[]'::jsonb,
+      hitl_gaps           JSONB        NOT NULL DEFAULT '[]'::jsonb,
+      evaluated_at        TIMESTAMPTZ,
+      certified_at        TIMESTAMPTZ,
+      expires_at          TIMESTAMPTZ,
+      revoked_at          TIMESTAMPTZ,
+      revoke_reason       TEXT         NOT NULL DEFAULT '',
+      evaluated_by        TEXT         NOT NULL DEFAULT 'system',
+      certified_by        TEXT         NOT NULL DEFAULT 'system',
+      created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+      UNIQUE(tenant_id, agent_definition_id, environment)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_certs_tenant_env ON agent_certifications (tenant_id, environment);
+    CREATE INDEX IF NOT EXISTS idx_agent_certs_status     ON agent_certifications (tenant_id, cert_status);
+
+    CREATE TABLE IF NOT EXISTS certification_checks (
+      id               TEXT        PRIMARY KEY,
+      certification_id TEXT        NOT NULL REFERENCES agent_certifications(id) ON DELETE CASCADE,
+      tenant_id        TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      check_name       TEXT        NOT NULL,
+      check_category   TEXT        NOT NULL,
+      passed           BOOLEAN     NOT NULL,
+      severity         TEXT        NOT NULL DEFAULT 'info',
+      detail           TEXT        NOT NULL DEFAULT '',
+      evaluated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_cert_checks_cert ON certification_checks (certification_id);
+
+    CREATE TABLE IF NOT EXISTS agent_promotions (
+      id                  TEXT        PRIMARY KEY,
+      tenant_id           TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      agent_definition_id TEXT        NOT NULL REFERENCES agent_definitions(id) ON DELETE CASCADE,
+      from_env            TEXT        NOT NULL,
+      to_env              TEXT        NOT NULL,
+      status              TEXT        NOT NULL DEFAULT 'pending',
+      cert_snapshot       JSONB       NOT NULL DEFAULT '{}'::jsonb,
+      blocking_checks     JSONB       NOT NULL DEFAULT '[]'::jsonb,
+      requested_by        TEXT        NOT NULL,
+      approved_by         TEXT        NOT NULL DEFAULT '',
+      rejected_by         TEXT        NOT NULL DEFAULT '',
+      reject_reason       TEXT        NOT NULL DEFAULT '',
+      requested_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at         TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_promotions_tenant ON agent_promotions (tenant_id, status);
+
+    CREATE TABLE IF NOT EXISTS hitl_approvals (
+      id             TEXT        PRIMARY KEY,
+      tenant_id      TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      run_id         TEXT        NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+      agent_name     TEXT        NOT NULL,
+      step_name      TEXT        NOT NULL,
+      tool_called    TEXT        NOT NULL DEFAULT '',
+      action_summary TEXT        NOT NULL DEFAULT '',
+      approved_by    TEXT        NOT NULL,
+      approved_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_hitl_approvals_run   ON hitl_approvals (run_id);
+    CREATE INDEX IF NOT EXISTS idx_hitl_approvals_agent ON hitl_approvals (tenant_id, agent_name);
   `);
   process.stderr.write("[schema] Startup patches verified\n");
 }
@@ -241,7 +361,12 @@ function mapRun(row) {
     team: row.team,
     tags: row.tags || [],
     breadcrumbs: row.breadcrumbs || [],
-    notes: row.notes || ""
+    notes: row.notes || "",
+    toolManifest: row.tool_manifest || [],
+    humanApprovals: row.human_approvals || [],
+    dangerScore: Number(row.danger_score || 0),
+    agentTier: row.agent_tier || 0,
+    certStatus: row.cert_status || "uncertified"
   };
 }
 
@@ -643,14 +768,16 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
             user_prompt_tokens, system_prompt_tokens, context_tokens, tool_result_tokens, memory_tokens,
             cost_usd, budget_usd,
             autonomy_level, retry_count, tool_calls, policy_violations, user_satisfaction,
-            environment, workflow, team, tags, breadcrumbs, notes
+            environment, workflow, team, tags, breadcrumbs, notes,
+            tool_manifest, human_approvals, danger_score, agent_tier, cert_status
           ) values (
             $1, $2, $3, $4, $5, $6, $7, $8,
             $9, $10, $11, $12, $13,
             $14, $15, $16, $17, $18,
             $19, $20,
             $21, $22, $23, $24, $25,
-            $26, $27, $28, $29::jsonb, $30::jsonb, $31
+            $26, $27, $28, $29::jsonb, $30::jsonb, $31,
+            $32::jsonb, $33::jsonb, $34, $35, $36
           )
           on conflict (id) do update set
             tenant_id = excluded.tenant_id,
@@ -682,7 +809,12 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
             team = excluded.team,
             tags = excluded.tags,
             breadcrumbs = excluded.breadcrumbs,
-            notes = excluded.notes
+            notes = excluded.notes,
+            tool_manifest = CASE WHEN jsonb_array_length(excluded.tool_manifest) > 0 THEN excluded.tool_manifest ELSE agent_runs.tool_manifest END,
+            human_approvals = excluded.human_approvals,
+            danger_score = CASE WHEN excluded.danger_score > 0 THEN excluded.danger_score ELSE agent_runs.danger_score END,
+            agent_tier = CASE WHEN excluded.agent_tier > 0 THEN excluded.agent_tier ELSE agent_runs.agent_tier END,
+            cert_status = excluded.cert_status
         `,
         [
           run.id,
@@ -715,9 +847,19 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
           run.team,
           JSON.stringify(run.tags || []),
           JSON.stringify(run.breadcrumbs || []),
-          run.notes || ""
+          run.notes || "",
+          JSON.stringify(run.toolManifest || []),
+          JSON.stringify(run.humanApprovals || []),
+          run.dangerScore || 0,
+          run.agentTier || 0,
+          run.certStatus || "uncertified"
         ]
       );
+
+      // Upsert agent_definitions + agent_tools when a tool manifest is present
+      if (run.toolManifest && run.toolManifest.length > 0) {
+        await upsertAgentDefinition(client, tenantId, run);
+      }
     }
 
     const runs = await client.query(
@@ -726,6 +868,53 @@ export async function upsertTenantRuns(tenantId, incomingRuns) {
     );
     return runs.rows.map(mapRun);
   });
+}
+
+async function upsertAgentDefinition(client, tenantId, run) {
+  const agentType = inferAgentType(run.toolManifest || []);
+  const computedTier = run.agentTier || 0;
+
+  // Upsert agent_definitions — update computed_tier and effective_tier if tier increased
+  const defResult = await client.query(
+    `INSERT INTO agent_definitions
+       (id, tenant_id, agent_name, agent_type, declared_tier, computed_tier, effective_tier, owner_team, updated_at)
+     VALUES ($1, $2, $3, $4, 0, $5, $5, $6, NOW())
+     ON CONFLICT (tenant_id, agent_name) DO UPDATE SET
+       agent_type     = CASE WHEN agent_definitions.agent_type = 'custom' THEN excluded.agent_type ELSE agent_definitions.agent_type END,
+       computed_tier  = GREATEST(agent_definitions.computed_tier, excluded.computed_tier),
+       effective_tier = GREATEST(agent_definitions.declared_tier, GREATEST(agent_definitions.computed_tier, excluded.computed_tier)),
+       owner_team     = CASE WHEN excluded.owner_team != '' THEN excluded.owner_team ELSE agent_definitions.owner_team END,
+       updated_at     = NOW()
+     RETURNING id`,
+    [createId("agdef"), tenantId, run.agentName, agentType, computedTier, run.team || ""]
+  );
+
+  const agentDefId = defResult.rows[0].id;
+
+  // Upsert each tool
+  for (const tool of run.toolManifest) {
+    await client.query(
+      `INSERT INTO agent_tools
+         (id, agent_definition_id, tenant_id, tool_name, tool_type, danger_category, danger_level, requires_hitl, last_seen_at, run_count)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), 1)
+       ON CONFLICT (agent_definition_id, tool_name) DO UPDATE SET
+         danger_category = CASE WHEN excluded.danger_level > agent_tools.danger_level THEN excluded.danger_category ELSE agent_tools.danger_category END,
+         danger_level    = GREATEST(agent_tools.danger_level, excluded.danger_level),
+         requires_hitl   = agent_tools.requires_hitl OR excluded.requires_hitl,
+         last_seen_at    = NOW(),
+         run_count       = agent_tools.run_count + 1`,
+      [
+        createId("tool"),
+        agentDefId,
+        tenantId,
+        tool.name,
+        tool.type || "function",
+        tool.dangerCategory || "unclassified",
+        tool.dangerLevel || 0,
+        tool.requiresHitl || false
+      ]
+    );
+  }
 }
 
 export async function createConnector(tenantId, connector) {
@@ -1103,6 +1292,275 @@ export async function upsertSsoUser({ email, name }) {
   );
   const newUser = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
   return { tenant: mapTenant(tenant), user: sanitizeUser(newUser.rows[0]) };
+}
+
+// ── Certification store ────────────────────────────────────────────────────────
+
+export async function listAgentDefinitions(tenantId) {
+  return withTenant(tenantId, async (client) => {
+    const defs = await client.query(
+      `SELECT ad.*,
+              json_agg(at ORDER BY at.danger_level DESC) FILTER (WHERE at.id IS NOT NULL) AS tools,
+              ac_staging.cert_status AS staging_cert,
+              ac_prod.cert_status    AS prod_cert,
+              ac_prod.expires_at     AS prod_cert_expires
+       FROM agent_definitions ad
+       LEFT JOIN agent_tools at ON at.agent_definition_id = ad.id
+       LEFT JOIN agent_certifications ac_staging
+              ON ac_staging.agent_definition_id = ad.id AND ac_staging.environment = 'staging'
+       LEFT JOIN agent_certifications ac_prod
+              ON ac_prod.agent_definition_id = ad.id    AND ac_prod.environment = 'production'
+       WHERE ad.tenant_id = $1
+       GROUP BY ad.id, ac_staging.cert_status, ac_prod.cert_status, ac_prod.expires_at
+       ORDER BY ad.effective_tier DESC, ad.agent_name`,
+      [tenantId]
+    );
+    return defs.rows.map(mapAgentDef);
+  }, "REPEATABLE READ");
+}
+
+export async function getAgentDefinition(tenantId, agentName) {
+  return withTenant(tenantId, async (client) => {
+    const def = await client.query(
+      `SELECT ad.*,
+              json_agg(at ORDER BY at.danger_level DESC) FILTER (WHERE at.id IS NOT NULL) AS tools
+       FROM agent_definitions ad
+       LEFT JOIN agent_tools at ON at.agent_definition_id = ad.id
+       WHERE ad.tenant_id = $1 AND ad.agent_name = $2
+       GROUP BY ad.id`,
+      [tenantId, agentName]
+    );
+    return def.rows[0] ? mapAgentDef(def.rows[0]) : null;
+  }, "REPEATABLE READ");
+}
+
+export async function getAgentRunsForCert(tenantId, agentName) {
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `SELECT * FROM agent_runs WHERE tenant_id = $1 AND agent_name = $2 ORDER BY start_time DESC`,
+      [tenantId, agentName]
+    );
+    return result.rows.map(mapRun);
+  }, "REPEATABLE READ");
+}
+
+export async function saveCertification(tenantId, agentName, environment, evalResult, actor = "system") {
+  const pool = await getPool();
+
+  // Resolve agent_definition_id
+  const defRow = await pool.query(
+    "SELECT id FROM agent_definitions WHERE tenant_id = $1 AND agent_name = $2",
+    [tenantId, agentName]
+  );
+  if (!defRow.rows[0]) {
+    throw new Error(`Agent "${agentName}" not registered for this tenant.`);
+  }
+  const agentDefId = defRow.rows[0].id;
+  const certId = createId("cert");
+  const now_ = now();
+  const certifiedAt = evalResult.status === "certified" ? now_ : null;
+  const expiresAt = evalResult.status === "certified"
+    ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
+  return withTenant(tenantId, async (client) => {
+    // Upsert certification record
+    const certRes = await client.query(
+      `INSERT INTO agent_certifications
+         (id, tenant_id, agent_definition_id, environment, cert_status, effective_tier,
+          danger_score, hitl_coverage_pct, runs_evaluated, runs_passed,
+          failure_reasons, danger_flags, hitl_gaps,
+          evaluated_at, certified_at, expires_at,
+          evaluated_by, certified_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb,
+               $14,$15,$16,$17,$18)
+       ON CONFLICT (tenant_id, agent_definition_id, environment) DO UPDATE SET
+         cert_status       = excluded.cert_status,
+         effective_tier    = excluded.effective_tier,
+         danger_score      = excluded.danger_score,
+         hitl_coverage_pct = excluded.hitl_coverage_pct,
+         runs_evaluated    = excluded.runs_evaluated,
+         runs_passed       = excluded.runs_passed,
+         failure_reasons   = excluded.failure_reasons,
+         danger_flags      = excluded.danger_flags,
+         hitl_gaps         = excluded.hitl_gaps,
+         evaluated_at      = excluded.evaluated_at,
+         certified_at      = CASE WHEN excluded.cert_status = 'certified' THEN excluded.certified_at ELSE agent_certifications.certified_at END,
+         expires_at        = excluded.expires_at,
+         revoked_at        = NULL,
+         revoke_reason     = '',
+         evaluated_by      = excluded.evaluated_by,
+         certified_by      = CASE WHEN excluded.cert_status = 'certified' THEN excluded.certified_by ELSE agent_certifications.certified_by END
+       RETURNING id`,
+      [
+        certId, tenantId, agentDefId, environment,
+        evalResult.status, evalResult.effectiveTier,
+        evalResult.summary.dangerScore, evalResult.summary.hitlCoveragePct,
+        evalResult.summary.runsEvaluated, evalResult.summary.runsPassed,
+        JSON.stringify(evalResult.failureReasons || []),
+        JSON.stringify(evalResult.dangerFlags || []),
+        JSON.stringify(evalResult.hitlGaps || []),
+        now_, certifiedAt, expiresAt, actor, actor
+      ]
+    );
+
+    const savedCertId = certRes.rows[0].id;
+
+    // Write check log entries
+    for (const c of evalResult.checks || []) {
+      await client.query(
+        `INSERT INTO certification_checks
+           (id, certification_id, tenant_id, check_name, check_category, passed, severity, detail)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [createId("chk"), savedCertId, tenantId, c.name, c.category, c.passed, c.severity, c.detail]
+      );
+    }
+
+    return getCertificationById(client, savedCertId);
+  });
+}
+
+async function getCertificationById(client, certId) {
+  const result = await client.query(
+    `SELECT ac.*, ad.agent_name
+     FROM agent_certifications ac
+     JOIN agent_definitions ad ON ad.id = ac.agent_definition_id
+     WHERE ac.id = $1`,
+    [certId]
+  );
+  return result.rows[0] ? mapCert(result.rows[0]) : null;
+}
+
+export async function getCertification(tenantId, agentName, environment) {
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `SELECT ac.*, ad.agent_name
+       FROM agent_certifications ac
+       JOIN agent_definitions ad ON ad.id = ac.agent_definition_id
+       WHERE ac.tenant_id = $1 AND ad.agent_name = $2 AND ac.environment = $3`,
+      [tenantId, agentName, environment]
+    );
+    if (!result.rows[0]) return null;
+    const cert = mapCert(result.rows[0]);
+    const checks = await client.query(
+      "SELECT * FROM certification_checks WHERE certification_id = $1 ORDER BY evaluated_at DESC",
+      [result.rows[0].id]
+    );
+    cert.checks = checks.rows.map(mapCheck);
+    return cert;
+  }, "REPEATABLE READ");
+}
+
+export async function listCertifications(tenantId) {
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `SELECT ac.*, ad.agent_name, ad.agent_type, ad.effective_tier
+       FROM agent_certifications ac
+       JOIN agent_definitions ad ON ad.id = ac.agent_definition_id
+       WHERE ac.tenant_id = $1
+       ORDER BY ad.agent_name, ac.environment`,
+      [tenantId]
+    );
+    return result.rows.map(mapCert);
+  }, "REPEATABLE READ");
+}
+
+export async function revokeCertification(tenantId, agentName, environment, reason, actor = "system") {
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `UPDATE agent_certifications ac
+       SET cert_status = 'revoked', revoked_at = NOW(), revoke_reason = $4
+       FROM agent_definitions ad
+       WHERE ac.agent_definition_id = ad.id
+         AND ac.tenant_id = $1 AND ad.agent_name = $2 AND ac.environment = $3
+       RETURNING ac.id`,
+      [tenantId, agentName, environment, reason || "Manually revoked"]
+    );
+    return result.rows[0] || null;
+  });
+}
+
+export async function createPromotion(tenantId, agentName, { fromEnv, toEnv, requestedBy, certSnapshot, blockingChecks }) {
+  const pool = await getPool();
+  const defRow = await pool.query(
+    "SELECT id FROM agent_definitions WHERE tenant_id = $1 AND agent_name = $2",
+    [tenantId, agentName]
+  );
+  if (!defRow.rows[0]) throw new Error(`Agent "${agentName}" not registered.`);
+
+  const id = createId("promo");
+  await pool.query(
+    `INSERT INTO agent_promotions
+       (id, tenant_id, agent_definition_id, from_env, to_env, status,
+        cert_snapshot, blocking_checks, requested_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9)`,
+    [
+      id, tenantId, defRow.rows[0].id, fromEnv, toEnv,
+      blockingChecks && blockingChecks.length > 0 ? "rejected" : "approved",
+      JSON.stringify(certSnapshot || {}),
+      JSON.stringify(blockingChecks || []),
+      requestedBy || "system"
+    ]
+  );
+  return { id, agentName, fromEnv, toEnv, status: blockingChecks?.length > 0 ? "rejected" : "approved" };
+}
+
+function mapAgentDef(row) {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    agentName: row.agent_name,
+    agentType: row.agent_type,
+    declaredTier: row.declared_tier,
+    computedTier: row.computed_tier,
+    effectiveTier: row.effective_tier,
+    description: row.description || "",
+    ownerTeam: row.owner_team || "",
+    tools: (row.tools || []).filter(Boolean),
+    stagingCert: row.staging_cert || "uncertified",
+    prodCert: row.prod_cert || "uncertified",
+    prodCertExpires: row.prod_cert_expires || null,
+    createdAt: row.created_at?.toISOString?.() || row.created_at,
+    updatedAt: row.updated_at?.toISOString?.() || row.updated_at
+  };
+}
+
+function mapCert(row) {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    agentName: row.agent_name,
+    environment: row.environment,
+    certStatus: row.cert_status,
+    effectiveTier: row.effective_tier,
+    dangerScore: Number(row.danger_score || 0),
+    hitlCoveragePct: Number(row.hitl_coverage_pct || 0),
+    runsEvaluated: row.runs_evaluated,
+    runsPassed: row.runs_passed,
+    failureReasons: row.failure_reasons || [],
+    dangerFlags: row.danger_flags || [],
+    hitlGaps: row.hitl_gaps || [],
+    evaluatedAt: row.evaluated_at?.toISOString?.() || row.evaluated_at,
+    certifiedAt: row.certified_at?.toISOString?.() || row.certified_at,
+    expiresAt: row.expires_at?.toISOString?.() || row.expires_at,
+    revokedAt: row.revoked_at?.toISOString?.() || row.revoked_at,
+    revokeReason: row.revoke_reason || "",
+    evaluatedBy: row.evaluated_by,
+    certifiedBy: row.certified_by,
+    createdAt: row.created_at?.toISOString?.() || row.created_at
+  };
+}
+
+function mapCheck(row) {
+  return {
+    id: row.id,
+    checkName: row.check_name,
+    checkCategory: row.check_category,
+    passed: row.passed,
+    severity: row.severity,
+    detail: row.detail,
+    evaluatedAt: row.evaluated_at?.toISOString?.() || row.evaluated_at
+  };
 }
 
 export async function markFailedIngestAttempt(id, { succeeded, error } = {}) {

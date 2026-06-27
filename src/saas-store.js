@@ -274,3 +274,45 @@ export async function upsertSsoUser({ email, name }) {
   const backend = await getBackend();
   return backend.upsertSsoUser ? backend.upsertSsoUser({ email, name }) : null;
 }
+
+// ── Certification store ────────────────────────────────────────────────────────
+
+export async function listAgentDefinitions(tenantId) {
+  const backend = await getBackend();
+  return backend.listAgentDefinitions ? backend.listAgentDefinitions(tenantId) : [];
+}
+
+export async function getAgentDefinition(tenantId, agentName) {
+  const backend = await getBackend();
+  return backend.getAgentDefinition ? backend.getAgentDefinition(tenantId, agentName) : null;
+}
+
+export async function getAgentRunsForCert(tenantId, agentName) {
+  const backend = await getBackend();
+  return backend.getAgentRunsForCert ? backend.getAgentRunsForCert(tenantId, agentName) : [];
+}
+
+export async function saveCertification(tenantId, agentName, environment, evalResult, actor) {
+  const backend = await getBackend();
+  return backend.saveCertification ? backend.saveCertification(tenantId, agentName, environment, evalResult, actor) : null;
+}
+
+export async function getCertification(tenantId, agentName, environment) {
+  const backend = await getBackend();
+  return backend.getCertification ? backend.getCertification(tenantId, agentName, environment) : null;
+}
+
+export async function listCertifications(tenantId) {
+  const backend = await getBackend();
+  return backend.listCertifications ? backend.listCertifications(tenantId) : [];
+}
+
+export async function revokeCertification(tenantId, agentName, environment, reason, actor) {
+  const backend = await getBackend();
+  return backend.revokeCertification ? backend.revokeCertification(tenantId, agentName, environment, reason, actor) : null;
+}
+
+export async function createPromotion(tenantId, agentName, opts) {
+  const backend = await getBackend();
+  return backend.createPromotion ? backend.createPromotion(tenantId, agentName, opts) : null;
+}
