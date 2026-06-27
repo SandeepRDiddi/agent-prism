@@ -12,26 +12,18 @@
 
 import { AgentPrism } from "./src/sdk/index.js";
 
-// Force localhost — credentials.json may point to a remote server.
-// Override: AGENT_PRISM_ENDPOINT=https://... AGENT_PRISM_API_KEY=acp_... node demo_cert_agents.js
-const ENDPOINT = process.env.AGENT_PRISM_ENDPOINT || "http://localhost:3000";
-const API_KEY  = process.env.AGENT_PRISM_API_KEY;
+// Accepts both naming conventions:
+//   AGENT_PRISM_ENDPOINT / PRISM_URL   — server base URL
+//   AGENT_PRISM_API_KEY  / PRISM_KEY   — tenant API key
+const ENDPOINT = process.env.AGENT_PRISM_ENDPOINT || process.env.PRISM_URL || "http://localhost:3000";
+const API_KEY  = process.env.AGENT_PRISM_API_KEY  || process.env.PRISM_KEY;
 
 if (!API_KEY) {
-  console.error(`
-ERROR: No API key set.
-
-Get your local key:
-  1. Open http://localhost:3000 in browser
-  2. Go to Admin tab → Access Keys
-  3. Copy an active key (starts with acp_)
-
-Then run:
-  AGENT_PRISM_API_KEY=acp_your_key_here node demo_cert_agents.js
-`);
+  console.error("ERROR: No API key set.\nRun with: PRISM_KEY=acp_... node demo_cert_agents.js");
   process.exit(1);
 }
 
+console.log(`  Target: ${ENDPOINT}\n`);
 const prism = new AgentPrism({ endpoint: ENDPOINT, clientSecret: API_KEY });
 
 // ── Agent definitions ─────────────────────────────────────────────────────────
