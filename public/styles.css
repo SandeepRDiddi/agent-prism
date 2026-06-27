@@ -5304,6 +5304,86 @@ html[data-theme="light"] .matrix-grid-bg {
   font-family: monospace;
   color: #c8d6ff;
 }
+/* ── Branded splash / loading screen ─────────────────────────────────────── */
+.ap-splash {
+  position: relative;
+  min-height: calc(100dvh - 68px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.ap-splash-center {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: splashEntrance 0.55s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+@keyframes splashEntrance {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ap-splash-mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #4f80ff, #8b5cf6);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 1.5rem;
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(79,128,255,0.3), 0 12px 36px rgba(79,128,255,0.35);
+  animation: splashMarkPulse 2.4s ease-in-out infinite;
+  margin-bottom: 6px;
+}
+
+@keyframes splashMarkPulse {
+  0%,100% { box-shadow: 0 0 0 1px rgba(79,128,255,0.3), 0 12px 36px rgba(79,128,255,0.35); }
+  50%     { box-shadow: 0 0 0 6px rgba(79,128,255,0.12), 0 12px 44px rgba(79,128,255,0.5); }
+}
+
+.ap-splash-title {
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #e0e4ff;
+}
+
+.ap-splash-sub {
+  font-size: 0.82rem;
+  color: rgba(200,215,255,0.42);
+  letter-spacing: 0.02em;
+}
+
+.ap-splash-dots {
+  display: flex;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.ap-splash-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(79,128,255,0.55);
+  animation: splashDot 1.3s ease-in-out infinite;
+}
+
+.ap-splash-dots span:nth-child(2) { animation-delay: 0.18s; }
+.ap-splash-dots span:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes splashDot {
+  0%,80%,100% { opacity: 0.35; transform: scale(1); }
+  40%          { opacity: 1;    transform: scale(1.35); }
+}
+
 .exec-period-grid > div label {
   font-size: 0.68rem;
   text-transform: uppercase;

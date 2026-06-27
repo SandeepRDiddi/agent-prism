@@ -3366,7 +3366,26 @@ async function postAction(path) {
   await loadDashboard();
 }
 
+function renderSplash() {
+  document.querySelector("#workspace").innerHTML = `
+    <div class="ap-splash">
+      <div class="login-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+      </div>
+      <div class="login-grid"></div>
+      <div class="ap-splash-center">
+        <div class="ap-splash-mark">AP</div>
+        <div class="ap-splash-title">Agent Prism</div>
+        <div class="ap-splash-sub">AI Governance Command Center</div>
+        <div class="ap-splash-dots"><span></span><span></span><span></span></div>
+      </div>
+    </div>`;
+}
+
 async function initializeApp() {
+  renderSplash();
   try {
     const bootstrap = await request("/api/bootstrap/status");
 
