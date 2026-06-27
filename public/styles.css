@@ -5716,12 +5716,13 @@ html[data-theme="light"] .leak-badge--low    { background: rgba(22,163,74,0.1); 
   gap: 8px;
 }
 .cert-card-env-label {
-  font-size: 0.73rem;
+  font-size: 0.71rem;
   color: var(--muted);
-  width: 68px;
+  min-width: 76px;
   text-align: right;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 /* ── Tool pills ──────────────────────────────────────────────────────────────── */

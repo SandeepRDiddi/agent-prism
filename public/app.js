@@ -1208,7 +1208,7 @@ function showCertReview(agentName, env = "staging") {
 
   el.innerHTML = `
     <div class="cert-review-screen">
-      <button class="cert-review-back" onclick="renderCertPanel()">← Back to all agents</button>
+      <button class="cert-review-back" data-cert-back="1">← Back to all agents</button>
 
       <div class="cert-review-header">
         <div>
@@ -1251,13 +1251,21 @@ function showCertReview(agentName, env = "staging") {
         </div>
       ` : `
         <div class="cert-review-actions">
-          <button class="cert-review-confirm" onclick="certifyAgent(${JSON.stringify(agentName)}, ${JSON.stringify(env)})">
+          <button class="cert-review-confirm" data-cert-confirm="1">
             ✓ I have reviewed this agent — Certify for ${env === "production" ? "Production" : "Staging"}
           </button>
-          <button class="cert-review-cancel" onclick="renderCertPanel()">Cancel</button>
+          <button class="cert-review-cancel" data-cert-back="1">Cancel</button>
         </div>
       `}
     </div>`;
+
+  wireCertReviewScreen(el, () => certifyAgent(agentName, env));
+}
+
+function wireCertReviewScreen(el, confirmAction) {
+  el.querySelector("[data-cert-back]")?.addEventListener("click", renderCertPanel);
+  el.querySelector("[data-cert-cancel]")?.addEventListener("click", renderCertPanel);
+  el.querySelector("[data-cert-confirm]")?.addEventListener("click", confirmAction);
 }
 
 async function certifyAgent(agentName, env = "staging") {
@@ -1282,9 +1290,9 @@ async function promoteAgent(agentName) {
   if (el && agent) {
     el.innerHTML = `
       <div class="cert-review-screen">
-        <button class="cert-review-back" onclick="renderCertPanel()">← Back to all agents</button>
+        <button class="cert-review-back" data-cert-back="1">← Back to all agents</button>
         <div class="cert-review-header">
-          <h3 style="margin:0 0 4px;font-size:1.1rem">${agentName}</h3>
+          <h3 style="margin:0 0 4px;font-size:1.1rem">${escapeHtml(agentName)}</h3>
           <span style="color:var(--muted);font-size:0.85rem">Promoting staging cert → production</span>
         </div>
         <div class="cert-review-tier-block cert-review-tier-block--2">
@@ -1292,12 +1300,13 @@ async function promoteAgent(agentName) {
           <p>This agent will be allowed to ingest live production runs. Any production run from an uncertified or revoked agent is blocked automatically. You can revoke at any time.</p>
         </div>
         <div class="cert-review-actions">
-          <button class="cert-review-confirm" onclick="doPromoteAgent(${JSON.stringify(agentName)})">
-            ✓ Promote ${agentName} to Production
+          <button class="cert-review-confirm" data-cert-confirm="1">
+            ✓ Promote ${escapeHtml(agentName)} to Production
           </button>
-          <button class="cert-review-cancel" onclick="renderCertPanel()">Cancel</button>
+          <button class="cert-review-cancel" data-cert-back="1">Cancel</button>
         </div>
       </div>`;
+    wireCertReviewScreen(el, () => doPromoteAgent(agentName));
     return;
   }
   await doPromoteAgent(agentName);
@@ -1324,23 +1333,24 @@ async function revokeAgentCert(agentName, env = "production") {
   if (el) {
     el.innerHTML = `
       <div class="cert-review-screen">
-        <button class="cert-review-back" onclick="renderCertPanel()">← Back to all agents</button>
+        <button class="cert-review-back" data-cert-back="1">← Back to all agents</button>
         <div class="cert-review-header">
-          <h3 style="margin:0 0 4px;font-size:1.1rem">${agentName}</h3>
-          <span style="color:var(--muted);font-size:0.85rem">Revoking ${env} certificate</span>
+          <h3 style="margin:0 0 4px;font-size:1.1rem">${escapeHtml(agentName)}</h3>
+          <span style="color:var(--muted);font-size:0.85rem">Revoking ${escapeHtml(env)} certificate</span>
         </div>
         <div class="cert-review-tier-block cert-review-tier-block--4">
           <strong>What revocation means</strong>
-          <p>This agent's ${env} certificate will be revoked immediately. Any ${env} run from this agent will be blocked at ingest until it is re-certified. This action is logged in the audit trail.</p>
+          <p>This agent's ${escapeHtml(env)} certificate will be revoked immediately. Any ${escapeHtml(env)} run from this agent will be blocked at ingest until it is re-certified. This action is logged in the audit trail.</p>
         </div>
         <div class="cert-review-actions">
-          <button class="cert-review-confirm" style="background:rgba(220,38,38,0.15);border-color:rgba(220,38,38,0.4);color:var(--red)"
-                  onclick="doRevokeConfirmed(${JSON.stringify(agentName)},${JSON.stringify(env)})">
-            ✕ Revoke ${agentName} — ${env} certificate
+          <button class="cert-review-confirm" data-cert-confirm="1"
+                  style="background:rgba(220,38,38,0.15);border-color:rgba(220,38,38,0.4);color:var(--red)">
+            ✕ Revoke ${escapeHtml(agentName)} — ${escapeHtml(env)} certificate
           </button>
-          <button class="cert-review-cancel" onclick="renderCertPanel()">Cancel</button>
+          <button class="cert-review-cancel" data-cert-back="1">Cancel</button>
         </div>
       </div>`;
+    wireCertReviewScreen(el, () => doRevokeConfirmed(agentName, env));
     return;
   }
   await doRevokeConfirmed(agentName, env);
@@ -1425,12 +1435,12 @@ function renderCertPanel() {
           <div class="cert-card ${needsAction ? "cert-card--needs-action" : ""}">
             <div class="cert-card-top">
               <div class="cert-card-identity">
-                <div class="cert-card-name">${name}</div>
+                <div class="cert-card-name">${escapeHtml(name)}</div>
                 <div class="cert-card-meta">
                   <span class="tier-badge tier-badge--${tier}">${tierInfo.short}</span>
                   <span class="cert-card-type">${tierInfo.label}</span>
                   <span class="cert-card-sep">·</span>
-                  <span class="cert-card-type">${agent.agentType || "custom"}</span>
+                  <span class="cert-card-type">${escapeHtml(agent.agentType || "custom")}</span>
                   <span class="cert-card-sep">·</span>
                   <span class="cert-card-type">${agent.runCount || 0} runs</span>
                 </div>
@@ -1472,25 +1482,34 @@ function renderCertPanel() {
 
             <div class="cert-card-actions">
               <button class="cert-action-btn cert-action-btn--certify"
-                      onclick="showCertReview(${JSON.stringify(name)}, 'staging')">
+                      data-cert-action="certify" data-cert-agent="${escapeHtml(name)}">
                 Review &amp; Certify
               </button>
               <button class="cert-action-btn cert-action-btn--promote"
-                      onclick="promoteAgent(${JSON.stringify(name)})"
-                      ${canPromote ? "" : "disabled"}
-                      title="${canPromote ? "Promote staging cert to production" : "Certify in staging first"}">
+                      data-cert-action="promote" data-cert-agent="${escapeHtml(name)}"
+                      ${canPromote ? "" : "disabled"}>
                 Promote to Production
               </button>
               <button class="cert-action-btn cert-action-btn--revoke"
-                      onclick="revokeAgentCert(${JSON.stringify(name)})"
-                      ${canRevoke ? "" : "disabled"}
-                      title="${canRevoke ? "Revoke production certificate" : "No active production cert to revoke"}">
+                      data-cert-action="revoke" data-cert-agent="${escapeHtml(name)}"
+                      ${canRevoke ? "" : "disabled"}>
                 Revoke
               </button>
             </div>
           </div>`;
       }).join("")}
     </div>`;
+
+  // Wire cert action buttons via data attributes — avoids HTML-attribute quoting issues with JSON.stringify
+  el.querySelectorAll("[data-cert-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const agentName = btn.dataset.certAgent;
+      const action    = btn.dataset.certAction;
+      if (action === "certify") showCertReview(agentName, "staging");
+      else if (action === "promote") promoteAgent(agentName);
+      else if (action === "revoke") revokeAgentCert(agentName);
+    });
+  });
 }
 
 function renderGovernanceView() {
