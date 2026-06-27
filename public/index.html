@@ -29,14 +29,14 @@
         </div>
 
         <div class="topbar-actions">
-          <div class="status-pill">
+          <div class="status-pill" id="status-pill-wrap">
             <span class="status-dot"></span>
             <span id="active-agents">No tenant connected</span>
           </div>
-          <a href="/leadership.html" class="ghost topbar-link" style="color: #4ade80;">Executive View</a>
-          <button id="save-api-key" class="ghost">Set API key</button>
+          <a href="/leadership.html" class="ghost topbar-link topbar-exec-link" style="color: #4ade80;">Executive View</a>
+          <button id="save-api-key" class="ghost topbar-dev-only" style="display:none">Set API key</button>
           <button id="logout" class="ghost">Logout</button>
-          <button id="reset-data" class="ghost">Reset tenant data</button>
+          <button id="reset-data" class="ghost topbar-dev-only" style="display:none">Reset tenant data</button>
           <button id="theme-toggle" class="ghost theme-toggle-btn" title="Toggle light/dark mode" aria-label="Toggle theme">
             <span class="theme-icon-dark">☀️</span>
             <span class="theme-icon-light" style="display:none">🌙</span>

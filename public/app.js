@@ -103,21 +103,42 @@ window.coachApply = function(cardId) {
 window.dismissCoachSaving = dismissCoachSaving;
 // ─────────────────────────────────────────────────────────────────────────────
 
-const workspaceShell = `
+function buildWorkspaceShell(tenantName) {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return `
   <section class="clean-dashboard">
-    <nav class="view-tabs" aria-label="Dashboard views">
-      <button class="view-tab active" data-view="overview" type="button">Overview</button>
-      <button class="view-tab" data-view="activity" type="button">Activity</button>
-      <button class="view-tab" data-view="tokens" type="button">Token Coach</button>
-      <button class="view-tab" data-view="governance" type="button">Governance</button>
-      <button class="view-tab" data-view="advisor" type="button">Prompt Advisor</button>
-      <button class="view-tab" data-view="live-sessions" type="button">&#x25CF; Live Sessions</button>
-      <button class="view-tab" data-view="admin" type="button">Admin</button>
-    </nav>
+    <div class="dash-top-row">
+      <nav class="view-tabs" aria-label="Dashboard views">
+        <button class="view-tab active" data-view="overview" type="button">Overview</button>
+        <button class="view-tab" data-view="activity" type="button">Activity</button>
+        <button class="view-tab" data-view="tokens" type="button">Token Coach</button>
+        <button class="view-tab" data-view="governance" type="button">Governance</button>
+        <button class="view-tab" data-view="advisor" type="button">Prompt Advisor</button>
+        <button class="view-tab" data-view="live-sessions" type="button">&#x25CF; Live Sessions</button>
+        <button class="view-tab" data-view="admin" type="button">Admin</button>
+      </nav>
+      <div class="command-ribbon">
+        <div class="command-ribbon-left">
+          <div>
+            <div class="command-ribbon-title">${tenantName || "AI Governance Command Center"}</div>
+            <div class="command-ribbon-sub">${dateStr}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div class="command-ribbon-stat"><span>Fleet status</span><strong id="ribbon-fleet">Loading…</strong></div>
+          <div class="command-ribbon-stat"><span>Total spend</span><strong id="ribbon-spend">—</strong></div>
+          <div class="command-ribbon-stat"><span>Reliability</span><strong id="ribbon-score">—</strong></div>
+        </div>
+      </div>
+    </div>
     <section class="metrics-grid cockpit-metrics" id="metrics-grid"></section>
     <section class="view-content" id="view-content"></section>
   </section>
 `;
+}
+
+const workspaceShell = buildWorkspaceShell("");
 
 async function request(path, options) {
   const response = await fetch(path, {
@@ -377,6 +398,18 @@ function renderMetrics(metrics) {
     )
     .join("");
   initScrollReveal();
+
+  // update command ribbon quick stats
+  const fleet = document.querySelector("#ribbon-fleet");
+  const spend = document.querySelector("#ribbon-spend");
+  const score = document.querySelector("#ribbon-score");
+  if (fleet) fleet.textContent = `${dashboardState.agentProfiles.length} agents`;
+  if (spend) spend.textContent = currency(metrics.totalCostUsd);
+  if (score) {
+    const s = metrics.averageControlScore;
+    score.textContent = `${s}/100`;
+    score.style.color = s >= 70 ? "#10b981" : s >= 55 ? "#f59e0b" : "#f87171";
+  }
 }
 
 function providerInitial(provider) {
@@ -3042,6 +3075,11 @@ async function initializeApp() {
     document.querySelector("#workspace").classList.add("workspace-business");
     attachViewTabs();
     await loadTenantSummary();
+    // rebuild shell with real tenant name now that we have it
+    const tName = tenantSummary?.tenant?.name || "";
+    document.querySelector("#workspace").innerHTML = buildWorkspaceShell(tName);
+    document.querySelector("#workspace").classList.add("workspace-business");
+    attachViewTabs();
     await loadDashboard();
   } catch (error) {
     if (error.status === 401) {
