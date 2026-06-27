@@ -505,7 +505,7 @@ function renderOverview() {
     ? { label: "Needs Attention", color: "#f59e0b", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)", icon: "⚠", desc: "Several agents underperforming. Review before scaling further." }
     : { label: "At Risk", color: "#f87171", bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.2)", icon: "!", desc: "Fleet reliability below threshold. Immediate review required." };
 
-  const atRiskAgents = allProfiles.filter((a) => a.controlScore < 70).slice(0, 4);
+  const atRiskAgents = allProfiles.filter((a) => a.controlScore < 70).slice(0, 3);
   const healthyAgents = allProfiles.filter((a) => a.controlScore >= 70).slice(0, 3);
   const leakSavings = currency(leakCount * 14);
 
@@ -623,7 +623,7 @@ function renderOverview() {
           <div class="playbook-list">
             ${atRiskAgents.map((a) => {
               const scoreColor = a.controlScore >= 55 ? "#f59e0b" : "#f87171";
-              const issues = diagnoseAgent(a);
+              const issues = diagnoseAgent(a).slice(0, 1);
               return `
                 <div class="playbook-item">
                   <div class="playbook-header">
@@ -657,18 +657,6 @@ function renderOverview() {
             </div>
           `).join("")}
         `}
-
-        ${leaks.slice(0, 2).map(leak => `
-          <div class="exec-leak-tip">
-            <span class="exec-leak-bulb">💡</span>
-            <div style="flex:1;min-width:0">
-              <strong>${escapeHtml(leak.agentName)}</strong>
-              <span class="playbook-leak-type"> · ${escapeHtml(leak.leakType)}</span>
-              <div class="playbook-fix" style="margin-top:2px">${escapeHtml(leak.recommendation || "Review in Token Coach")}</div>
-              <div class="playbook-verify">✓ Done when: cost drops below budget for 5 runs · saves ~$${(leak.wastedUsd || 14).toFixed(2)}/mo</div>
-            </div>
-          </div>
-        `).join("")}
 
         <div class="exec-action-btns">
           <button class="exec-btn-primary js-nav-tab" data-tab="tokens">Token Coach →</button>
