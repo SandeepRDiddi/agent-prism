@@ -10,6 +10,45 @@ let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
 let certificationData = null; // lazy-loaded when Governance tab opens
 
+// Module-level so onclick="resetTenantDataClick()" works regardless of render state
+async function resetTenantDataClick() {
+  if (!tenantApiKey && !currentUser) {
+    renderSetupScreen("login", "Sign in before resetting data.");
+    return;
+  }
+  const wrap = document.querySelector("#reset-data-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <span style="font-size:0.83rem;color:var(--red);margin-right:10px">Wipes all runs + audit logs. Cannot be undone.</span>
+    <button class="danger-ghost ghost" type="button" style="margin-right:6px"
+            onclick="resetTenantDataConfirm()">Yes, reset</button>
+    <button class="ghost" type="button"
+            onclick="resetTenantDataCancel()">Cancel</button>
+  `;
+}
+
+function resetTenantDataCancel() {
+  const wrap = document.querySelector("#reset-data-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = `<button class="danger-ghost ghost" type="button" onclick="resetTenantDataClick()">Reset tenant data</button>`;
+}
+
+async function resetTenantDataConfirm() {
+  const wrap = document.querySelector("#reset-data-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = `<span style="color:var(--muted);font-size:0.83rem">Resetting…</span>`;
+  try {
+    await request("/api/reset", { method: "POST" });
+    localStorage.removeItem(COACH_SNAPSHOTS_KEY);
+    certificationData = null;
+    wrap.innerHTML = `<span style="color:var(--green);font-size:0.83rem">Done — data cleared.</span>`;
+    await loadDashboard();
+  } catch (err) {
+    wrap.innerHTML = `<span style="color:var(--red);font-size:0.83rem">Error: ${err.message}</span>`;
+    console.error("Reset failed:", err);
+  }
+}
+
 // ── Token Coach: collapse/expand + savings detection ──────────────────────────
 const expandedCoachCards = new Set(); // persists across re-renders
 const COACH_SNAPSHOTS_KEY = "prism_coach_snapshots_v1";
@@ -2974,7 +3013,7 @@ const response = await fetch("${window.location.origin}/v1/messages", {
             <p class="muted" style="margin:4px 0 0;font-size:0.83rem">Wipes all agent runs, audit logs, and token coach snapshots for this workspace. Connectors and API keys are kept. Cannot be undone.</p>
           </div>
           <div id="reset-data-wrap">
-            <button id="reset-data" class="danger-ghost ghost" type="button">Reset tenant data</button>
+            <button class="danger-ghost ghost" type="button" onclick="resetTenantDataClick()">Reset tenant data</button>
           </div>
         </div>
       </article>
@@ -3012,40 +3051,6 @@ const response = await fetch("${window.location.origin}/v1/messages", {
     document.querySelector("#delete-all-keys-button").addEventListener("click", deleteAllTenantKeys);
   }
   loadAuditLogTable();
-  function wireResetButton() {
-    const btn = document.querySelector("#reset-data");
-    if (!btn) return;
-    btn.addEventListener("click", () => {
-      if (!tenantApiKey && !currentUser) {
-        renderSetupScreen("login", "Sign in before resetting data.");
-        return;
-      }
-      const wrap = document.querySelector("#reset-data-wrap");
-      wrap.innerHTML = `
-        <span style="font-size:0.83rem;color:var(--red);margin-right:10px">Wipes all runs + audit logs. Cannot be undone.</span>
-        <button id="reset-confirm-yes" class="danger-ghost ghost" type="button" style="margin-right:6px">Yes, reset</button>
-        <button id="reset-confirm-no" class="ghost" type="button">Cancel</button>
-      `;
-      document.querySelector("#reset-confirm-no").addEventListener("click", () => {
-        wrap.innerHTML = `<button id="reset-data" class="danger-ghost ghost" type="button">Reset tenant data</button>`;
-        wireResetButton();
-      });
-      document.querySelector("#reset-confirm-yes").addEventListener("click", async () => {
-        wrap.innerHTML = `<span style="color:var(--muted);font-size:0.83rem">Resetting…</span>`;
-        try {
-          await request("/api/reset", { method: "POST" });
-          localStorage.removeItem(COACH_SNAPSHOTS_KEY);
-          certificationData = null;
-          wrap.innerHTML = `<span style="color:var(--green);font-size:0.83rem">Done — data cleared.</span>`;
-          await loadDashboard();
-        } catch (err) {
-          wrap.innerHTML = `<span style="color:var(--red);font-size:0.83rem">Error: ${err.message}</span>`;
-          console.error("Reset failed:", err);
-        }
-      });
-    });
-  }
-  wireResetButton();
   document.querySelectorAll(".connector-form").forEach((form) => {
     form.addEventListener("submit", connectCatalogSource);
   });
