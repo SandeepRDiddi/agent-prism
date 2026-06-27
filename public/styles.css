@@ -2828,6 +2828,20 @@ strong.red   { color: #ff7f7f; }
   background: rgba(248, 113, 113, 0.1) !important;
 }
 
+.danger-zone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 0;
+  border-top: 1px solid rgba(220, 38, 38, 0.12);
+}
+
+html[data-theme="light"] .danger-ghost {
+  color: #b91c1c !important;
+  border-color: rgba(220,38,38,0.3) !important;
+}
+
 .inline-admin-form-row {
   display: flex;
   gap: 12px;
@@ -4569,6 +4583,94 @@ html[data-theme="light"] .matrix-grid-bg {
     linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
 }
+
+/* ── Light mode: cockpit metric cards ────────────────────────────────────── */
+/* The cockpit selector is more specific than the generic .metric-card override,
+   so we need a matching-specificity rule here. */
+html[data-theme="light"] .cockpit-metrics .metric-card {
+  background: #ffffff;
+  border-color: rgba(79,128,255,0.14);
+  box-shadow: 0 4px 16px rgba(79,128,255,0.08);
+  color: #0f1b3d;
+}
+html[data-theme="light"] .cockpit-metrics .metric-card:hover {
+  box-shadow: 0 8px 24px rgba(79,128,255,0.14);
+  border-color: rgba(79,128,255,0.24);
+}
+html[data-theme="light"] .cockpit-metrics .metric-value { color: #0f1b3d; }
+html[data-theme="light"] .cockpit-metrics .metric-label { color: #4a5a8a; }
+html[data-theme="light"] .cockpit-metrics .metric-sub   { color: #6a7aaa; }
+
+/* ── Light mode: cert status chips ──────────────────────────────────────── */
+html[data-theme="light"] .cert-status-chip--certified {
+  background: rgba(22,163,74,0.1);
+  color: #15803d;
+  border-color: rgba(22,163,74,0.3);
+}
+html[data-theme="light"] .cert-status-chip--uncertified {
+  background: rgba(217,119,6,0.1);
+  color: #b45309;
+  border-color: rgba(217,119,6,0.28);
+}
+html[data-theme="light"] .cert-status-chip--revoked {
+  background: rgba(220,38,38,0.08);
+  color: #b91c1c;
+  border-color: rgba(220,38,38,0.25);
+}
+html[data-theme="light"] .cert-status-chip--expired {
+  background: rgba(100,116,139,0.08);
+  color: #475569;
+  border-color: rgba(100,116,139,0.2);
+}
+
+/* ── Light mode: tier badges ─────────────────────────────────────────────── */
+html[data-theme="light"] .tier-badge--0 { background: rgba(37,99,235,0.1);  color: #1d4ed8; }
+html[data-theme="light"] .tier-badge--1 { background: rgba(22,163,74,0.1);  color: #15803d; }
+html[data-theme="light"] .tier-badge--2 { background: rgba(217,119,6,0.1);  color: #b45309; }
+html[data-theme="light"] .tier-badge--3 { background: rgba(234,88,12,0.1);  color: #c2410c; }
+html[data-theme="light"] .tier-badge--4 { background: rgba(220,38,38,0.1);  color: #b91c1c; }
+
+/* ── Light mode: cert action buttons ─────────────────────────────────────── */
+html[data-theme="light"] .cert-action-btn--certify {
+  border-color: rgba(37,99,235,0.35);
+  color: #1d4ed8;
+}
+html[data-theme="light"] .cert-action-btn--promote {
+  border-color: rgba(22,163,74,0.35);
+  color: #15803d;
+}
+html[data-theme="light"] .cert-action-btn--revoke {
+  border-color: rgba(220,38,38,0.3);
+  color: #b91c1c;
+}
+
+/* ── Light mode: cert table ──────────────────────────────────────────────── */
+html[data-theme="light"] .cert-table th { color: #4a5a8a; }
+html[data-theme="light"] .cert-table td { color: #0f1b3d; }
+html[data-theme="light"] .cert-table tr:hover td { background: rgba(79,128,255,0.04); }
+html[data-theme="light"] .danger-bar { background: rgba(0,0,0,0.08); }
+html[data-theme="light"] .hitl-pct--good { color: #15803d; }
+html[data-theme="light"] .hitl-pct--ok   { color: #b45309; }
+html[data-theme="light"] .hitl-pct--poor  { color: #b91c1c; }
+
+/* ── Light mode: danger zone panel ──────────────────────────────────────── */
+html[data-theme="light"] .danger-zone-panel {
+  border-color: rgba(220,38,38,0.15);
+}
+
+/* ── Light mode: AI fleet health / governance panels ─────────────────────── */
+html[data-theme="light"] .action-required-panel,
+html[data-theme="light"] .provider-card,
+html[data-theme="light"] .leak-card {
+  background: #ffffff;
+  border-color: rgba(79,128,255,0.12);
+}
+html[data-theme="light"] .score-label  { color: #4a5a8a; }
+html[data-theme="light"] .score-bar-bg { background: rgba(0,0,0,0.08); }
+html[data-theme="light"] .leak-badge   { color: #0f1b3d; }
+html[data-theme="light"] .leak-badge--budget { background: rgba(220,38,38,0.1); color: #b91c1c; border-color: rgba(220,38,38,0.25); }
+html[data-theme="light"] .leak-badge--retry  { background: rgba(217,119,6,0.1); color: #b45309; border-color: rgba(217,119,6,0.25); }
+html[data-theme="light"] .leak-badge--low    { background: rgba(22,163,74,0.1); color: #15803d; border-color: rgba(22,163,74,0.25); }
 
 /* ═══════════════════════════════════════════════════════════════════
    PREMIUM METRIC CARDS — wow factor upgrade

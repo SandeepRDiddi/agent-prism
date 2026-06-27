@@ -88,12 +88,20 @@ function buildPayload(scenario, index) {
       tool_invocations: scenario.tool_invocations,
       policy_alerts: 0,
       user_score: 4,
-      environment: "production-demo",
+      environment: "staging",
       workflow: scenario.workflow,
       team: "engineering",
       labels: ["copilot", "demo", "token-efficiency"],
       trace: scenario.trace,
-      summary: scenario.summary
+      summary: scenario.summary,
+      tool_manifest: [
+        { name: "read_file" },
+        { name: "search_code" },
+        { name: "insert_patch" },
+        { name: "create_pull_request" },
+        { name: "send_message" }
+      ],
+      human_approvals: []
     }
   };
 }

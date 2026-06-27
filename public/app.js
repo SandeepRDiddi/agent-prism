@@ -2962,6 +2962,20 @@ const response = await fetch("${window.location.origin}/v1/messages", {
           <p class="muted">Loading activity log…</p>
         </div>
       </article>
+
+      <article class="panel wide-panel danger-zone-panel">
+        <div class="panel-title">
+          <p class="eyebrow" style="color:var(--red)">Danger Zone</p>
+          <h2>Workspace data</h2>
+        </div>
+        <div class="danger-zone-row">
+          <div>
+            <strong>Reset tenant data</strong>
+            <p class="muted" style="margin:4px 0 0;font-size:0.83rem">Wipes all agent runs, audit logs, and token coach snapshots for this workspace. Connectors and API keys are kept. Cannot be undone.</p>
+          </div>
+          <button id="reset-data" class="danger-ghost ghost">Reset tenant data</button>
+        </div>
+      </article>
     </section>
   `;
 
@@ -2996,6 +3010,16 @@ const response = await fetch("${window.location.origin}/v1/messages", {
     document.querySelector("#delete-all-keys-button").addEventListener("click", deleteAllTenantKeys);
   }
   loadAuditLogTable();
+  document.querySelector("#reset-data").addEventListener("click", async () => {
+    if (!tenantApiKey && !currentUser) {
+      renderSetupScreen("login", "Sign in before resetting data.");
+      return;
+    }
+    if (!confirm("Reset all agent runs and audit logs for this workspace? API keys and connectors are kept. This cannot be undone.")) return;
+    await postAction("/api/reset");
+    localStorage.removeItem(COACH_SNAPSHOTS_KEY);
+    certificationData = null;
+  });
   document.querySelectorAll(".connector-form").forEach((form) => {
     form.addEventListener("submit", connectCatalogSource);
   });
@@ -3610,15 +3634,6 @@ document.querySelector("#save-api-key").addEventListener("click", () => {
   renderSetupScreen("api-key");
 });
 
-document.querySelector("#reset-data").addEventListener("click", async () => {
-  if (!tenantApiKey && !currentUser) {
-    renderSetupScreen("login", "Sign in before resetting data.");
-    return;
-  }
-
-  await postAction("/api/reset");
-  localStorage.removeItem(COACH_SNAPSHOTS_KEY);
-});
 
 document.querySelector("#logout").addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
