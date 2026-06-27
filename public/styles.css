@@ -5183,3 +5183,130 @@ html[data-theme="light"] .matrix-grid-bg {
 }
 
 .exec-btn-ghost:hover { background: rgba(255,255,255,0.06); color: rgba(200,220,255,0.8); }
+
+/* ── Token Coach — contextual stat cards ─────────────────────────── */
+.token-summary-rich {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+@media (max-width: 900px) {
+  .token-summary-rich { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+  .token-summary-rich { grid-template-columns: 1fr; }
+}
+
+.token-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+}
+
+.token-stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(200,215,255,0.4);
+}
+
+.token-stat-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-family: monospace;
+  line-height: 1.2;
+}
+
+.token-stat-context {
+  font-size: 0.73rem;
+  color: rgba(200,215,255,0.55);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+/* ── Executive Intel (second row) ────────────────────────────────── */
+.exec-intel-card {
+  grid-column: 1 / -1;
+  padding: 20px 24px;
+}
+
+.exec-intel-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 28px;
+}
+@media (max-width: 900px) {
+  .exec-intel-grid { grid-template-columns: 1fr; }
+}
+
+.exec-intel-section { min-width: 0; }
+
+/* scoreboard */
+.exec-scoreboard { display: flex; flex-direction: column; gap: 0; }
+
+.exec-sb-head {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 0.6fr 0.5fr 0.7fr;
+  gap: 8px;
+  padding: 4px 0 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  font-size: 0.67rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(200,215,255,0.35);
+}
+
+.exec-sb-row {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 0.6fr 0.5fr 0.7fr;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.8rem;
+  align-items: center;
+}
+
+.exec-sb-row:last-child { border-bottom: none; }
+.exec-sb-name { color: #c8d6ff; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exec-sb-wf   { color: rgba(200,215,255,0.45); font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exec-sb-score { font-family: monospace; font-weight: 700; }
+.exec-sb-runs, .exec-sb-cost { color: rgba(200,215,255,0.7); font-family: monospace; }
+
+/* workflow breakdown */
+.exec-wf-row { margin-bottom: 10px; }
+.exec-wf-meta { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.exec-wf-name { font-size: 0.8rem; color: #c8d6ff; text-transform: capitalize; }
+.exec-wf-stat { font-size: 0.72rem; color: rgba(200,215,255,0.4); font-family: monospace; }
+.exec-wf-bar-wrap { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+.exec-wf-bar { height: 100%; background: linear-gradient(90deg, #3b82f6, #10b981); border-radius: 2px; transition: width 0.4s ease; }
+
+/* period snapshot */
+.exec-period-box { border-top: 1px solid rgba(255,255,255,0.06); }
+.exec-period-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+.exec-period-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.exec-period-grid > div span {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-family: monospace;
+  color: #c8d6ff;
+}
+.exec-period-grid > div label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(200,215,255,0.38);
+}

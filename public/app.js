@@ -479,6 +479,15 @@ function diagnoseAgent(a) {
   return issues.slice(0, 2);
 }
 
+function tokenStatCard(label, value, context, level) {
+  const cls = level === "good" ? "green" : level === "warn" ? "amber" : level === "bad" ? "red" : "muted";
+  return `<div class="token-stat-card">
+    <span class="token-stat-label">${label}</span>
+    <strong class="token-stat-value ${cls}">${value}</strong>
+    <span class="token-stat-context">${context}</span>
+  </div>`;
+}
+
 function renderOverview() {
   const m = dashboardState.headlineMetrics;
   const score = m.averageControlScore;
@@ -664,6 +673,79 @@ function renderOverview() {
         <div class="exec-action-btns">
           <button class="exec-btn-primary js-nav-tab" data-tab="tokens">Token Coach →</button>
           <button class="exec-btn-ghost js-nav-tab" data-tab="governance">Audit Trail →</button>
+        </div>
+      </article>
+
+      <!-- ── FLEET INTELLIGENCE (full-width second row) ── -->
+      <article class="panel exec-intel-card">
+        <div class="exec-intel-grid">
+
+          <!-- Agent scoreboard -->
+          <div class="exec-intel-section">
+            <p class="eyebrow" style="margin-bottom:12px">Agent Scoreboard — by total spend</p>
+            <div class="exec-scoreboard">
+              <div class="exec-sb-head">
+                <span>Agent</span><span>Workflow</span><span>Score</span><span>Runs</span><span>Spend</span>
+              </div>
+              ${(() => {
+                const scoreMap = {};
+                allProfiles.forEach(p => { scoreMap[p.agentName] = p.controlScore; });
+                const eff = dashboardState.tokenEfficiency || {};
+                const agents = (eff.topAgents || []).slice(0, 6);
+                if (!agents.length) return `<p class="muted" style="font-size:0.8rem;padding:8px 0">No agent data yet</p>`;
+                return agents.map(a => {
+                  const sc = scoreMap[a.agentName] ?? "—";
+                  const scColor = typeof sc === "number" ? (sc >= 70 ? "#10b981" : sc >= 55 ? "#f59e0b" : "#f87171") : "#8898b0";
+                  const wf = (a.workflow || "general").replace(/-/g, " ");
+                  return `<div class="exec-sb-row">
+                    <span class="exec-sb-name" title="${escapeHtml(a.agentName)}">${escapeHtml(a.agentName)}</span>
+                    <span class="exec-sb-wf">${escapeHtml(wf)}</span>
+                    <span class="exec-sb-score" style="color:${scColor}">${sc}</span>
+                    <span class="exec-sb-runs">${a.runs}</span>
+                    <span class="exec-sb-cost">${currency(a.costUsd)}</span>
+                  </div>`;
+                }).join("");
+              })()}
+            </div>
+          </div>
+
+          <!-- Workflow breakdown + period snapshot -->
+          <div class="exec-intel-section">
+            <p class="eyebrow" style="margin-bottom:12px">Workflow Distribution</p>
+            ${(() => {
+              const eff = dashboardState.tokenEfficiency || {};
+              const hotspots = (eff.workflowHotspots || []).slice(0, 5);
+              if (!hotspots.length) return `<p class="muted" style="font-size:0.8rem">No workflow data yet</p>`;
+              const maxTokens = Math.max(...hotspots.map(h => h.totalTokens), 1);
+              return hotspots.map(h => {
+                const pct = Math.round((h.totalTokens / maxTokens) * 100);
+                const wf = (h.workflow || "general").replace(/-/g, " ");
+                const retryFlag = h.retries > 0 ? `<span style="color:#f59e0b;font-size:0.7rem"> ⟳${h.retries}</span>` : "";
+                return `<div class="exec-wf-row">
+                  <div class="exec-wf-meta">
+                    <span class="exec-wf-name">${escapeHtml(wf)}${retryFlag}</span>
+                    <span class="exec-wf-stat">${h.runs} runs · ${compactNumber(h.avgTokensPerRun)}/run</span>
+                  </div>
+                  <div class="exec-wf-bar-wrap">
+                    <div class="exec-wf-bar" style="width:${pct}%"></div>
+                  </div>
+                </div>`;
+              }).join("");
+            })()}
+
+            <div class="exec-period-box">
+              <p class="eyebrow" style="margin:16px 0 8px">This Period</p>
+              <div class="exec-period-grid">
+                <div><span>${m.totalRuns.toLocaleString()}</span><label>Total runs</label></div>
+                <div><span class="${m.successRate >= 80 ? "green" : m.successRate >= 60 ? "amber" : "red"}">${m.successRate}%</span><label>Success rate</label></div>
+                <div><span>${allProfiles.length}</span><label>Active agents</label></div>
+                <div><span class="${leakCount > 0 ? "amber" : "green"}">${leakCount}</span><label>Cost leaks</label></div>
+                ${dashboardState.mlAnalytics ? `<div><span class="${dashboardState.mlAnalytics.trendDirection === "rising" ? "red" : dashboardState.mlAnalytics.trendDirection === "falling" ? "green" : ""}">${{ rising:"↑ Rising", falling:"↓ Falling", stable:"→ Stable" }[dashboardState.mlAnalytics.trendDirection] || "—"}</span><label>Cost trend</label></div>` : ""}
+                ${dashboardState.mlAnalytics?.anomalyCount > 0 ? `<div><span class="red">${dashboardState.mlAnalytics.anomalyCount}</span><label>Anomalies</label></div>` : ""}
+              </div>
+            </div>
+          </div>
+
         </div>
       </article>
 
@@ -1758,32 +1840,48 @@ function renderTokenCoachView() {
           <span class="ml-mini-item amber">&#9685; 30d forecast $${ml.forecast30d}</span>
           <span class="ml-mini-item">${ml.clusteredAgents.filter(a => a.cluster === "Wasteful").length} wasteful / ${ml.clusteredAgents.filter(a => a.cluster === "Efficient").length} efficient agents</span>
         </div>` : ""}
-        <div class="token-summary">
-          <div>
-            <span>Total tokens</span>
-            <strong>${compactNumber(efficiency.totalTokens || 0)}</strong>
-          </div>
-          <div>
-            <span>Input mix</span>
-            <strong class="${(efficiency.inputTokenPercent || 0) > 70 ? "amber" : ""}">${efficiency.inputTokenPercent || 0}%</strong>
-          </div>
-          <div>
-            <span>Output mix</span>
-            <strong class="${(efficiency.outputTokenPercent || 0) > 40 ? "amber" : ""}">${efficiency.outputTokenPercent || 0}%</strong>
-          </div>
-          <div>
-            <span>Retry waste</span>
-            <strong class="${(efficiency.wastePercent || 0) > 5 ? "red" : ""}">${efficiency.wastePercent || 0}%</strong>
-          </div>
-          <div>
-            <span>Cost / 1k tokens</span>
-            <strong>$${efficiency.costPer1kTokensUsd || 0}</strong>
-          </div>
-          <div>
-            <span>Projected / month</span>
-            <strong class="amber">$${efficiency.projectedMonthlyCost || 0}</strong>
-          </div>
-        </div>
+        ${(() => {
+          const inp = efficiency.inputTokenPercent || 0;
+          const out = efficiency.outputTokenPercent || 0;
+          const wst = efficiency.wastePercent || 0;
+          const c1k = efficiency.costPer1kTokensUsd || 0;
+          const prj = efficiency.projectedMonthlyCost || 0;
+          const apr = efficiency.avgTokensPerRun || 0;
+          const bup = dashboardState?.headlineMetrics?.budgetUsedPercent || 0;
+          return `<div class="token-summary-rich">
+            ${tokenStatCard("Total tokens", compactNumber(efficiency.totalTokens || 0),
+              apr > 0 ? `${compactNumber(apr)}/run avg · ${efficiency.totalTokens > 0 ? "across all agents this period" : "no data yet"}` : "No token data yet",
+              "neutral")}
+            ${tokenStatCard("Input mix", `${inp}%`,
+              inp > 75 ? "⚠ Very high — large system prompts driving cost. Target: under 65%."
+              : inp > 65 ? "⚠ Slightly above target (65%). Review verbose system prompt templates."
+              : inp > 0 ? "✓ Optimal — prompts are concise and well-structured."
+              : "No data yet.",
+              inp > 75 ? "bad" : inp > 65 ? "warn" : "good")}
+            ${tokenStatCard("Output mix", `${out}%`,
+              out > 50 ? "⚠ Very high — agents generating very long responses. Add max_tokens limits."
+              : out > 35 ? "⚠ Elevated — consider constraining output format and response length."
+              : out > 0 ? "✓ Healthy — agents responding concisely."
+              : "No data yet.",
+              out > 50 ? "bad" : out > 35 ? "warn" : "good")}
+            ${tokenStatCard("Retry waste", `${wst}%`,
+              wst > 8 ? "↑ Critical — agents failing repeatedly. Each retry burns budget. Fix the top retrying agents first."
+              : wst > 3 ? "⚠ Above 3% target. Open Cost Leak Radar to see which agents retry most."
+              : wst > 0 ? "✓ Minimal — agents completing tasks on first attempt."
+              : "✓ No retries logged.",
+              wst > 8 ? "bad" : wst > 3 ? "warn" : "good")}
+            ${tokenStatCard("Cost / 1k tokens", c1k > 0 ? `$${c1k}` : "—",
+              c1k > 0.008 ? "⚠ High — consider routing routine tasks to cheaper model tiers (Haiku / GPT-4o-mini)."
+              : c1k > 0.003 ? "✓ Standard — typical for Sonnet / GPT-4o class models."
+              : c1k > 0 ? "✓ Efficient — at or below market average for this model class."
+              : "No cost data yet.",
+              c1k > 0.008 ? "warn" : "good")}
+            ${tokenStatCard("Projected / month", prj > 0 ? `$${prj}` : "—",
+              prj > 0 ? `${bup}% of budget used · ${bup > 90 ? "⚠ approaching budget ceiling" : bup > 75 ? "⚠ monitor closely" : "✓ within policy"}`
+              : "Insufficient run history to project.",
+              bup > 90 ? "bad" : bup > 75 ? "warn" : "good")}
+          </div>`;
+        })()}
       </article>
 
       ${renderPromptBurnPanel(efficiency)}
