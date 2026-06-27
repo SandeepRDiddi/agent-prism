@@ -3010,15 +3010,28 @@ const response = await fetch("${window.location.origin}/v1/messages", {
     document.querySelector("#delete-all-keys-button").addEventListener("click", deleteAllTenantKeys);
   }
   loadAuditLogTable();
-  document.querySelector("#reset-data").addEventListener("click", async () => {
+  document.querySelector("#reset-data").addEventListener("click", async (e) => {
     if (!tenantApiKey && !currentUser) {
       renderSetupScreen("login", "Sign in before resetting data.");
       return;
     }
-    if (!confirm("Reset all agent runs and audit logs for this workspace? API keys and connectors are kept. This cannot be undone.")) return;
-    await postAction("/api/reset");
-    localStorage.removeItem(COACH_SNAPSHOTS_KEY);
-    certificationData = null;
+    if (!confirm("Reset all agent runs and audit logs for this workspace?\n\nAPI keys and connectors are kept. This cannot be undone.")) return;
+    const btn = e.currentTarget;
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Resetting…";
+    try {
+      await request("/api/reset", { method: "POST" });
+      localStorage.removeItem(COACH_SNAPSHOTS_KEY);
+      certificationData = null;
+      btn.textContent = "Done";
+      setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 2000);
+      await loadDashboard();
+    } catch (err) {
+      btn.textContent = "Failed — " + (err.message || "unknown error");
+      btn.disabled = false;
+      console.error("Reset failed:", err);
+    }
   });
   document.querySelectorAll(".connector-form").forEach((form) => {
     form.addEventListener("submit", connectCatalogSource);
