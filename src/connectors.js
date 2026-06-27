@@ -75,7 +75,30 @@ function enrichCertification(payload) {
 export function normalizeGenericRun(payload) {
   return baseRun({
     ...payload,
-    source: payload.source || "generic"
+    source: payload.source || "generic",
+    // map snake_case fields sent by external agents / demo scripts
+    agentName:        payload.agentName        || payload.agent_name,
+    taskType:         payload.taskType         || payload.task_type,
+    startTime:        payload.startTime        || payload.started_at,
+    endTime:          payload.endTime          || payload.completed_at || payload.finished_at,
+    latencyMs:        payload.latencyMs        || payload.duration_ms,
+    tokensIn:         payload.tokensIn         || payload.prompt_tokens,
+    tokensOut:        payload.tokensOut        || payload.completion_tokens,
+    costUsd:          payload.costUsd          || payload.estimated_cost_usd,
+    budgetUsd:        payload.budgetUsd        || payload.budget_usd,
+    autonomyLevel:    payload.autonomyLevel    || payload.autonomy_level,
+    retryCount:       payload.retryCount       || payload.retry_count,
+    toolCalls:        payload.toolCalls        || payload.tool_invocations,
+    policyViolations: payload.policyViolations || payload.policy_alerts,
+    userSatisfaction: payload.userSatisfaction || payload.user_score,
+    environment:      payload.environment,
+    workflow:         payload.workflow,
+    team:             payload.team,
+    tags:             payload.tags             || payload.labels,
+    breadcrumbs:      payload.breadcrumbs      || payload.trace || [],
+    notes:            payload.notes            || payload.summary,
+    toolManifest:     payload.toolManifest     || payload.tool_manifest,
+    humanApprovals:   payload.humanApprovals   || payload.human_approvals
   });
 }
 

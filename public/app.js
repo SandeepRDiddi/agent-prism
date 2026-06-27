@@ -1146,7 +1146,24 @@ function hitlPct(pct) {
   return `<span class="hitl-pct hitl-pct--${cls}">${pct}%</span>`;
 }
 
+function certPanelStatus(msg, isError = false) {
+  const el = document.querySelector("#cert-panel-body");
+  if (!el) { console.error("Cert:", msg); return; }
+  const bar = el.querySelector(".cert-status-bar") || (() => {
+    const d = document.createElement("div");
+    d.className = "cert-status-bar";
+    d.style.cssText = "padding:8px 12px;margin-bottom:10px;border-radius:6px;font-size:0.83rem;font-weight:600;";
+    el.prepend(d);
+    return d;
+  })();
+  bar.textContent = msg;
+  bar.style.background = isError ? "rgba(255,80,80,0.12)" : "rgba(52,211,153,0.10)";
+  bar.style.color = isError ? "var(--red)" : "var(--green)";
+  if (!isError) setTimeout(() => bar.remove(), 4000);
+}
+
 async function certifyAgent(agentName, env = "staging") {
+  certPanelStatus(`Certifying ${agentName} in ${env}…`);
   try {
     await request(`/api/agents/${encodeURIComponent(agentName)}/certify`, {
       method: "POST",
@@ -1156,11 +1173,13 @@ async function certifyAgent(agentName, env = "staging") {
     await loadCertifications();
     renderGovernanceView();
   } catch (err) {
-    alert(`Certify failed: ${err.message}`);
+    certPanelStatus(`Certify failed: ${err.message}`, true);
+    console.error("certifyAgent:", err);
   }
 }
 
 async function promoteAgent(agentName) {
+  certPanelStatus(`Promoting ${agentName} to production…`);
   try {
     await request(`/api/agents/${encodeURIComponent(agentName)}/promote`, {
       method: "POST",
@@ -1170,12 +1189,26 @@ async function promoteAgent(agentName) {
     await loadCertifications();
     renderGovernanceView();
   } catch (err) {
-    alert(`Promote failed: ${err.message}`);
+    certPanelStatus(`Promote failed: ${err.message}`, true);
+    console.error("promoteAgent:", err);
   }
 }
 
 async function revokeAgentCert(agentName, env = "production") {
-  if (!confirm(`Revoke production cert for "${agentName}"?`)) return;
+  const wrap = document.querySelector(`[data-revoke-wrap="${agentName}"]`);
+  if (wrap) {
+    wrap.innerHTML = `
+      <span style="font-size:0.78rem;color:var(--red);margin-right:6px">Revoke cert?</span>
+      <button class="cert-action-btn cert-action-btn--revoke" style="margin-right:4px"
+              onclick="doRevokeConfirmed(${JSON.stringify(agentName)},${JSON.stringify(env)})">Yes</button>
+      <button class="cert-action-btn" onclick="renderGovernanceView()">No</button>`;
+    return;
+  }
+  await doRevokeConfirmed(agentName, env);
+}
+
+async function doRevokeConfirmed(agentName, env) {
+  certPanelStatus(`Revoking ${agentName}…`);
   try {
     await request(`/api/agents/${encodeURIComponent(agentName)}/revoke`, {
       method: "POST",
@@ -1185,7 +1218,8 @@ async function revokeAgentCert(agentName, env = "production") {
     await loadCertifications();
     renderGovernanceView();
   } catch (err) {
-    alert(`Revoke failed: ${err.message}`);
+    certPanelStatus(`Revoke failed: ${err.message}`, true);
+    console.error("revokeAgentCert:", err);
   }
 }
 
@@ -1255,11 +1289,13 @@ function renderCertPanel() {
                           ${canPromote ? "" : "disabled"}>
                     Promote
                   </button>
-                  <button class="cert-action-btn cert-action-btn--revoke"
-                          onclick="revokeAgentCert(${JSON.stringify(name)})"
-                          ${canRevoke ? "" : "disabled"}>
-                    Revoke
-                  </button>
+                  <span data-revoke-wrap="${name}">
+                    <button class="cert-action-btn cert-action-btn--revoke"
+                            onclick="revokeAgentCert(${JSON.stringify(name)})"
+                            ${canRevoke ? "" : "disabled"}>
+                      Revoke
+                    </button>
+                  </span>
                 </div>
               </td>
             </tr>`;
