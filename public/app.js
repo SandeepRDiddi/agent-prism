@@ -1372,6 +1372,66 @@ async function doRevokeConfirmed(agentName, env) {
   }
 }
 
+function certCardActions(name, stagingStatus, prodStatus, tier) {
+  const n = escapeHtml(name);
+  const isProdCertified = prodStatus === "certified";
+  const isStagingCertified = stagingStatus === "certified";
+  const canPromote = isStagingCertified && !isProdCertified && tier < 4;
+  const canRevoke  = isProdCertified;
+
+  // State 1: nothing certified yet → primary action is certify
+  if (!isStagingCertified) {
+    return `
+      <div class="cert-card-actions cert-card-actions--state">
+        <div class="cert-next-step">
+          <span class="cert-next-label">Next step</span>
+          <span class="cert-next-arrow">→</span>
+          <button class="cert-action-btn cert-action-btn--primary"
+                  data-cert-action="certify" data-cert-agent="${n}">
+            Review &amp; Certify for Staging
+          </button>
+        </div>
+      </div>`;
+  }
+
+  // State 2: staging certified, not yet in prod → promote is the next step
+  if (isStagingCertified && !isProdCertified) {
+    const blockedByTier = tier >= 4;
+    return `
+      <div class="cert-card-actions cert-card-actions--state">
+        <div class="cert-next-step ${blockedByTier ? "cert-next-step--blocked" : ""}">
+          ${blockedByTier ? `
+            <span class="cert-next-label">Tier 4 — cannot go to production</span>
+            <span class="cert-next-body">This agent carries tools that can destroy infrastructure or escalate privileges. Production deployment is blocked by policy.</span>
+          ` : `
+            <span class="cert-next-label">Staging certified ✓ — next step</span>
+            <span class="cert-next-arrow">→</span>
+            <button class="cert-action-btn cert-action-btn--primary"
+                    data-cert-action="promote" data-cert-agent="${n}">
+              Promote to Production
+            </button>
+          `}
+        </div>
+        <div class="cert-secondary-actions">
+          <button class="cert-action-btn cert-action-btn--certify"
+                  data-cert-action="certify" data-cert-agent="${n}">Re-certify Staging</button>
+        </div>
+      </div>`;
+  }
+
+  // State 3: production certified → fully live, only danger action is revoke
+  return `
+    <div class="cert-card-actions cert-card-actions--state cert-card-actions--live">
+      <div class="cert-live-badge">✓ Live in production</div>
+      <div class="cert-secondary-actions">
+        <button class="cert-action-btn cert-action-btn--certify"
+                data-cert-action="certify" data-cert-agent="${n}">Re-certify Staging</button>
+        <button class="cert-action-btn cert-action-btn--revoke"
+                data-cert-action="revoke" data-cert-agent="${n}">Revoke Production Cert</button>
+      </div>
+    </div>`;
+}
+
 function renderCertPanel(highlightAgent = null) {
   const el = document.querySelector("#cert-panel-body");
   if (!el) return;
@@ -1516,22 +1576,7 @@ function renderCertPanel(highlightAgent = null) {
               </div>
             </div>
 
-            <div class="cert-card-actions">
-              <button class="cert-action-btn cert-action-btn--certify"
-                      data-cert-action="certify" data-cert-agent="${escapeHtml(name)}">
-                Review &amp; Certify
-              </button>
-              <button class="cert-action-btn cert-action-btn--promote"
-                      data-cert-action="promote" data-cert-agent="${escapeHtml(name)}"
-                      ${canPromote ? "" : "disabled"}>
-                Promote to Production
-              </button>
-              <button class="cert-action-btn cert-action-btn--revoke"
-                      data-cert-action="revoke" data-cert-agent="${escapeHtml(name)}"
-                      ${canRevoke ? "" : "disabled"}>
-                Revoke
-              </button>
-            </div>
+            ${certCardActions(name, stagingStatus, prodStatus, tier)}
           </div>`;
       }).join("")}
     </div>`;

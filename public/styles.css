@@ -5834,6 +5834,80 @@ html[data-theme="light"] .cert-how-step code { background: rgba(0,0,0,0.06); }
 /* ── Card actions ────────────────────────────────────────────────────────────── */
 .cert-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+.cert-card-actions--state {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Primary next-step call-to-action strip */
+.cert-next-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(79,128,255,0.06);
+  border: 1px solid rgba(79,128,255,0.18);
+  border-radius: 8px;
+  padding: 10px 14px;
+  flex-wrap: wrap;
+}
+.cert-next-step--blocked {
+  background: rgba(220,38,38,0.05);
+  border-color: rgba(220,38,38,0.18);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.cert-next-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #7ba7ff;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cert-next-step--blocked .cert-next-label { color: #ff9a9a; }
+.cert-next-body { font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
+.cert-next-arrow { color: #7ba7ff; font-size: 1rem; flex-shrink: 0; }
+
+.cert-action-btn--primary {
+  padding: 9px 18px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  background: rgba(79,128,255,0.18);
+  border: 1px solid rgba(79,128,255,0.45);
+  color: #a8c4ff;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.cert-action-btn--primary:hover { background: rgba(79,128,255,0.28); }
+
+/* Secondary smaller actions row */
+.cert-secondary-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Live in production badge */
+.cert-card-actions--live .cert-next-step { display: none; }
+.cert-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6ee7b7;
+  background: rgba(52,211,153,0.08);
+  border: 1px solid rgba(52,211,153,0.2);
+  border-radius: 20px;
+  padding: 5px 14px;
+  width: fit-content;
+  margin-bottom: 2px;
+}
+
+html[data-theme="light"] .cert-next-step { background: rgba(79,128,255,0.05); border-color: rgba(79,128,255,0.2); }
+html[data-theme="light"] .cert-action-btn--primary { background: rgba(79,128,255,0.1); border-color: rgba(79,128,255,0.35); color: #2255cc; }
+html[data-theme="light"] .cert-live-badge { background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.25); color: #047857; }
+
 /* ── Cert review screen ──────────────────────────────────────────────────────── */
 .cert-review-screen { max-width: 700px; }
 
