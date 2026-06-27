@@ -1069,9 +1069,9 @@ function svgLineChart({ id, data, xKey = "i", yKey, y2Key = null, anomalyKey = n
   </svg>`;
 }
 
-function svgScatter({ data, xKey, yKey, nameKey, clusterKey, W = 420, H = 280 }) {
+function svgScatter({ data, xKey, yKey, nameKey, clusterKey, W = 560, H = 340 }) {
   if (!data.length) return `<svg viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" fill="#4a5568" text-anchor="middle" font-size="12">No agents yet</text></svg>`;
-  const pad = { t: 28, r: 20, b: 44, l: 60 };
+  const pad = { t: 28, r: 24, b: 44, l: 66 };
   const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
   const xs = data.map(d => d[xKey]), ys = data.map(d => d[yKey]);
   const maxX = Math.max(...xs) * 1.2 || 1;
@@ -1079,17 +1079,65 @@ function svgScatter({ data, xKey, yKey, nameKey, clusterKey, W = 420, H = 280 })
   const sx = v => pad.l + (v / maxX) * cw;
   const sy = v => pad.t + (1 - v / maxY) * ch;
   const clrMap = { Efficient: "#5ee3a3", Moderate: "#ffd580", Wasteful: "#ff9a9a" };
-  const dots = data.map(d => {
+  const CHAR_W = 5.4, LBL_H = 10;
+
+  // Build dot + initial label positions
+  const items = data.map(d => {
     const c = clrMap[d[clusterKey]] || "#a8beff";
     const r = Math.max(8, Math.min(18, 6 + d.runs * 2));
     const cx = sx(d[xKey]), cy = sy(d[yKey]);
-    const lbl = (d[nameKey] || "").length > 14 ? d[nameKey].slice(0, 13) + "…" : d[nameKey];
-    // flip label below dot when near top, above when near bottom
-    const nearTop = cy < pad.t + 20;
-    const lblY = nearTop ? cy + r + 12 : cy - r - 5;
-    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${c}" fill-opacity="0.18" stroke="${c}" stroke-width="1.5"/>
-            <text x="${cx}" y="${lblY}" fill="${c}" font-size="9" text-anchor="middle" font-family="monospace">${lbl}</text>`;
+    const raw = d[nameKey] || "";
+    const lbl = raw.length > 14 ? raw.slice(0, 13) + "…" : raw;
+    const lw = lbl.length * CHAR_W;
+    return { cx, cy, r, lbl, lw, c,
+      lx: cx,
+      ly: cy < pad.t + 28 ? cy + r + 12 : cy - r - 6  // start above dot (or below if near top)
+    };
+  });
+
+  // Greedy push-apart: 30 iterations to separate overlapping labels
+  for (let iter = 0; iter < 30; iter++) {
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j];
+        const dx = b.lx - a.lx;
+        const dy = b.ly - a.ly;
+        const minX = (a.lw + b.lw) / 2 + 4;
+        const minY = LBL_H + 4;
+        const overlapX = minX - Math.abs(dx);
+        const overlapY = minY - Math.abs(dy);
+        if (overlapX > 0 && overlapY > 0) {
+          const pushAxis = overlapX < overlapY ? "x" : "y";
+          if (pushAxis === "x") {
+            const push = overlapX / 2 + 1;
+            a.lx -= dx >= 0 ? push : -push;
+            b.lx += dx >= 0 ? push : -push;
+          } else {
+            const push = overlapY / 2 + 1;
+            a.ly -= dy >= 0 ? push : -push;
+            b.ly += dy >= 0 ? push : -push;
+          }
+        }
+      }
+    }
+  }
+
+  // Clamp labels inside chart bounds
+  items.forEach(it => {
+    it.lx = Math.max(pad.l + it.lw / 2, Math.min(pad.l + cw - it.lw / 2, it.lx));
+    it.ly = Math.max(pad.t + LBL_H, Math.min(pad.t + ch - 2, it.ly));
+  });
+
+  const dots = items.map(({ cx, cy, r, lbl, lx, ly, c }) => {
+    const farFromDot = Math.hypot(lx - cx, ly - cy) > r + 14;
+    const connector = farFromDot
+      ? `<line x1="${cx}" y1="${cy}" x2="${lx}" y2="${ly}" stroke="${c}" stroke-width="0.7" stroke-opacity="0.4" stroke-dasharray="2,2"/>`
+      : "";
+    return `${connector}
+            <circle cx="${cx}" cy="${cy}" r="${r}" fill="${c}" fill-opacity="0.18" stroke="${c}" stroke-width="1.5"><title>${lbl}</title></circle>
+            <text x="${lx}" y="${ly}" fill="${c}" font-size="9" text-anchor="middle" font-family="monospace" pointer-events="none">${lbl}</text>`;
   }).join("");
+
   const yTicks = [0, 0.33, 0.66, 1].map(t => {
     const vy = t * maxY;
     return `<line x1="${pad.l}" y1="${sy(vy)}" x2="${pad.l+cw}" y2="${sy(vy)}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
