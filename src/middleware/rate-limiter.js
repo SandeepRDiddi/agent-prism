@@ -105,3 +105,5 @@ export const tenantLimiter    = new RateLimiter(rpmLimit);
 export const keyRpmLimiter    = new RateLimiter(keyRpmLimit);
 export const keyTpmLimiter    = new TokenLimiter(keyTpmLimit);
 export const bootstrapLimiter = new RateLimiter(5, 60 * 60 * 1000);
+// 20 attempts/min per IP for credential endpoints (login + oauth/token)
+export const loginLimiter     = new RateLimiter(20);

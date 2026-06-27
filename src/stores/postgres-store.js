@@ -139,7 +139,10 @@ const MAX_RUNS_PER_QUERY = parseInt(process.env.MAX_RUNS_PER_QUERY || "10000", 1
  * @param {(client: import('pg').PoolClient) => Promise<any>} fn
  * @param {"READ COMMITTED"|"REPEATABLE READ"|"SERIALIZABLE"} [isolation]
  */
+const VALID_ISOLATION = new Set(["READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"]);
+
 async function withTenant(tenantId, fn, isolation = "READ COMMITTED") {
+  if (!VALID_ISOLATION.has(isolation)) throw new Error(`Invalid isolation level: ${isolation}`);
   const pool = await getPool();
   const client = await pool.connect();
   try {

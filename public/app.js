@@ -212,7 +212,7 @@ async function renderSetupScreen(type, message = "") {
               <button type="submit">Bootstrap tenant</button>
             </div>
           </form>
-          ${message ? `<p class="usp-summary">${message}</p>` : ""}
+          ${message ? `<p class="usp-summary">${escapeHtml(message)}</p>` : ""}
         </article>
       </section>
     `;
@@ -280,7 +280,7 @@ async function renderSetupScreen(type, message = "") {
               <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
               <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
             </form>` : ""}
-            ${message ? `<p class="login-error">${message}</p>` : ""}
+            ${message ? `<p class="login-error">${escapeHtml(message)}</p>` : ""}
           </div>
         </article>
       </section>
@@ -740,7 +740,7 @@ async function renderAdvisorView() {
         cardEl.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;opacity:0.5;margin-bottom:2px;">${run.agentName} · ${run.model} · ${tokensIn}→${(run.tokensOut||0)} tokens</div>
+              <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;opacity:0.5;margin-bottom:2px;">${escapeHtml(run.agentName)} · ${escapeHtml(run.model)} · ${tokensIn}→${(run.tokensOut||0)} tokens</div>
               <div style="font-weight:600;color:#e0e4ff;font-size:0.95rem;">"${prompt.slice(0,120)}${prompt.length>120?"…":""}"</div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
@@ -781,11 +781,11 @@ async function renderAdvisorView() {
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px;">
             <div style="background:rgba(255,100,100,0.07);border:1px solid rgba(255,100,100,0.15);border-radius:8px;padding:12px;">
               <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#f87;margin-bottom:6px;">⚠ Weakness</div>
-              <div style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;">${analysis.weakness || "—"}</div>
+              <div style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;">${escapeHtml(analysis.weakness || "—")}</div>
             </div>
             <div style="background:rgba(78,204,163,0.07);border:1px solid rgba(78,204,163,0.15);border-radius:8px;padding:12px;">
               <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#4ec;margin-bottom:6px;">✏ Suggested rewrite</div>
-              <div class="advisor-rewrite-text" style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;user-select:text;cursor:text;">${analysis.rewrite || "—"}</div>
+              <div class="advisor-rewrite-text" style="font-size:0.85rem;color:#e0e4ff;line-height:1.5;user-select:text;cursor:text;">${escapeHtml(analysis.rewrite || "—")}</div>
             </div>
           </div>
 
@@ -3096,16 +3096,36 @@ async function initializeApp() {
       }
     }
 
-    document.querySelector("#workspace").innerHTML = workspaceShell;
-    document.querySelector("#workspace").classList.add("workspace-business");
-    attachViewTabs();
-    await loadTenantSummary();
-    // rebuild shell with real tenant name now that we have it
+    // Parallel: tenant info + critical dashboard data — eliminates serial waterfall
+    const [, dashData] = await Promise.all([
+      loadTenantSummary(),
+      request("/api/dashboard")
+    ]);
+    // Render shell ONCE with real tenant name (was rendering twice before)
     const tName = tenantSummary?.tenant?.name || "";
     document.querySelector("#workspace").innerHTML = buildWorkspaceShell(tName);
     document.querySelector("#workspace").classList.add("workspace-business");
     attachViewTabs();
-    await loadDashboard();
+    // Overview renders immediately without waiting for secondary tabs
+    renderDashboard(dashData);
+    // Deferred: audit/keys/catalog/advisor load in background, unblock the overview
+    Promise.all([
+      request("/api/audit").catch(() => ({ auditLogs: [] })),
+      request("/api/tenant/api-keys").catch(() => ({ keys: [] })),
+      request("/api/connectors/catalog").catch(() => ({ connectors: [] })),
+      request("/api/ai-advisor").catch((e) => ({
+        status: "unavailable",
+        provider: "ollama",
+        model: "llama3.1",
+        message: e.message || "AI Advisor is unavailable."
+      }))
+    ]).then(([auditData, keysData, catalogData, advisorData]) => {
+      dashboardAuditLogs = auditData.auditLogs || [];
+      tenantApiKeys = keysData.keys || [];
+      connectorCatalog = catalogData.connectors || [];
+      aiAdvisorState = advisorData;
+      if (currentView === "admin" || currentView === "advisor") renderCurrentView();
+    });
   } catch (error) {
     if (error.status === 401) {
       tenantApiKey = "";

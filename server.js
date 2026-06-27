@@ -77,7 +77,7 @@ import { validateConfig } from "./src/startup.js";
 import { breakers } from "./src/circuit-breaker.js";
 import { setSecurityHeaders } from "./src/middleware/security-headers.js";
 import { applyCors } from "./src/middleware/cors.js";
-import { tenantLimiter, bootstrapLimiter, keyRpmLimiter, keyTpmLimiter } from "./src/middleware/rate-limiter.js";
+import { tenantLimiter, bootstrapLimiter, keyRpmLimiter, keyTpmLimiter, loginLimiter } from "./src/middleware/rate-limiter.js";
 import { checkIngestAllowed, checkGatewayAllowed, getPlan, computeUsage } from "./src/plans.js";
 import { validate, SCHEMAS } from "./src/validation.js";
 import { logRequest, logError, scrubSecrets } from "./src/middleware/logger.js";
@@ -284,7 +284,7 @@ async function requireTenant(req, res, setTenantId) {
 
   if (token && token.split('.').length === 3) {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || adminSecret);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || adminSecret, { algorithms: ["HS256"] });
       if (decoded.type === "access_token") {
         // JWT revocation check: reject if the issuing API key was revoked/deleted
         if (decoded.keyId) {
@@ -1018,6 +1018,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/auth/login") {
+      if (!checkRateLimit(loginLimiter, ip, res)) return;
       const body = await parseBody(req, res);
       if (body === null) return;
       const errors = validate(SCHEMAS.login, body);
@@ -1322,6 +1323,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/oauth/token") {
+      if (!checkRateLimit(loginLimiter, ip, res)) return;
       const body = await parseBody(req, res);
       if (body === null) return;
       
@@ -1341,7 +1343,7 @@ const server = createServer(async (req, res) => {
         keyId: auth.apiKey.id,
         type: "access_token",
         scopes: auth.apiKey.scopes || ["*"]
-      }, process.env.JWT_SECRET || adminSecret, { expiresIn: '1h' });
+      }, process.env.JWT_SECRET || adminSecret, { algorithm: "HS256", expiresIn: '1h' });
 
       const refreshResult = await createRefreshToken(auth.tenant.id, auth.apiKey.id).catch(() => null);
 
@@ -1378,7 +1380,7 @@ const server = createServer(async (req, res) => {
         keyId: rotated.apiKeyId,
         type: "access_token",
         scopes: ["*"]
-      }, process.env.JWT_SECRET || adminSecret, { expiresIn: "1h" });
+      }, process.env.JWT_SECRET || adminSecret, { algorithm: "HS256", expiresIn: "1h" });
       return sendJson(res, 200, {
         access_token: newAccessToken,
         token_type: "Bearer",
