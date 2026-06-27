@@ -1069,6 +1069,60 @@ function svgLineChart({ id, data, xKey = "i", yKey, y2Key = null, anomalyKey = n
   </svg>`;
 }
 
+function svgSwimLane({ data, W = 780 }) {
+  if (!data.length) return `<svg viewBox="0 0 ${W} 80"><text x="${W/2}" y="44" fill="#4a5568" text-anchor="middle" font-size="12">No agents yet</text></svg>`;
+  const clrMap = { Efficient: "#5ee3a3", Moderate: "#ffd580", Wasteful: "#ff9a9a" };
+  const tiers = ["Efficient", "Moderate", "Wasteful"];
+  const LANE_H = 96, LANE_GAP = 8, PAD = 12, HDR = 26;
+  const usableW = W - PAD * 2;
+  const totalH = tiers.length * LANE_H + (tiers.length - 1) * LANE_GAP + PAD * 2;
+
+  const lanes = tiers.map((tier, ti) => {
+    const color = clrMap[tier];
+    const agents = data.filter(a => a.cluster === tier).sort((a, b) => a.avgCost - b.avgCost);
+    const laneY = PAD + ti * (LANE_H + LANE_GAP);
+    const groupAvg = agents.length ? (agents.reduce((s, a) => s + a.avgCost, 0) / agents.length) : 0;
+    const hdr = `${tier.toUpperCase()} · ${agents.length} agent${agents.length !== 1 ? "s" : ""}${agents.length ? ` · avg $${groupAvg.toFixed(4)}/run` : ""}`;
+
+    if (!agents.length) {
+      return `<rect x="${PAD}" y="${laneY}" width="${usableW}" height="${LANE_H}" rx="6"
+                fill="${color}" fill-opacity="0.03" stroke="${color}" stroke-opacity="0.15" stroke-width="1"/>
+              <text x="${PAD + 12}" y="${laneY + 18}" fill="${color}" font-size="10.5" font-family="monospace" font-weight="700">${hdr}</text>
+              <text x="${PAD + usableW / 2}" y="${laneY + LANE_H / 2 + 8}" fill="${color}" font-size="10" text-anchor="middle" opacity="0.35">none</text>`;
+    }
+
+    const maxRuns = Math.max(...agents.map(a => a.runs), 1);
+    const maxCost = Math.max(...agents.map(a => a.avgCost), 0.0001);
+    const slotW = Math.min(72, usableW / agents.length);
+    const bubbleCY = laneY + HDR + (LANE_H - HDR) * 0.44;
+    const startX = PAD + (usableW - slotW * agents.length) / 2;
+
+    const bubbles = agents.map((agent, ai) => {
+      const cx = startX + ai * slotW + slotW / 2;
+      const r = Math.max(7, Math.min(20, 7 + (agent.runs / maxRuns) * 13));
+      const lbl = (agent.name || "").length > 9 ? agent.name.slice(0, 8) + "…" : agent.name;
+      const costFmt = agent.avgCost < 0.001 ? `$${agent.avgCost.toFixed(5)}` : agent.avgCost < 0.01 ? `$${agent.avgCost.toFixed(4)}` : `$${agent.avgCost.toFixed(3)}`;
+      const barW = Math.round((agent.avgCost / maxCost) * (slotW - 6));
+      const tipTokens = (agent.avgTokens || 0).toLocaleString();
+      return `
+        <circle cx="${cx}" cy="${bubbleCY}" r="${r}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="1.4">
+          <title>${agent.name}&#10;Cost: ${costFmt}/run&#10;Tokens: ${tipTokens}/run&#10;Runs: ${agent.runs}</title>
+        </circle>
+        <rect x="${cx - barW / 2}" y="${bubbleCY + r + 3}" width="${barW}" height="2" rx="1" fill="${color}" opacity="0.35"/>
+        <text x="${cx}" y="${bubbleCY + r + 13}" fill="${color}" font-size="8" text-anchor="middle" font-family="monospace">${lbl}</text>
+        <text x="${cx}" y="${bubbleCY + r + 23}" fill="${color}" font-size="7.5" text-anchor="middle" font-family="monospace" opacity="0.6">${costFmt}</text>`;
+    }).join("");
+
+    return `
+      <rect x="${PAD}" y="${laneY}" width="${usableW}" height="${LANE_H}" rx="6"
+            fill="${color}" fill-opacity="0.04" stroke="${color}" stroke-opacity="0.2" stroke-width="1"/>
+      <text x="${PAD + 12}" y="${laneY + 18}" fill="${color}" font-size="10.5" font-family="monospace" font-weight="700">${hdr}</text>
+      ${bubbles}`;
+  }).join("");
+
+  return `<svg viewBox="0 0 ${W} ${totalH}" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">${lanes}</svg>`;
+}
+
 function svgScatter({ data, xKey, yKey, nameKey, clusterKey, W = 560, H = 340 }) {
   if (!data.length) return `<svg viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" fill="#4a5568" text-anchor="middle" font-size="12">No agents yet</text></svg>`;
   const pad = { t: 28, r: 24, b: 44, l: 66 };
@@ -1264,17 +1318,17 @@ function renderAnalyticsView() {
           <div class="chart-svg-wrap">${svgLineChart({ id:"cost", data:ml.burnTimeline, yKey:"cost", y2Key:"costTrend", color:"#5ee3a3", color2:"rgba(255,80,80,0.7)", yFmt: v => `$${v.toFixed(4)}` })}</div>
         </div>
 
-        <div class="chart-panel">
+        <div class="chart-panel chart-panel--swimlane">
           <div class="chart-panel-header">
-            <h3>Agent Efficiency Scatter</h3>
+            <h3>Agent Efficiency Tiers</h3>
             <div class="chart-legend">
               <span style="color:#5ee3a3">● Efficient</span>
               <span style="color:#ffd580">● Moderate</span>
               <span style="color:#ff9a9a">● Wasteful</span>
             </div>
           </div>
-          <p class="chart-subtitle">X = avg tokens/run · Y = avg cost/run · dot size = run count · colour = percentile cluster</p>
-          <div class="chart-svg-wrap">${svgScatter({ data:ml.clusteredAgents, xKey:"avgTokens", yKey:"avgCost", nameKey:"name", clusterKey:"cluster" })}</div>
+          <p class="chart-subtitle">Agents grouped by cost percentile · bubble size = run count · sorted by avg cost/run</p>
+          <div class="chart-svg-wrap">${svgSwimLane({ data:ml.clusteredAgents })}</div>
         </div>
 
         <div class="chart-panel">

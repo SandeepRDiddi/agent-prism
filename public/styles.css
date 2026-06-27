@@ -2287,6 +2287,10 @@ canvas {
   gap: 8px;
 }
 
+.chart-panel--swimlane {
+  grid-column: 1 / -1;
+}
+
 .chart-panel-header {
   display: flex;
   align-items: center;
