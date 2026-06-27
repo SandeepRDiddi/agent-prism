@@ -1271,13 +1271,15 @@ function wireCertReviewScreen(el, confirmAction) {
 async function certifyAgent(agentName, env = "staging") {
   certPanelStatus(`Certifying ${agentName} in ${env}…`);
   try {
-    await request(`/api/agents/${encodeURIComponent(agentName)}/certify`, {
+    const result = await request(`/api/agents/${encodeURIComponent(agentName)}/certify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ environment: env })
     });
     await loadCertifications();
-    renderGovernanceView();
+    renderCertPanel();
+    const status = result?.cert?.certStatus || result?.evaluation?.status || "processed";
+    certPanelStatus(`${agentName} — ${status === "certified" ? "✓ Certified" : status} for ${env}`);
   } catch (err) {
     certPanelStatus(`Certify failed: ${err.message}`, true);
     console.error("certifyAgent:", err);
@@ -1321,7 +1323,8 @@ async function doPromoteAgent(agentName) {
       body: "{}"
     });
     await loadCertifications();
-    renderGovernanceView();
+    renderCertPanel();
+    certPanelStatus(`✓ ${agentName} promoted to production`);
   } catch (err) {
     certPanelStatus(`Promote failed: ${err.message}`, true);
     console.error("promoteAgent:", err);
@@ -1365,7 +1368,8 @@ async function doRevokeConfirmed(agentName, env) {
       body: JSON.stringify({ environment: env, reason: "Manually revoked via dashboard" })
     });
     await loadCertifications();
-    renderGovernanceView();
+    renderCertPanel();
+    certPanelStatus(`✓ ${agentName} ${env} cert revoked`);
   } catch (err) {
     certPanelStatus(`Revoke failed: ${err.message}`, true);
     console.error("revokeAgentCert:", err);
@@ -1398,6 +1402,40 @@ function renderCertPanel() {
   });
 
   el.innerHTML = `
+    <div class="cert-how-it-works">
+      <div class="cert-how-title">How production enforcement works</div>
+      <div class="cert-how-steps">
+        <div class="cert-how-step">
+          <div class="cert-how-step-num">1</div>
+          <div>
+            <strong>Certify in Staging</strong>
+            <p>Review the agent's tool access and approve it. This records your sign-off in the audit trail.</p>
+          </div>
+        </div>
+        <div class="cert-how-step">
+          <div class="cert-how-step-num">2</div>
+          <div>
+            <strong>Promote to Production</strong>
+            <p>Once staging cert is granted, you can promote. This arms the production gate for that agent.</p>
+          </div>
+        </div>
+        <div class="cert-how-step">
+          <div class="cert-how-step-num">3</div>
+          <div>
+            <strong>Gate blocks uncertified runs</strong>
+            <p>Any production run from an uncertified agent hitting this platform is rejected with a 403. Configure your agents to route API calls through Agent Prism (<code>ANTHROPIC_BASE_URL=https://your-prism-host/v1</code>) or use the ingest API — the gate enforces automatically.</p>
+          </div>
+        </div>
+        <div class="cert-how-step">
+          <div class="cert-how-step-num">4</div>
+          <div>
+            <strong>Auto-revoke on new dangerous tools</strong>
+            <p>If a certified agent in production starts using a new high-risk tool it wasn't certified for, the cert is automatically revoked and re-review is required.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="cert-tier-legend">
       ${Object.entries(CERT_TIER_INFO).map(([t, info]) =>
         `<div class="cert-legend-item">
@@ -1553,8 +1591,10 @@ function renderGovernanceView() {
     </section>
   `;
   renderCertPanel();
-  renderProviderScorecard(dashboardState.providerComparison);
-  renderLeaks(dashboardState.costLeaks);
+  if (dashboardState) {
+    renderProviderScorecard(dashboardState.providerComparison);
+    renderLeaks(dashboardState.costLeaks);
+  }
   renderAuditLogs(dashboardAuditLogs);
 }
 
