@@ -420,6 +420,65 @@ function topAgent() {
   return dashboardState.agentProfiles[0] || null;
 }
 
+function diagnoseAgent(a) {
+  const run = a.latestRun || {};
+  const issues = [];
+
+  if ((run.retryCount || 0) > 2) {
+    issues.push({
+      tag: "Retries", color: "#f59e0b",
+      why: `${run.retryCount} retries on last run`,
+      fix: `Set max_retries = 2 in agent config. Add a hard exit condition for repeated task failures.`,
+      verify: `Retry count ≤ 2 for next 5 runs`
+    });
+  }
+  if ((run.policyViolations || 0) > 0) {
+    issues.push({
+      tag: "Policy", color: "#f87171",
+      why: `${run.policyViolations} policy violation${run.policyViolations !== 1 ? "s" : ""} flagged`,
+      fix: `Open Governance → Audit Trail, find this agent's entries, restrict the tool scopes causing violations.`,
+      verify: `0 violations in next 10 consecutive runs`
+    });
+  }
+  if ((run.budgetUsd || 0) > 0 && (run.costUsd || 0) > run.budgetUsd) {
+    const over = ((run.costUsd || 0) - run.budgetUsd).toFixed(4);
+    const suggest = ((run.costUsd || 0) * 1.3).toFixed(3);
+    const altModel = (run.model || "").toLowerCase().includes("opus") ? "claude-sonnet-4-6" : "a smaller model tier";
+    issues.push({
+      tag: "Over Budget", color: "#f87171",
+      why: `$${over} over budget on last run`,
+      fix: `Option A: raise budget cap to $${suggest}. Option B: switch model to ${altModel}.`,
+      verify: `costUsd ≤ budgetUsd for 5 consecutive runs`
+    });
+  }
+  if ((run.latencyMs || 0) > 15000) {
+    issues.push({
+      tag: "Slow", color: "#f59e0b",
+      why: `${((run.latencyMs || 0) / 1000).toFixed(1)}s latency on last run`,
+      fix: `Reduce system prompt length. Split large tasks into smaller sub-agent calls.`,
+      verify: `Latency below 10s for next 5 runs`
+    });
+  }
+  const s = run.status || "";
+  if (s && s !== "success" && s !== "completed" && s !== "running") {
+    issues.push({
+      tag: "Failed", color: "#f87171",
+      why: `Last run status: ${s}`,
+      fix: `Check Governance → Audit Trail for this agent. Add error handling / fallback in agent code.`,
+      verify: `5 consecutive successful completions`
+    });
+  }
+  if (!issues.length) {
+    issues.push({
+      tag: "Low Score", color: "#f59e0b",
+      why: `Control score ${a.controlScore}/100 — below 70 threshold`,
+      fix: `Open Token Coach to identify prompt inefficiencies. Review autonomy level settings.`,
+      verify: `Score rises above 70`
+    });
+  }
+  return issues.slice(0, 2);
+}
+
 function renderOverview() {
   const m = dashboardState.headlineMetrics;
   const score = m.averageControlScore;
@@ -551,17 +610,31 @@ function renderOverview() {
         <p class="eyebrow">${atRiskAgents.length > 0 ? "⚠ Action Required" : "✓ All Clear"}</p>
 
         ${atRiskAgents.length > 0 ? `
-          <p class="exec-action-intro">${atRiskAgents.length} agent${atRiskAgents.length !== 1 ? "s" : ""} need review before next deployment</p>
-          ${atRiskAgents.map((a) => `
-            <div class="exec-agent-row">
-              <div class="exec-agent-dot" style="background:${a.controlScore >= 55 ? "#f59e0b" : "#f87171"}"></div>
-              <div class="exec-agent-info">
-                <strong>${escapeHtml(a.agentName)}</strong>
-                <span>${a.currentTask || a.workflow || "general"}</span>
-              </div>
-              <div class="exec-agent-score" style="color:${a.controlScore >= 55 ? "#f59e0b" : "#f87171"}">${a.controlScore}</div>
-            </div>
-          `).join("")}
+          <p class="exec-action-intro">${atRiskAgents.length} agent${atRiskAgents.length !== 1 ? "s" : ""} flagged — remediation steps below</p>
+          <div class="playbook-list">
+            ${atRiskAgents.map((a) => {
+              const scoreColor = a.controlScore >= 55 ? "#f59e0b" : "#f87171";
+              const issues = diagnoseAgent(a);
+              return `
+                <div class="playbook-item">
+                  <div class="playbook-header">
+                    <div class="exec-agent-dot" style="background:${scoreColor}"></div>
+                    <strong class="playbook-agent-name">${escapeHtml(a.agentName)}</strong>
+                    <span class="playbook-score-badge" style="color:${scoreColor}">score ${a.controlScore}</span>
+                  </div>
+                  ${issues.map(issue => `
+                    <div class="playbook-issue">
+                      <span class="playbook-tag" style="border-color:${issue.color};color:${issue.color}">${issue.tag}</span>
+                      <div class="playbook-detail">
+                        <div class="playbook-why">⚑ ${escapeHtml(issue.why)}</div>
+                        <div class="playbook-fix">→ ${escapeHtml(issue.fix)}</div>
+                        <div class="playbook-verify">✓ Done when: ${escapeHtml(issue.verify)}</div>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>`;
+            }).join("")}
+          </div>
         ` : `
           <p class="exec-action-intro">All ${allProfiles.length} agents operating within policy</p>
           ${healthyAgents.map((a) => `
@@ -576,12 +649,17 @@ function renderOverview() {
           `).join("")}
         `}
 
-        ${leakCount > 0 ? `
+        ${leaks.slice(0, 2).map(leak => `
           <div class="exec-leak-tip">
             <span class="exec-leak-bulb">💡</span>
-            <span><strong>${leakCount} model misuse${leakCount !== 1 ? "s" : ""} detected.</strong> Switching models could save ~${leakSavings}/mo. Open Token Coach to review.</span>
+            <div style="flex:1;min-width:0">
+              <strong>${escapeHtml(leak.agentName)}</strong>
+              <span class="playbook-leak-type"> · ${escapeHtml(leak.leakType)}</span>
+              <div class="playbook-fix" style="margin-top:2px">${escapeHtml(leak.recommendation || "Review in Token Coach")}</div>
+              <div class="playbook-verify">✓ Done when: cost drops below budget for 5 runs · saves ~$${(leak.wastedUsd || 14).toFixed(2)}/mo</div>
+            </div>
           </div>
-        ` : ""}
+        `).join("")}
 
         <div class="exec-action-btns">
           <button class="exec-btn-primary js-nav-tab" data-tab="tokens">Token Coach →</button>

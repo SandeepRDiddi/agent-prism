@@ -5099,6 +5099,56 @@ html[data-theme="light"] .matrix-grid-bg {
 
 .exec-leak-bulb { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
 .exec-leak-tip strong { color: #fbbf24; font-weight: 600; }
+.playbook-leak-type { color: rgba(200,215,255,0.45); font-size: 0.78rem; }
+
+/* Playbook — per-agent remediation */
+.playbook-list { display: flex; flex-direction: column; gap: 14px; margin: 10px 0 4px; }
+
+.playbook-item {
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.02);
+}
+
+.playbook-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.playbook-agent-name { font-size: 0.87rem; color: #c8d6ff; flex: 1; min-width: 0; }
+.playbook-score-badge { font-size: 0.72rem; font-family: monospace; opacity: 0.7; white-space: nowrap; }
+
+.playbook-issue {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.playbook-issue:last-child { margin-bottom: 0; }
+
+.playbook-tag {
+  flex-shrink: 0;
+  font-family: monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 1px 6px;
+  height: fit-content;
+  margin-top: 1px;
+  letter-spacing: 0.04em;
+}
+
+.playbook-detail { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.playbook-why { color: rgba(200,215,255,0.5); }
+.playbook-fix { color: #c8d6ff; }
+.playbook-verify { color: #10b981; font-size: 0.74rem; opacity: 0.85; }
 
 .exec-action-btns { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 
