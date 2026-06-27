@@ -1073,9 +1073,12 @@ function svgSwimLane({ data, W = 780 }) {
   if (!data.length) return `<svg viewBox="0 0 ${W} 80"><text x="${W/2}" y="44" fill="#4a5568" text-anchor="middle" font-size="12">No agents yet</text></svg>`;
   const clrMap = { Efficient: "#5ee3a3", Moderate: "#ffd580", Wasteful: "#ff9a9a" };
   const tiers = ["Efficient", "Moderate", "Wasteful"];
-  const LANE_H = 96, LANE_GAP = 8, PAD = 12, HDR = 26;
+  const LANE_H = 124, LANE_GAP = 10, PAD = 12, HDR = 28;
   const usableW = W - PAD * 2;
   const totalH = tiers.length * LANE_H + (tiers.length - 1) * LANE_GAP + PAD * 2;
+  // bubble center: upper 45% of lane body leaves ~55% for labels below
+  const BUBBLE_FRAC = 0.38;
+  const CHAR_PX = 6.0; // monospace width at font-size 9
 
   const lanes = tiers.map((tier, ti) => {
     const color = clrMap[tier];
@@ -1085,38 +1088,48 @@ function svgSwimLane({ data, W = 780 }) {
     const hdr = `${tier.toUpperCase()} · ${agents.length} agent${agents.length !== 1 ? "s" : ""}${agents.length ? ` · avg $${groupAvg.toFixed(4)}/run` : ""}`;
 
     if (!agents.length) {
-      return `<rect x="${PAD}" y="${laneY}" width="${usableW}" height="${LANE_H}" rx="6"
+      return `<rect x="${PAD}" y="${laneY}" width="${usableW}" height="${LANE_H}" rx="8"
                 fill="${color}" fill-opacity="0.03" stroke="${color}" stroke-opacity="0.15" stroke-width="1"/>
-              <text x="${PAD + 12}" y="${laneY + 18}" fill="${color}" font-size="10.5" font-family="monospace" font-weight="700">${hdr}</text>
-              <text x="${PAD + usableW / 2}" y="${laneY + LANE_H / 2 + 8}" fill="${color}" font-size="10" text-anchor="middle" opacity="0.35">none</text>`;
+              <text x="${PAD + 14}" y="${laneY + 20}" fill="${color}" font-size="11" font-family="monospace" font-weight="700">${hdr}</text>
+              <text x="${PAD + usableW / 2}" y="${laneY + LANE_H / 2 + 8}" fill="${color}" font-size="10" text-anchor="middle" opacity="0.3">no agents in this tier</text>`;
     }
 
     const maxRuns = Math.max(...agents.map(a => a.runs), 1);
     const maxCost = Math.max(...agents.map(a => a.avgCost), 0.0001);
-    const slotW = Math.min(72, usableW / agents.length);
-    const bubbleCY = laneY + HDR + (LANE_H - HDR) * 0.44;
-    const startX = PAD + (usableW - slotW * agents.length) / 2;
+    // slot width — wider slots → more characters visible
+    const slotW = Math.min(100, Math.max(60, usableW / agents.length));
+    const maxChars = Math.max(6, Math.floor((slotW - 8) / CHAR_PX));
+    const bubbleCY = laneY + HDR + (LANE_H - HDR) * BUBBLE_FRAC;
+    const totalSlots = slotW * agents.length;
+    const startX = PAD + 8 + (usableW - 16 - totalSlots) / 2;
 
     const bubbles = agents.map((agent, ai) => {
       const cx = startX + ai * slotW + slotW / 2;
-      const r = Math.max(7, Math.min(20, 7 + (agent.runs / maxRuns) * 13));
-      const lbl = (agent.name || "").length > 9 ? agent.name.slice(0, 8) + "…" : agent.name;
-      const costFmt = agent.avgCost < 0.001 ? `$${agent.avgCost.toFixed(5)}` : agent.avgCost < 0.01 ? `$${agent.avgCost.toFixed(4)}` : `$${agent.avgCost.toFixed(3)}`;
-      const barW = Math.round((agent.avgCost / maxCost) * (slotW - 6));
+      const r = Math.max(8, Math.min(22, 8 + (agent.runs / maxRuns) * 14));
+      // adaptive truncation: show as many chars as slot allows
+      const name = agent.name || "";
+      const lbl = name.length > maxChars ? name.slice(0, maxChars - 1) + "…" : name;
+      const costFmt = agent.avgCost < 0.001 ? `$${agent.avgCost.toFixed(5)}`
+                    : agent.avgCost < 0.01  ? `$${agent.avgCost.toFixed(4)}`
+                    : agent.avgCost < 1     ? `$${agent.avgCost.toFixed(3)}`
+                    :                         `$${agent.avgCost.toFixed(2)}`;
+      const barW = Math.max(2, Math.round((agent.avgCost / maxCost) * (slotW - 10)));
       const tipTokens = (agent.avgTokens || 0).toLocaleString();
+      const nameY = bubbleCY + r + 14;
+      const costY = bubbleCY + r + 26;
       return `
-        <circle cx="${cx}" cy="${bubbleCY}" r="${r}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="1.4">
-          <title>${agent.name}&#10;Cost: ${costFmt}/run&#10;Tokens: ${tipTokens}/run&#10;Runs: ${agent.runs}</title>
+        <circle cx="${cx}" cy="${bubbleCY}" r="${r}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="1.5">
+          <title>${name}&#10;Cost: ${costFmt}/run&#10;Tokens: ${tipTokens}/run&#10;Runs: ${agent.runs}</title>
         </circle>
-        <rect x="${cx - barW / 2}" y="${bubbleCY + r + 3}" width="${barW}" height="2" rx="1" fill="${color}" opacity="0.35"/>
-        <text x="${cx}" y="${bubbleCY + r + 13}" fill="${color}" font-size="8" text-anchor="middle" font-family="monospace">${lbl}</text>
-        <text x="${cx}" y="${bubbleCY + r + 23}" fill="${color}" font-size="7.5" text-anchor="middle" font-family="monospace" opacity="0.6">${costFmt}</text>`;
+        <rect x="${cx - barW / 2}" y="${bubbleCY + r + 4}" width="${barW}" height="2" rx="1" fill="${color}" opacity="0.4"/>
+        <text x="${cx}" y="${nameY}" fill="${color}" font-size="9" text-anchor="middle" font-family="monospace">${lbl}</text>
+        <text x="${cx}" y="${costY}" fill="${color}" font-size="8.5" text-anchor="middle" font-family="monospace" opacity="0.65">${costFmt}</text>`;
     }).join("");
 
     return `
-      <rect x="${PAD}" y="${laneY}" width="${usableW}" height="${LANE_H}" rx="6"
-            fill="${color}" fill-opacity="0.04" stroke="${color}" stroke-opacity="0.2" stroke-width="1"/>
-      <text x="${PAD + 12}" y="${laneY + 18}" fill="${color}" font-size="10.5" font-family="monospace" font-weight="700">${hdr}</text>
+      <rect x="${PAD}" y="${laneY}" width="${usableW}" height="${LANE_H}" rx="8"
+            fill="${color}" fill-opacity="0.04" stroke="${color}" stroke-opacity="0.22" stroke-width="1"/>
+      <text x="${PAD + 14}" y="${laneY + 20}" fill="${color}" font-size="11" font-family="monospace" font-weight="700">${hdr}</text>
       ${bubbles}`;
   }).join("");
 
