@@ -1,140 +1,174 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Executive View - Agent Prism</title>
+    <title>Executive View — Agent Prism</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
-    <!-- Load Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      /* page-level overrides for standalone exec view */
+      .lv-shell { max-width: 1280px; margin: 0 auto; padding: 24px 28px 48px; }
+      .lv-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+      .lv-brand { display: flex; align-items: center; gap: 14px; }
+      .lv-brand-mark { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg,#3b82f6,#8b5cf6); display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;color:#fff; }
+      .lv-title { font-size: 1.1rem; font-weight: 700; color: #e0e4ff; }
+      .lv-subtitle { font-size: 0.75rem; color: rgba(200,215,255,0.45); margin-top: 2px; }
+      .lv-nav { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+      .lv-nav-link { font-size:0.8rem; color:rgba(200,215,255,0.5); text-decoration:none; padding:6px 12px; border:1px solid rgba(255,255,255,0.1); border-radius:6px; transition:all 0.15s; }
+      .lv-nav-link:hover { color:#c8d6ff; border-color:rgba(255,255,255,0.2); }
+      .lv-refresh { font-size:0.8rem; color:rgba(200,215,255,0.4); margin-left:4px; }
+
+      /* loading / error */
+      .lv-loading { text-align:center; padding:80px 20px; color:rgba(200,215,255,0.4); font-size:1rem; }
+
+      /* top KPI strip */
+      .lv-kpi-strip { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
+      @media(max-width:900px){ .lv-kpi-strip{ grid-template-columns:repeat(3,1fr); } }
+      @media(max-width:580px){ .lv-kpi-strip{ grid-template-columns:repeat(2,1fr); } }
+      .lv-kpi { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); border-radius:10px; padding:14px 16px; }
+      .lv-kpi-label { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.07em; color:rgba(200,215,255,0.38); margin-bottom:6px; }
+      .lv-kpi-value { font-size:1.5rem; font-weight:800; font-family:monospace; color:#c8d6ff; line-height:1.1; }
+      .lv-kpi-sub { font-size:0.7rem; color:rgba(200,215,255,0.4); margin-top:4px; }
+
+      /* main grid */
+      .lv-grid { display:grid; grid-template-columns:1.5fr 1fr 1fr; gap:16px; margin-bottom:16px; align-items:start; }
+      @media(max-width:1100px){ .lv-grid{ grid-template-columns:1fr 1fr; } .lv-health{ grid-column:1/-1; } }
+      @media(max-width:680px){ .lv-grid{ grid-template-columns:1fr; } }
+      .lv-full { grid-column:1/-1; }
+
+      /* health card */
+      .lv-health { padding:22px; }
+      .lv-gauge-row { display:flex; align-items:center; gap:22px; margin:16px 0 18px; }
+      .lv-gauge { position:relative; width:100px; height:100px; flex-shrink:0; }
+      .lv-gauge svg { width:100%; height:100%; }
+      .lv-gauge-inner { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0; }
+      .lv-gauge-num { font-size:1.6rem; font-weight:800; font-family:monospace; line-height:1; }
+      .lv-gauge-den { font-size:0.7rem; color:rgba(200,215,255,0.4); }
+      .lv-band-pill { display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;margin-bottom:6px; }
+      .lv-band-desc { font-size:0.8rem; color:rgba(200,215,255,0.55); line-height:1.5; margin-bottom:12px; }
+      .lv-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+      .lv-kpi-cell { text-align:center; }
+      .lv-kpi-cell span { display:block; font-size:1.1rem; font-weight:700; font-family:monospace; color:#c8d6ff; }
+      .lv-kpi-cell label { display:block; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em; color:rgba(200,215,255,0.38); margin-top:2px; }
+
+      /* bar rows */
+      .lv-bars { display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+      .lv-bar-row { display:flex; flex-direction:column; gap:4px; }
+      .lv-bar-meta { display:flex; justify-content:space-between; font-size:0.75rem; }
+      .lv-bar-label { color:rgba(200,215,255,0.6); }
+      .lv-bar-detail { color:rgba(200,215,255,0.4); }
+      .lv-bar-track { height:5px; background:rgba(255,255,255,0.07); border-radius:3px; overflow:hidden; }
+      .lv-bar-fill { height:100%; border-radius:3px; transition:width 0.5s ease; }
+
+      /* finance card */
+      .lv-finance { padding:20px; }
+      .lv-spend-hero { font-size:2rem; font-weight:800; font-family:monospace; color:#c8d6ff; margin:8px 0 4px; }
+      .lv-spend-sub { font-size:0.75rem; color:rgba(200,215,255,0.4); margin-bottom:14px; }
+      .lv-fl-row { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.82rem; }
+      .lv-fl-row:last-child { border-bottom:none; }
+      .lv-fl-label { color:rgba(200,215,255,0.5); }
+
+      /* ROI card */
+      .lv-roi { padding:20px; }
+      .lv-roi-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0; }
+      .lv-roi-cell { padding:12px 14px; border-radius:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+      .lv-roi-cell label { font-size:0.67rem; text-transform:uppercase; letter-spacing:0.05em; color:rgba(200,215,255,0.35); display:block; margin-bottom:4px; }
+      .lv-roi-cell strong { font-size:1.3rem; font-family:monospace; font-weight:700; }
+      .lv-roi-multiplier { text-align:center; padding:14px; border:1px solid rgba(16,185,129,0.25); border-radius:10px; background:rgba(16,185,129,0.06); }
+      .lv-roi-mult-num { font-size:2.8rem; font-weight:800; font-family:monospace; color:#10b981; line-height:1; }
+      .lv-roi-mult-label { font-size:0.72rem; color:rgba(200,215,255,0.45); margin-top:4px; }
+      .lv-roi-note { font-size:0.7rem; color:rgba(200,215,255,0.3); margin-top:8px; line-height:1.5; }
+
+      /* agent scoreboard */
+      .lv-scoreboard { padding:20px; }
+      .lv-sb-table { width:100%; border-collapse:collapse; margin-top:12px; }
+      .lv-sb-table th { text-align:left; font-size:0.67rem; text-transform:uppercase; letter-spacing:0.06em; color:rgba(200,215,255,0.35); padding:0 8px 8px 0; border-bottom:1px solid rgba(255,255,255,0.07); font-weight:500; }
+      .lv-sb-table td { padding:8px 8px 8px 0; border-bottom:1px solid rgba(255,255,255,0.04); font-size:0.8rem; vertical-align:middle; }
+      .lv-sb-table tr:last-child td { border-bottom:none; }
+      .lv-sb-name { color:#c8d6ff; font-weight:500; max-width:200px; }
+      .lv-sb-wf { color:rgba(200,215,255,0.45); font-size:0.74rem; }
+      .lv-sb-score { font-family:monospace; font-weight:700; }
+      .lv-sb-mono { font-family:monospace; color:rgba(200,215,255,0.65); }
+      .lv-score-pill { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:700; font-family:monospace; }
+
+      /* risk + workflow panels */
+      .lv-risk { padding:20px; }
+      .lv-risk-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.82rem; }
+      .lv-risk-row:last-child { border-bottom:none; }
+      .lv-risk-label { color:rgba(200,215,255,0.5); }
+
+      .lv-workflow { padding:20px; }
+      .lv-wf-row { margin-bottom:10px; }
+      .lv-wf-meta { display:flex; justify-content:space-between; font-size:0.76rem; margin-bottom:4px; }
+      .lv-wf-name { color:#c8d6ff; text-transform:capitalize; }
+      .lv-wf-stat { color:rgba(200,215,255,0.38); font-family:monospace; }
+      .lv-wf-track { height:5px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden; }
+      .lv-wf-fill { height:100%; background:linear-gradient(90deg,#3b82f6,#10b981); border-radius:3px; }
+
+      /* action panel */
+      .lv-action { padding:20px; }
+      .lv-action-intro { font-size:0.82rem; color:rgba(200,215,255,0.55); margin-bottom:14px; }
+      .lv-agent-row { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+      .lv-agent-row:last-child { border-bottom:none; }
+      .lv-agent-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+      .lv-agent-info { flex:1; min-width:0; }
+      .lv-agent-name { font-size:0.83rem; font-weight:600; color:#c8d6ff; }
+      .lv-agent-why { font-size:0.74rem; color:rgba(200,215,255,0.45); margin-top:2px; }
+      .lv-agent-fix { font-size:0.74rem; color:#c8d6ff; margin-top:2px; }
+      .lv-agent-verify { font-size:0.7rem; color:#10b981; margin-top:2px; }
+
+      /* auth overlay */
+      .lv-auth-overlay { position:fixed;inset:0;background:rgba(10,11,20,0.92);backdrop-filter:blur(8px);z-index:100;display:flex;align-items:center;justify-content:center; }
+      .lv-auth-modal { background:#111827;border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:32px;width:360px;max-width:90vw; }
+      .lv-auth-modal h2 { font-size:1.2rem;margin-bottom:8px;color:#e0e4ff; }
+      .lv-auth-modal p { font-size:0.82rem;color:rgba(200,215,255,0.5);margin-bottom:20px; }
+      .lv-auth-modal input { width:100%;box-sizing:border-box;padding:10px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e0e4ff;font-size:0.9rem;margin-bottom:12px; }
+      .lv-auth-modal button { width:100%;padding:10px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.9rem; }
+      .lv-auth-modal button:hover { background:#2563eb; }
+      .lv-auth-error { font-size:0.78rem;color:#f87171;margin-top:8px;min-height:18px; }
+
+      .green { color:#10b981; }
+      .amber { color:#f59e0b; }
+      .red   { color:#f87171; }
+    </style>
   </head>
   <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-block">
-          <div class="brand-mark">A</div>
+    <div class="lv-shell">
+      <header class="lv-header">
+        <div class="lv-brand">
+          <div class="lv-brand-mark">AP</div>
           <div>
-            <div class="title-row">
-              <h1>Agent Prism <span style="color:var(--muted); font-weight:400; font-size:0.8em; margin-left:8px;">| Executive View</span></h1>
-            </div>
-            <p class="subtitle">
-              High-level ROI, spend velocity, and risk posture across the autonomous fleet.
-            </p>
+            <div class="lv-title">Agent Prism <span style="color:rgba(200,215,255,0.35);font-weight:400">· Executive View</span></div>
+            <div class="lv-subtitle">Fleet reliability · Financial governance · Risk posture · ROI</div>
           </div>
         </div>
-
-        <div class="topbar-actions">
-          <div class="status-pill">
-            <span class="status-dot"></span>
-            <span id="active-agents">No tenant connected</span>
-          </div>
-          <a href="/" class="ghost topbar-link">NOC View (Live Logs)</a>
-          <button id="logout" class="ghost">Logout</button>
+        <div class="lv-nav">
+          <span class="lv-refresh" id="lv-refresh-time"></span>
+          <a href="/" class="lv-nav-link">← Operations Dashboard</a>
+          <button class="lv-nav-link" id="lv-logout" style="background:none;cursor:pointer;border:1px solid rgba(255,255,255,0.1)">Logout</button>
         </div>
       </header>
 
-      <main class="workspace" id="workspace" style="padding: 24px;">
-        <!-- High Level KPIs -->
-        <section class="metrics-grid" id="executive-metrics" style="margin-bottom: 24px;">
-          <!-- Populated by JS -->
-        </section>
-
-        <section class="three-col-grid" style="grid-template-columns: 2fr 1fr; gap: 24px;">
-          
-          <!-- Spend Velocity Chart -->
-          <article class="panel">
-            <div class="panel-title">
-              <p class="eyebrow">Financial</p>
-              <h2>Cumulative Spend Velocity (30 Days)</h2>
-            </div>
-            <div style="height: 300px; width: 100%; position: relative;">
-              <canvas id="spendTrendChart"></canvas>
-            </div>
-          </article>
-
-          <!-- Cost by Team Chart -->
-          <article class="panel">
-            <div class="panel-title">
-              <p class="eyebrow">Allocation</p>
-              <h2>Spend by Team</h2>
-            </div>
-            <div style="height: 300px; width: 100%; position: relative; display: flex; justify-content: center;">
-              <canvas id="teamAllocationChart"></canvas>
-            </div>
-          </article>
-
-        </section>
-
-        <!-- ROI and Risk Section -->
-        <section class="three-col-grid" style="margin-top: 24px;">
-          
-          <article class="panel detail-panel" style="grid-column: span 2;">
-            <div class="panel-title">
-              <p class="eyebrow">Business Value</p>
-              <h2>Return on AI Investment (ROI)</h2>
-            </div>
-            <div style="display: flex; gap: 48px; align-items: center; padding: 24px;">
-              <div>
-                <p style="color: var(--muted); font-size: 13px; margin-bottom: 4px;">Total Cost of AI Compute</p>
-                <h3 id="roi-ai-cost" style="font-size: 32px; color: #f87171;">$0.00</h3>
-              </div>
-              <div style="font-size: 24px; color: var(--muted);">🆚</div>
-              <div>
-                <p style="color: var(--muted); font-size: 13px; margin-bottom: 4px;">Equivalent Human Labor Cost Saved</p>
-                <h3 id="roi-human-cost" style="font-size: 32px; color: #4ade80;">$0.00</h3>
-                <p style="color: var(--muted); font-size: 12px; margin-top: 4px;">Based on average engineering rate ($100/hr) & 15m/task</p>
-              </div>
-              <div style="flex-grow: 1; text-align: right;">
-                <p style="color: var(--muted); font-size: 13px; margin-bottom: 4px;">Net ROI Multiplier</p>
-                <h3 id="roi-multiplier" style="font-size: 48px; color: white;">0x</h3>
-              </div>
-            </div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-title">
-              <p class="eyebrow">Risk Posture</p>
-              <h2>Security Interventions</h2>
-            </div>
-            <div style="padding: 24px 0;">
-              <div style="display: flex; justify-content: space-between; padding-bottom: 16px; border-bottom: 1px solid var(--line);">
-                <span style="color: var(--muted);">Policy Violations Blocked</span>
-                <strong id="kpi-violations" style="color: #f87171;">0</strong>
-              </div>
-              <div style="display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line);">
-                <span style="color: var(--muted);">Guardrail Hits</span>
-                <strong id="kpi-guardrails" style="color: #fbbf24;">0</strong>
-              </div>
-              <div style="display: flex; justify-content: space-between; padding-top: 16px;">
-                <span style="color: var(--muted);">P99 Latency</span>
-                <strong id="kpi-latency">0ms</strong>
-              </div>
-            </div>
-          </article>
-
-        </section>
-
-      </main>
-
-      <div id="auth-overlay" class="auth-overlay">
-        <div class="auth-modal">
-          <h2>Connect Agent Prism</h2>
-          <p>Please enter your tenant API key to view the executive dashboard.</p>
-          <form id="auth-form">
-            <input type="password" id="api-key-input" placeholder="acp_..." required />
-            <button type="submit">View Dashboard</button>
-          </form>
-          <p class="auth-error" id="auth-error"></p>
-        </div>
+      <div id="lv-content">
+        <div class="lv-loading">Loading executive dashboard…</div>
       </div>
     </div>
-    
+
+    <div id="lv-auth" class="lv-auth-overlay" style="display:none">
+      <div class="lv-auth-modal">
+        <h2>Executive Dashboard</h2>
+        <p>Enter your tenant API key to access the executive view.</p>
+        <form id="lv-auth-form">
+          <input type="password" id="lv-api-key" placeholder="acp_…" autocomplete="off" required />
+          <button type="submit">View Dashboard</button>
+        </form>
+        <div class="lv-auth-error" id="lv-auth-error"></div>
+      </div>
+    </div>
+
     <script src="/leadership.js"></script>
   </body>
 </html>
