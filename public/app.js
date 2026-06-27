@@ -1277,9 +1277,7 @@ async function certifyAgent(agentName, env = "staging") {
       body: JSON.stringify({ environment: env })
     });
     await loadCertifications();
-    renderCertPanel();
-    const status = result?.cert?.certStatus || result?.evaluation?.status || "processed";
-    certPanelStatus(`${agentName} — ${status === "certified" ? "✓ Certified" : status} for ${env}`);
+    renderCertPanel(agentName);
   } catch (err) {
     certPanelStatus(`Certify failed: ${err.message}`, true);
     console.error("certifyAgent:", err);
@@ -1323,8 +1321,7 @@ async function doPromoteAgent(agentName) {
       body: "{}"
     });
     await loadCertifications();
-    renderCertPanel();
-    certPanelStatus(`✓ ${agentName} promoted to production`);
+    renderCertPanel(agentName);
   } catch (err) {
     certPanelStatus(`Promote failed: ${err.message}`, true);
     console.error("promoteAgent:", err);
@@ -1368,15 +1365,14 @@ async function doRevokeConfirmed(agentName, env) {
       body: JSON.stringify({ environment: env, reason: "Manually revoked via dashboard" })
     });
     await loadCertifications();
-    renderCertPanel();
-    certPanelStatus(`✓ ${agentName} ${env} cert revoked`);
+    renderCertPanel(agentName);
   } catch (err) {
     certPanelStatus(`Revoke failed: ${err.message}`, true);
     console.error("revokeAgentCert:", err);
   }
 }
 
-function renderCertPanel() {
+function renderCertPanel(highlightAgent = null) {
   const el = document.querySelector("#cert-panel-body");
   if (!el) return;
 
@@ -1395,8 +1391,10 @@ function renderCertPanel() {
     return;
   }
 
-  // Sort: uncertified first (needs action), then certified, then revoked
+  // Pin recently-acted agent to top; rest: uncertified first, then revoked, then certified
   const sorted = [...certificationData].sort((a, b) => {
+    if (a.agentName === highlightAgent) return -1;
+    if (b.agentName === highlightAgent) return 1;
     const order = { uncertified: 0, revoked: 1, certified: 2 };
     return (order[a.stagingCert] ?? 0) - (order[b.stagingCert] ?? 0);
   });
@@ -1470,7 +1468,7 @@ function renderCertPanel() {
         }).join("") + (tools.length > 5 ? `<span class="cert-tool-pill" style="color:var(--muted)">+${tools.length - 5} more</span>` : "");
 
         return `
-          <div class="cert-card ${needsAction ? "cert-card--needs-action" : ""}">
+          <div class="cert-card ${needsAction ? "cert-card--needs-action" : ""}" data-cert-card="${escapeHtml(name)}">
             <div class="cert-card-top">
               <div class="cert-card-identity">
                 <div class="cert-card-name">${escapeHtml(name)}</div>
@@ -1548,6 +1546,16 @@ function renderCertPanel() {
       else if (action === "revoke") revokeAgentCert(agentName);
     });
   });
+
+  // Scroll to and flash the card that was just acted on
+  if (highlightAgent) {
+    const card = el.querySelector(`[data-cert-card="${CSS.escape(highlightAgent)}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      card.classList.add("cert-card--just-acted");
+      setTimeout(() => card.classList.remove("cert-card--just-acted"), 2800);
+    }
+  }
 }
 
 function renderGovernanceView() {
