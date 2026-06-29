@@ -6,7 +6,6 @@ data/
 openspec/
 test/
 .claude/
-db/
 docs/
 *.md
 !README.md
