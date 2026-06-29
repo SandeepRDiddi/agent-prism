@@ -31,6 +31,7 @@ import {
   authenticateDashboardSession,
   revokeDashboardSession,
   setUserPassword,
+  ensureDemoUser,
   createConnector,
   getBootstrapStatus,
   listTenantContext,
@@ -3030,10 +3031,13 @@ if (process.env.RUN_MIGRATIONS_ON_STARTUP === "true" && process.env.DATABASE_URL
 }
 
 // ── Demo user seed (DEMO_EMAIL + DEMO_PASSWORD env vars) ─────────────────────
-// Ensures a demo user exists on every startup. Safe to re-run — uses upsert.
+// Upserts a demo user on every startup. Creates if not found (in first tenant).
 if (process.env.DEMO_EMAIL && process.env.DEMO_PASSWORD) {
-  setUserPassword({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD })
-    .then(() => process.stderr.write(`[demo] Demo user ensured: ${process.env.DEMO_EMAIL}\n`))
+  ensureDemoUser({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD })
+    .then((u) => {
+      if (u) process.stderr.write(`[demo] Demo user ready: ${process.env.DEMO_EMAIL}\n`);
+      else    process.stderr.write(`[demo] Demo user skipped (no active tenant yet)\n`);
+    })
     .catch((err) => process.stderr.write(`[demo] Demo user seed failed: ${err.message}\n`));
 }
 

@@ -244,6 +244,22 @@ export async function ensureSchemaPatches() {
     );
     CREATE INDEX IF NOT EXISTS idx_hitl_approvals_run   ON hitl_approvals (run_id);
     CREATE INDEX IF NOT EXISTS idx_hitl_approvals_agent ON hitl_approvals (tenant_id, agent_name);
+
+    -- migration 009: dashboard sessions (added with login feature — may be missing on old DBs)
+    CREATE TABLE IF NOT EXISTS dashboard_sessions (
+      id         TEXT        PRIMARY KEY,
+      tenant_id  TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id    TEXT        NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+      token_hash TEXT        NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_dashboard_sessions_token  ON dashboard_sessions (token_hash);
+    CREATE INDEX IF NOT EXISTS idx_dashboard_sessions_tenant ON dashboard_sessions (tenant_id);
+
+    -- migration 009: password_hash column on users (added with login feature)
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
   `);
   process.stderr.write("[schema] Startup patches verified\n");
 }
@@ -733,6 +749,44 @@ export async function setUserPassword({ tenantId, email, password }) {
     [hashPassword(password), normalized, tenantId || null]
   );
   return sanitizeUser(result.rows[0]);
+}
+
+export async function ensureDemoUser({ email, password }) {
+  const pool = await getPool();
+  const normalized = String(email || "").trim().toLowerCase();
+
+  // Try update first
+  const upd = await pool.query(
+    `update users set password_hash = $1
+     where lower(email) = $2
+     returning id, tenant_id, email, name, role, created_at`,
+    [hashPassword(password), normalized]
+  );
+  if (upd.rows[0]) {
+    process.stderr.write(`[demo] Updated password for existing user: ${normalized}\n`);
+    return sanitizeUser(upd.rows[0]);
+  }
+
+  // User doesn't exist — create them in the first active tenant
+  const tenantRow = await pool.query(
+    "select id from tenants where status = 'active' order by created_at limit 1"
+  );
+  if (!tenantRow.rows[0]) {
+    process.stderr.write("[demo] No active tenant found — demo user not created\n");
+    return null;
+  }
+  const tenantId = tenantRow.rows[0].id;
+  const userId   = createId("usr");
+  const now      = new Date().toISOString();
+  const ins = await pool.query(
+    `insert into users (id, tenant_id, email, name, role, password_hash, created_at, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $7)
+     on conflict (email, tenant_id) do update set password_hash = excluded.password_hash
+     returning id, tenant_id, email, name, role, created_at`,
+    [userId, tenantId, normalized, "Demo User", "owner", hashPassword(password), now]
+  );
+  process.stderr.write(`[demo] Created demo user: ${normalized} in tenant ${tenantId}\n`);
+  return sanitizeUser(ins.rows[0]);
 }
 
 function createSessionTokenHash(token) {

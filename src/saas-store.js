@@ -103,6 +103,11 @@ export async function setUserPassword({ tenantId, email, password }) {
   return backend.setUserPassword ? backend.setUserPassword({ tenantId, email, password }) : null;
 }
 
+export async function ensureDemoUser({ email, password }) {
+  const backend = await getBackend();
+  return backend.ensureDemoUser ? backend.ensureDemoUser({ email, password }) : null;
+}
+
 export async function listTenantContext(tenantId) {
   const backend = await getBackend();
   return backend.listTenantContext(tenantId);
