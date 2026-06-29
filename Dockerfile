@@ -15,13 +15,14 @@ COPY server.js ./
 COPY src/ ./src/
 COPY config/ ./config/
 COPY public/ ./public/
+COPY db/ ./db/
 
 # Create data directory and set ownership
 RUN mkdir -p /app/data && chown -R appuser:appgroup /app
 
 USER appuser
 
-EXPOSE 3000
+EXPOSE 10000
 
 ENV NODE_ENV=production
 
