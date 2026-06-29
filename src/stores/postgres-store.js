@@ -779,9 +779,9 @@ export async function ensureDemoUser({ email, password }) {
   const userId   = createId("usr");
   const now      = new Date().toISOString();
   const ins = await pool.query(
-    `insert into users (id, tenant_id, email, name, role, password_hash, created_at, updated_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $7)
-     on conflict (email, tenant_id) do update set password_hash = excluded.password_hash
+    `insert into users (id, tenant_id, email, name, role, password_hash, created_at)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (tenant_id, lower(email)) do update set password_hash = excluded.password_hash
      returning id, tenant_id, email, name, role, created_at`,
     [userId, tenantId, normalized, "Demo User", "owner", hashPassword(password), now]
   );

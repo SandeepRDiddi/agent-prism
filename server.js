@@ -3075,10 +3075,10 @@ if (process.env.RUN_MIGRATIONS_ON_STARTUP === "true" && process.env.DATABASE_URL
 if (process.env.DEMO_EMAIL && process.env.DEMO_PASSWORD) {
   ensureDemoUser({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD })
     .then((u) => {
-      if (u) process.stderr.write(`[demo] Demo user ready: ${process.env.DEMO_EMAIL}\n`);
-      else    process.stderr.write(`[demo] Demo user skipped (no active tenant yet)\n`);
+      if (u) process.stderr.write(`[demo] Demo user ready: ${u.email} (tenant ${u.tenantId})\n`);
+      else    process.stderr.write(`[demo] Demo user skipped — no active tenant found yet\n`);
     })
-    .catch((err) => process.stderr.write(`[demo] Demo user seed failed: ${err.message}\n`));
+    .catch((err) => process.stderr.write(`[demo] Demo user seed FAILED: ${err.stack || err.message}\n`));
 }
 
 // ── Data retention (DATA_RETENTION_DAYS=90 deletes runs/captures older than N days) ──
