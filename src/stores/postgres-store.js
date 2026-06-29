@@ -755,36 +755,68 @@ export async function ensureDemoUser({ email, password }) {
   const pool = await getPool();
   const normalized = String(email || "").trim().toLowerCase();
 
-  // Try update first
-  const upd = await pool.query(
-    `update users set password_hash = $1
-     where lower(email) = $2
-     returning id, tenant_id, email, name, role, created_at`,
-    [hashPassword(password), normalized]
-  );
+  process.stderr.write(`[demo] ensureDemoUser start: ${normalized}\n`);
+
+  // Hash once — reuse for both update and insert
+  const hash = hashPassword(password);
+
+  // Try update first (user already exists)
+  let upd;
+  try {
+    upd = await pool.query(
+      `update users set password_hash = $1
+       where lower(email) = $2
+       returning id, tenant_id, email, name, role, created_at`,
+      [hash, normalized]
+    );
+  } catch (e) {
+    process.stderr.write(`[demo] UPDATE failed: ${e.message}\n`);
+    throw e;
+  }
+
   if (upd.rows[0]) {
     process.stderr.write(`[demo] Updated password for existing user: ${normalized}\n`);
     return sanitizeUser(upd.rows[0]);
   }
 
-  // User doesn't exist — create them in the first active tenant
-  const tenantRow = await pool.query(
-    "select id from tenants where status = 'active' order by created_at limit 1"
-  );
+  process.stderr.write(`[demo] User not found, creating in first active tenant...\n`);
+
+  // User doesn't exist — create in first active tenant
+  let tenantRow;
+  try {
+    tenantRow = await pool.query(
+      "select id from tenants where status = 'active' order by created_at limit 1"
+    );
+  } catch (e) {
+    process.stderr.write(`[demo] tenant query failed: ${e.message}\n`);
+    throw e;
+  }
+
   if (!tenantRow.rows[0]) {
     process.stderr.write("[demo] No active tenant found — demo user not created\n");
     return null;
   }
+
   const tenantId = tenantRow.rows[0].id;
   const userId   = createId("usr");
   const now      = new Date().toISOString();
-  const ins = await pool.query(
-    `insert into users (id, tenant_id, email, name, role, password_hash, created_at)
-     values ($1, $2, $3, $4, $5, $6, $7)
-     on conflict (tenant_id, lower(email)) do update set password_hash = excluded.password_hash
-     returning id, tenant_id, email, name, role, created_at`,
-    [userId, tenantId, normalized, "Demo User", "owner", hashPassword(password), now]
-  );
+
+  process.stderr.write(`[demo] Inserting into tenant ${tenantId}...\n`);
+
+  let ins;
+  try {
+    ins = await pool.query(
+      `insert into users (id, tenant_id, email, name, role, password_hash, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       on conflict (tenant_id, lower(email)) do update set password_hash = excluded.password_hash
+       returning id, tenant_id, email, name, role, created_at`,
+      [userId, tenantId, normalized, "Demo User", "owner", hash, now]
+    );
+  } catch (e) {
+    process.stderr.write(`[demo] INSERT failed: ${e.message}\n`);
+    throw e;
+  }
+
   process.stderr.write(`[demo] Created demo user: ${normalized} in tenant ${tenantId}\n`);
   return sanitizeUser(ins.rows[0]);
 }

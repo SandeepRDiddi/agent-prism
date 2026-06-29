@@ -1235,6 +1235,20 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    // Admin: manually trigger ensureDemoUser (no body needed — uses env vars)
+    if (req.method === "POST" && req.url === "/api/admin/ensure-demo-user") {
+      if (!requireAdmin(req, res)) return;
+      if (!process.env.DEMO_EMAIL || !process.env.DEMO_PASSWORD) {
+        return sendJson(res, 400, { error: "DEMO_EMAIL and DEMO_PASSWORD env vars not set" });
+      }
+      try {
+        const user = await ensureDemoUser({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD });
+        return sendJson(res, 200, { ok: true, user: user || null });
+      } catch (err) {
+        return sendJson(res, 500, { ok: false, error: err.message });
+      }
+    }
+
     // Admin-only diagnostic — reveals DB table status and demo user existence
     if (req.method === "GET" && req.url === "/api/admin/diagnose") {
       if (!requireAdmin(req, res)) return;
