@@ -1093,7 +1093,14 @@ const server = createServer(async (req, res) => {
       const errors = validate(SCHEMAS.login, body);
       if (errors) return sendValidationError(res, errors);
 
-      const auth = await authenticateUser(body.email, body.password);
+      let auth;
+      try {
+        auth = await authenticateUser(body.email, body.password);
+      } catch (authErr) {
+        process.stderr.write(`[login] authenticateUser threw: ${authErr.message}\n`);
+        return sendJson(res, 503, { error: "auth_db_error", message: `Auth query failed: ${authErr.message}` });
+      }
+
       if (!auth?.tenant || !auth?.user) {
         return sendJson(res, 401, {
           error: "unauthorized",
@@ -1101,7 +1108,14 @@ const server = createServer(async (req, res) => {
         });
       }
 
-      const session = await createDashboardSession(auth.tenant.id, auth.user.id);
+      let session;
+      try {
+        session = await createDashboardSession(auth.tenant.id, auth.user.id);
+      } catch (sessErr) {
+        process.stderr.write(`[login] createDashboardSession threw: ${sessErr.message}\n`);
+        return sendJson(res, 503, { error: "session_db_error", message: `Session table error: ${sessErr.message}` });
+      }
+
       setSessionCookie(res, session.token);
       await logAuditEvent(auth.tenant.id, {
         actor: auth.user.email,
@@ -1217,6 +1231,32 @@ const server = createServer(async (req, res) => {
       } catch (err) {
         logError("SSO callback error", err);
         return redirect(encodeURIComponent(err.message));
+      }
+    }
+
+    // Admin-only diagnostic — reveals DB table status and demo user existence
+    if (req.method === "GET" && req.url === "/api/admin/diagnose") {
+      if (!requireAdmin(req, res)) return;
+      try {
+        const { default: pg } = await import("pg");
+        const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+        const tables = await pool.query(
+          `select table_name from information_schema.tables
+           where table_schema = 'public' order by table_name`
+        );
+        const demoEmail = String(process.env.DEMO_EMAIL || "").toLowerCase();
+        const users = demoEmail
+          ? await pool.query("select id, email, tenant_id, password_hash is not null as has_password from users where lower(email) = $1", [demoEmail])
+          : { rows: [] };
+        await pool.end();
+        return sendJson(res, 200, {
+          tables: tables.rows.map(r => r.table_name),
+          demoUser: users.rows[0] || null,
+          nodeEnv: process.env.NODE_ENV,
+          storageBackend: process.env.STORAGE_BACKEND || "file"
+        });
+      } catch (err) {
+        return sendJson(res, 200, { error: err.message, storageBackend: process.env.STORAGE_BACKEND || "file" });
       }
     }
 
