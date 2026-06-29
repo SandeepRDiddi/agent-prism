@@ -320,6 +320,13 @@ async function renderSetupScreen(type, message = "") {
               <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
               <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
             </form>` : ""}
+            ${loginCfg.demoEmail ? `
+            <div class="demo-credentials-box">
+              <div class="demo-cred-label">Demo account</div>
+              <div class="demo-cred-row"><span>Email</span><code>${escapeHtml(loginCfg.demoEmail)}</code></div>
+              <div class="demo-cred-row"><span>Password</span><code>${escapeHtml(loginCfg.demoPassword || "")}</code></div>
+              <button type="button" id="demo-login-btn" class="demo-login-btn">Sign in as demo user &rarr;</button>
+            </div>` : ""}
             ${message ? `
               <p class="login-error">${escapeHtml(message)}</p>
               <div class="login-error-help">
@@ -359,6 +366,25 @@ async function renderSetupScreen(type, message = "") {
     // "Use API key instead" fallback shown when login fails
     document.querySelector("#use-api-key-btn")?.addEventListener("click", () => {
       renderSetupScreen("api-key");
+    });
+
+    // Demo one-click login
+    document.querySelector("#demo-login-btn")?.addEventListener("click", async () => {
+      const btn = document.querySelector("#demo-login-btn");
+      btn.disabled = true;
+      btn.textContent = "Signing in…";
+      try {
+        await request("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: loginCfg.demoEmail, password: loginCfg.demoPassword })
+        });
+        tenantApiKey = "";
+        localStorage.removeItem("acp_api_key");
+        await initializeApp();
+      } catch (err) {
+        renderSetupScreen("login", err.message);
+      }
     });
 
     return;

@@ -4277,6 +4277,53 @@ html[data-theme="light"] .orb-3 {
 .btn-sso:hover::after { transform: translateX(100%); }
 
 /* error message */
+.demo-credentials-box {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: rgba(79,128,255,0.07);
+  border: 1px solid rgba(79,128,255,0.22);
+  border-radius: 10px;
+}
+.demo-cred-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: #7ba7ff;
+  margin-bottom: 8px;
+}
+.demo-cred-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+.demo-cred-row span { color: var(--muted); min-width: 60px; }
+.demo-cred-row code {
+  background: rgba(255,255,255,0.07);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.demo-login-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 0;
+  background: rgba(79,128,255,0.15);
+  border: 1px solid rgba(79,128,255,0.35);
+  border-radius: 7px;
+  color: #a8c4ff;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.demo-login-btn:hover   { background: rgba(79,128,255,0.25); }
+.demo-login-btn:disabled{ opacity: 0.6; cursor: not-allowed; }
+
 .login-error {
   color: var(--red);
   font-size: 0.82rem;

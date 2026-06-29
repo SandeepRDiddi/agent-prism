@@ -1221,8 +1221,10 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && req.url === "/api/login-config") {
       return sendJson(res, 200, {
-        ssoEnabled: !!process.env.OIDC_ISSUER,
-        ssoOnly: process.env.SSO_ONLY === "true"
+        ssoEnabled:    !!process.env.OIDC_ISSUER,
+        ssoOnly:       process.env.SSO_ONLY === "true",
+        demoEmail:     process.env.DEMO_EMAIL    || null,
+        demoPassword:  process.env.DEMO_PASSWORD || null
       });
     }
 
@@ -3025,6 +3027,14 @@ if (process.env.RUN_MIGRATIONS_ON_STARTUP === "true" && process.env.DATABASE_URL
   ).catch((err) => {
     process.stderr.write(`[migrate] Startup error: ${err.message}\n`);
   });
+}
+
+// ── Demo user seed (DEMO_EMAIL + DEMO_PASSWORD env vars) ─────────────────────
+// Ensures a demo user exists on every startup. Safe to re-run — uses upsert.
+if (process.env.DEMO_EMAIL && process.env.DEMO_PASSWORD) {
+  setUserPassword({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD })
+    .then(() => process.stderr.write(`[demo] Demo user ensured: ${process.env.DEMO_EMAIL}\n`))
+    .catch((err) => process.stderr.write(`[demo] Demo user seed failed: ${err.message}\n`));
 }
 
 // ── Data retention (DATA_RETENTION_DAYS=90 deletes runs/captures older than N days) ──
