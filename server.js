@@ -967,6 +967,7 @@ const server = createServer(async (req, res) => {
   inflightCount++;
   const startTime = performance.now();
   let tenantId = null;
+  const ip = req.socket?.remoteAddress || req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || "unknown";
 
   // Attach trace ID early — available for all logs in this request lifecycle
   attachRequestId(req, res);
@@ -1060,8 +1061,6 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/bootstrap") {
       if (!requireAdmin(req, res)) return;
-      // Per-IP rate limit: max 5 bootstrap attempts per hour
-      const ip = req.socket?.remoteAddress || "unknown";
       if (!checkRateLimit(bootstrapLimiter, ip, res)) return;
 
       const body = await parseBody(req, res);
@@ -3041,8 +3040,9 @@ ${prompt}`;
     logError(req, error, tenantId);
     return sendJson(res, 500, {
       error: "server_error",
-      message: scrubSecrets(error.message),
-      stack: process.env.NODE_ENV === "production" ? undefined : error.stack
+      message: process.env.NODE_ENV === "production"
+        ? "Internal server error"
+        : scrubSecrets(error.message)
     });
   }
 });
