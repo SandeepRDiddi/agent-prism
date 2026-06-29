@@ -3041,9 +3041,8 @@ ${prompt}`;
     logError(req, error, tenantId);
     return sendJson(res, 500, {
       error: "server_error",
-      message: process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : scrubSecrets(error.message)
+      message: scrubSecrets(error.message),
+      stack: process.env.NODE_ENV === "production" ? undefined : error.stack
     });
   }
 });
