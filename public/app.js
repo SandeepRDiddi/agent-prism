@@ -320,7 +320,15 @@ async function renderSetupScreen(type, message = "") {
               <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
               <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
             </form>` : ""}
-            ${message ? `<p class="login-error">${escapeHtml(message)}</p>` : ""}
+            ${message ? `
+              <p class="login-error">${escapeHtml(message)}</p>
+              <div class="login-error-help">
+                <p>Can't log in? Two options:</p>
+                <ol>
+                  <li>Go to <strong>Admin tab → Set login password</strong> to reset your password using the admin secret.</li>
+                  <li>Or <button class="login-link-btn" id="use-api-key-btn">sign in with API key instead</button></li>
+                </ol>
+              </div>` : ""}
           </div>
         </article>
       </section>
@@ -347,6 +355,11 @@ async function renderSetupScreen(type, message = "") {
         }
       });
     }
+
+    // "Use API key instead" fallback shown when login fails
+    document.querySelector("#use-api-key-btn")?.addEventListener("click", () => {
+      renderSetupScreen("api-key");
+    });
 
     return;
   }
@@ -3339,6 +3352,31 @@ const response = await fetch("${window.location.origin}/v1/messages", {
         </div>
       </article>
 
+      <article class="panel wide-panel">
+        <div class="panel-title">
+          <p class="eyebrow">Login Access</p>
+          <h2>Set login password</h2>
+          <p class="panel-subtitle">Set or reset the email/password login for any user on this platform. Requires the admin secret from your server environment (<code>ACP_ADMIN_SECRET</code>).</p>
+        </div>
+        <form id="set-password-form" class="field-stack" style="max-width:420px">
+          <div class="form-field-group">
+            <label class="field-label">Email address</label>
+            <input name="email" type="email" placeholder="owner@company.com" required autocomplete="off" />
+          </div>
+          <div class="form-field-group">
+            <label class="field-label">New password</label>
+            <input name="password" type="password" placeholder="Min 8 characters" minlength="8" required autocomplete="new-password" />
+          </div>
+          <div class="form-field-group">
+            <label class="field-label">Admin secret</label>
+            <input name="adminSecret" type="password" placeholder="ACP_ADMIN_SECRET value" required autocomplete="off" />
+            <p class="field-hint">This is the <code>ACP_ADMIN_SECRET</code> env var set on the server — not the login password.</p>
+          </div>
+          <div id="set-password-result" style="display:none"></div>
+          <button type="submit" class="admin-action-btn">Set password</button>
+        </form>
+      </article>
+
       <article class="panel wide-panel danger-zone-panel">
         <div class="panel-title">
           <p class="eyebrow" style="color:var(--red)">Danger Zone</p>
@@ -3401,6 +3439,47 @@ const response = await fetch("${window.location.origin}/v1/messages", {
     button.addEventListener("click", () => testCatalogSource(button.dataset.provider));
   });
   document.querySelector("#export-audit-button").addEventListener("click", exportAuditCsv);
+
+  document.querySelector("#set-password-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const email       = String(form.get("email") || "").trim();
+    const password    = String(form.get("password") || "");
+    const adminSecret = String(form.get("adminSecret") || "");
+    const resultEl    = document.querySelector("#set-password-result");
+    const btn         = e.currentTarget.querySelector("button[type=submit]");
+
+    btn.disabled = true;
+    btn.textContent = "Setting…";
+    resultEl.style.display = "none";
+
+    try {
+      await fetch("/api/admin/users/password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": adminSecret
+        },
+        body: JSON.stringify({ email, password })
+      }).then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+        return data;
+      });
+
+      resultEl.style.display = "block";
+      resultEl.style.color = "var(--green)";
+      resultEl.textContent = `✓ Password set for ${email}. You can now log in at the login screen.`;
+      e.currentTarget.reset();
+    } catch (err) {
+      resultEl.style.display = "block";
+      resultEl.style.color = "var(--red)";
+      resultEl.textContent = `Failed: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Set password";
+    }
+  });
 }
 
 function showRotateKeyForm(provider) {

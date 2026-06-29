@@ -4284,6 +4284,52 @@ html[data-theme="light"] .orb-3 {
   min-height: 1.1rem;
   animation: fadeSlideUp 0.3s ease both;
 }
+.login-error-help {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.login-error-help p { margin: 0 0 6px; font-weight: 600; color: var(--text); }
+.login-error-help ol { margin: 0; padding-left: 16px; }
+.login-error-help li { margin-bottom: 4px; }
+.login-link-btn {
+  background: none;
+  border: none;
+  color: var(--blue);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+/* ── Admin set-password form ─────────────────────────────────────────────────── */
+.form-field-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.field-label { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.field-hint  { font-size: 0.74rem; color: var(--muted); margin: 3px 0 0; }
+.field-hint code { font-size: 0.72rem; background: rgba(255,255,255,0.07); padding: 1px 4px; border-radius: 3px; }
+.admin-action-btn {
+  padding: 9px 20px;
+  background: rgba(79,128,255,0.12);
+  border: 1px solid rgba(79,128,255,0.3);
+  color: #a8c4ff;
+  border-radius: 7px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 4px;
+  width: fit-content;
+}
+.admin-action-btn:hover { background: rgba(79,128,255,0.22); }
+.admin-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+html[data-theme="light"] .form-field-group .field-hint code { background: rgba(0,0,0,0.06); }
+html[data-theme="light"] .admin-action-btn { background: rgba(79,128,255,0.08); border-color: rgba(79,128,255,0.28); color: #2255cc; }
+html[data-theme="light"] .login-error-help { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.1); }
 
 /* ═══════════════════════════════════════════════════════════════════
    DASHBOARD ENTRANCE ANIMATION
