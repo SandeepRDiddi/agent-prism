@@ -1117,11 +1117,13 @@ const server = createServer(async (req, res) => {
       }
 
       setSessionCookie(res, session.token);
-      await logAuditEvent(auth.tenant.id, {
+      logAuditEvent(auth.tenant.id, {
         actor: auth.user.email,
         action: "Dashboard Login",
         resource: "Dashboard Session",
         ip: req.socket?.remoteAddress || "unknown"
+      }).catch((auditErr) => {
+        process.stderr.write(`[login] audit log failed (non-fatal): ${auditErr.message}\n`);
       });
 
       return sendJson(res, 200, {
