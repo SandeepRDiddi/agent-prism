@@ -198,18 +198,6 @@ async function request(path, options) {
     const payload = await response.json().catch(() => ({}));
     const error = new Error(payload.message || `Request failed for ${path}`);
     error.status = response.status;
-    // Global 401 handler: if auth expired mid-session, wipe creds and return to login.
-    // Skip paths that are part of the login flow itself to avoid infinite loops.
-    const isAuthPath = path.startsWith("/api/auth/") || path === "/api/me" || path === "/api/bootstrap/status";
-    if (response.status === 401 && !isAuthPath && currentUser !== undefined) {
-      tenantApiKey = "";
-      _sessionToken = "";
-      currentUser = null;
-      localStorage.removeItem("acp_api_key");
-      sessionStorage.removeItem("aps_demo_key");
-      sessionStorage.removeItem("aps_session_token");
-      renderSetupScreen("login", "Session expired — please sign in again.");
-    }
     throw error;
   }
 
@@ -4255,8 +4243,7 @@ async function initializeApp() {
     localStorage.removeItem("acp_api_key");
     sessionStorage.removeItem("aps_demo_key");
     sessionStorage.removeItem("aps_session_token");
-    const msg = error.status === 401 ? "" : (error.message || "");
-    renderSetupScreen("login", msg);
+    renderSetupScreen("login", "");
   }
 }
 
