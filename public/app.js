@@ -183,8 +183,23 @@ function buildWorkspaceShell(tenantName) {
 
 const workspaceShell = buildWorkspaceShell("");
 
+async function silentReauth() {
+  try {
+    const cfg = await fetch("/api/login-config").then(r => r.json()).catch(() => ({}));
+    if (!cfg.demoEmail || !cfg.demoPassword) return false;
+    const lr = await fetch("/api/auth/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: cfg.demoEmail, password: cfg.demoPassword })
+    }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!lr) return false;
+    if (lr.apiKey) { localStorage.setItem("aps_demo_key", lr.apiKey); tenantApiKey = lr.apiKey; }
+    if (lr.sessionToken) { sessionStorage.setItem("aps_session_token", lr.sessionToken); _sessionToken = lr.sessionToken; }
+    return !!(lr.apiKey || lr.sessionToken);
+  } catch (_) { return false; }
+}
+
 async function request(path, options) {
-  const response = await fetch(path, {
+  const doFetch = () => fetch(path, {
     ...options,
     credentials: "same-origin",
     headers: {
@@ -193,6 +208,14 @@ async function request(path, options) {
       ...(_sessionToken ? { "x-session-token": _sessionToken } : {})
     }
   });
+
+  let response = await doFetch();
+
+  // On 401, attempt silent re-auth once then retry
+  if (response.status === 401) {
+    const ok = await silentReauth();
+    if (ok) response = await doFetch();
+  }
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -4027,25 +4050,7 @@ async function loadMlStatus() {
   const el = document.getElementById("ml-status-content");
   if (!el) return;
   try {
-    let s;
-    try {
-      s = await request("/api/ml/status");
-    } catch (authErr) {
-      if (authErr.status === 401) {
-        // Session expired — silently re-auth with demo creds then retry once.
-        const cfg = await fetch("/api/login-config").then(r => r.json()).catch(() => ({}));
-        if (cfg.demoEmail && cfg.demoPassword) {
-          const lr = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: cfg.demoEmail, password: cfg.demoPassword })
-          }).then(r => r.ok ? r.json() : null).catch(() => null);
-          if (lr?.apiKey) { localStorage.setItem("aps_demo_key", lr.apiKey); tenantApiKey = lr.apiKey; }
-          if (lr?.sessionToken) { sessionStorage.setItem("aps_session_token", lr.sessionToken); _sessionToken = lr.sessionToken; }
-        }
-        s = await request("/api/ml/status"); // retry after re-auth
-      } else { throw authErr; }
-    }
+    const s = await request("/api/ml/status");
     const lr = s.logisticRegression;
     const iso = s.isolationForest;
     const llm = s.llmClassifier;
@@ -4207,53 +4212,21 @@ async function initializeApp() {
       return;
     }
 
-    // Verify identity. On 401: try silent demo auto-login before showing login screen.
+    // Verify identity. request() auto-retries 401 via silentReauth() before throwing.
     try {
       const me = await request("/api/me");
       currentUser = me.user;
     } catch (meErr) {
-      if (meErr.status === 401) {
-        // Clear stale creds, then attempt silent re-login with demo credentials.
-        tenantApiKey = "";
-        _sessionToken = "";
-        localStorage.removeItem("acp_api_key");
-        localStorage.removeItem("aps_demo_key");
-        sessionStorage.removeItem("aps_session_token");
-
-        let silentLoginOk = false;
-        try {
-          const cfg = await fetch("/api/login-config").then(r => r.json()).catch(() => ({}));
-          if (cfg.demoEmail && cfg.demoPassword) {
-            const lr = await fetch("/api/auth/login", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email: cfg.demoEmail, password: cfg.demoPassword })
-            }).then(r => r.ok ? r.json() : null).catch(() => null);
-            if (lr?.apiKey) {
-              localStorage.setItem("aps_demo_key", lr.apiKey);
-              tenantApiKey = lr.apiKey;
-            }
-            if (lr?.sessionToken) {
-              sessionStorage.setItem("aps_session_token", lr.sessionToken);
-              _sessionToken = lr.sessionToken;
-            }
-            if (lr?.apiKey || lr?.sessionToken) {
-              const me2 = await request("/api/me").catch(() => null);
-              if (me2) { currentUser = me2.user; silentLoginOk = true; }
-            }
-          }
-        } catch (_) {}
-
-        if (!silentLoginOk) {
-          const ssoError = new URLSearchParams(window.location.search).get("sso_error");
-          renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
-          return;
-        }
-      } else {
-        const ssoError = new URLSearchParams(window.location.search).get("sso_error");
-        renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
-        return;
-      }
+      // Both the initial attempt and the silent re-auth retry failed.
+      // Clear stale creds and show login.
+      tenantApiKey = "";
+      _sessionToken = "";
+      localStorage.removeItem("acp_api_key");
+      localStorage.removeItem("aps_demo_key");
+      sessionStorage.removeItem("aps_session_token");
+      const ssoError = new URLSearchParams(window.location.search).get("sso_error");
+      renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
+      return;
     }
 
     // Parallel: tenant info + critical dashboard data — eliminates serial waterfall
