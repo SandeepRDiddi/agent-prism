@@ -293,14 +293,10 @@ async function renderSetupScreen(type, message = "") {
   }
 
   if (type === "login") {
-    let loginCfg = { ssoEnabled: false, ssoOnly: false };
+    let loginCfg = { ssoEnabled: false, ssoOnly: false, demoEmail: "" };
     try { loginCfg = await (await fetch("/api/login-config")).json(); } catch (_) {}
-    const { ssoEnabled, ssoOnly } = loginCfg;
-    const hasDemo = !!loginCfg.demoEmail;
+    const { ssoEnabled, ssoOnly, demoEmail } = loginCfg;
 
-    // Layout decision: if demo is configured, show it as the primary CTA.
-    // Password form is secondary (collapsed behind a link). This matches
-    // what most users need: one click to explore, no friction.
     workspace.innerHTML = `
       <section class="login-hero">
         <div class="login-orbs">
@@ -321,19 +317,12 @@ async function renderSetupScreen(type, message = "") {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               Continue with SSO
             </a>` : ""}
-            ${hasDemo ? `
-            <button type="button" id="demo-login-btn" class="login-submit-btn" style="margin-bottom:0.5rem">
-              Try the demo &rarr;
-            </button>` : ""}
             ${!ssoOnly ? `
-            <div id="password-form-wrap" ${hasDemo ? 'style="display:none"' : ""}>
-              <form id="login-form">
-                <div class="login-field"><input name="email" type="email" placeholder="Work email" autocomplete="email" required /></div>
-                <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
-                <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
-              </form>
-            </div>
-            ${hasDemo ? `<p style="text-align:center;margin-top:0.75rem"><button class="login-link-btn" id="show-password-btn">Sign in with your account</button></p>` : ""}
+            <form id="login-form">
+              <div class="login-field"><input name="email" type="email" placeholder="Email" autocomplete="email" required value="${escapeHtml(demoEmail || "")}" /></div>
+              <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
+              <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
+            </form>
             ` : ""}
             ${message ? `<p class="login-error" style="margin-top:0.75rem">${escapeHtml(message)}</p>` : ""}
             <p style="text-align:center;margin-top:1rem;font-size:0.75rem;opacity:0.4">
@@ -343,12 +332,6 @@ async function renderSetupScreen(type, message = "") {
         </article>
       </section>
     `;
-
-    // Password form toggle
-    document.querySelector("#show-password-btn")?.addEventListener("click", () => {
-      document.querySelector("#password-form-wrap").style.display = "";
-      document.querySelector("#show-password-btn").closest("p").style.display = "none";
-    });
 
     if (!ssoOnly) {
       document.querySelector("#login-form")?.addEventListener("submit", async (event) => {
@@ -372,23 +355,6 @@ async function renderSetupScreen(type, message = "") {
         }
       });
     }
-
-    document.querySelector("#demo-login-btn")?.addEventListener("click", async () => {
-      const btn = document.querySelector("#demo-login-btn");
-      btn.disabled = true;
-      btn.textContent = "Loading…";
-      try {
-        const result = await request("/api/auth/demo-login", { method: "POST" });
-        localStorage.removeItem("acp_api_key");
-        if (result?.apiKey) localStorage.setItem("aps_demo_key", result.apiKey);
-        if (result?.sessionToken) sessionStorage.setItem("aps_session_token", result.sessionToken);
-        window.location.href = "/";
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = "Try the demo →";
-        renderSetupScreen("login", err.message);
-      }
-    });
 
     return;
   }

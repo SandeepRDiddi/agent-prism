@@ -1143,6 +1143,13 @@ const server = createServer(async (req, res) => {
       const errors = validate(SCHEMAS.login, body);
       if (errors) return sendValidationError(res, errors);
 
+      // Auto-bootstrap demo user if credentials match DEMO_EMAIL/DEMO_PASSWORD.
+      // Eliminates the need for a separate "Try the demo" button.
+      const demoEmail = (process.env.DEMO_EMAIL || "").toLowerCase();
+      if (demoEmail && body.email.toLowerCase() === demoEmail && process.env.DEMO_PASSWORD) {
+        await ensureDemoUser({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD }).catch(() => {});
+      }
+
       let auth;
       try {
         auth = await authenticateUser(body.email, body.password);
@@ -1176,11 +1183,14 @@ const server = createServer(async (req, res) => {
         process.stderr.write(`[login] audit log failed (non-fatal): ${auditErr.message}\n`);
       });
 
+      // Issue API key alongside session so client can use x-api-key as reliable fallback.
+      const keyResult = await createTenantApiKey({ tenantId: auth.tenant.id, name: "login-session" }).catch(() => null);
       return sendJson(res, 200, {
         tenant: auth.tenant,
         user: auth.user,
         session: { id: session.session.id, expiresAt: session.session.expiresAt },
-        sessionToken: session.token
+        sessionToken: session.token,
+        apiKey: keyResult?.apiKey || null
       });
     }
 
