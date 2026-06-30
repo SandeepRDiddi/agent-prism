@@ -372,13 +372,9 @@ async function renderSetupScreen(type, message = "") {
     document.querySelector("#demo-login-btn")?.addEventListener("click", async () => {
       const btn = document.querySelector("#demo-login-btn");
       btn.disabled = true;
-      btn.textContent = "Signing in…";
+      btn.textContent = "Setting up demo…";
       try {
-        await request("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: loginCfg.demoEmail, password: loginCfg.demoPassword })
-        });
+        await request("/api/auth/demo-login", { method: "POST" });
         tenantApiKey = "";
         localStorage.removeItem("acp_api_key");
         await initializeApp();

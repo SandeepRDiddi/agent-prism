@@ -1085,6 +1085,37 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 201, result);
     }
 
+    // Public demo-login: upserts the demo user server-side then logs in.
+    // Only works when DEMO_EMAIL + DEMO_PASSWORD are configured on the server.
+    // Rate-limited. No admin secret needed — credentials are already on the login screen.
+    if (req.method === "POST" && req.url === "/api/auth/demo-login") {
+      if (!checkRateLimit(loginLimiter, ip, res)) return;
+      if (!process.env.DEMO_EMAIL || !process.env.DEMO_PASSWORD) {
+        return sendJson(res, 404, { error: "Demo mode not configured" });
+      }
+      let demoUser;
+      try {
+        demoUser = await ensureDemoUser({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD });
+      } catch (err) {
+        process.stderr.write(`[demo-login] ensureDemoUser failed: ${err.message}\n`);
+        return sendJson(res, 503, { error: "demo_setup_failed", message: err.message });
+      }
+      if (!demoUser) {
+        return sendJson(res, 503, { error: "demo_setup_failed", message: "No active tenant to attach demo user to" });
+      }
+      const auth = await authenticateUser(process.env.DEMO_EMAIL, process.env.DEMO_PASSWORD).catch(() => null);
+      if (!auth?.tenant || !auth?.user) {
+        return sendJson(res, 503, { error: "demo_auth_failed", message: "Demo user created but auth failed — check DB logs" });
+      }
+      const session = await createDashboardSession(auth.tenant.id, auth.user.id);
+      setSessionCookie(res, session.token);
+      return sendJson(res, 200, {
+        tenant: auth.tenant,
+        user: auth.user,
+        session: { id: session.session.id, expiresAt: session.session.expiresAt }
+      });
+    }
+
     if (req.method === "POST" && req.url === "/api/auth/login") {
       if (!checkRateLimit(loginLimiter, ip, res)) return;
       const body = await parseBody(req, res);
