@@ -1124,11 +1124,15 @@ const server = createServer(async (req, res) => {
       }
       const session = await createDashboardSession(auth.tenant.id, auth.user.id);
       setSessionCookie(res, session.token);
+      // Also issue a fresh API key so the client can use X-API-Key auth as a
+      // reliable fallback when cookies / session-token header are unavailable.
+      const keyResult = await createTenantApiKey({ tenantId: auth.tenant.id, name: "demo-session" }).catch(() => null);
       return sendJson(res, 200, {
         tenant: auth.tenant,
         user: auth.user,
         session: { id: session.session.id, expiresAt: session.session.expiresAt },
-        sessionToken: session.token
+        sessionToken: session.token,
+        apiKey: keyResult?.apiKey || null
       });
     }
 

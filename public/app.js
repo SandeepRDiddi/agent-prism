@@ -7,11 +7,10 @@ let aiAdvisorState = null;
 let currentUser = null;
 let adminActionMessage = "";
 let currentView = "overview";
-let tenantApiKey = localStorage.getItem("acp_api_key") || "";
+// API key precedence: localStorage (persists restarts) → sessionStorage demo key (tab-only)
+let tenantApiKey = localStorage.getItem("acp_api_key") || sessionStorage.getItem("aps_demo_key") || "";
 let certificationData = null; // lazy-loaded when Governance tab opens
-// Session token fallback: stored in sessionStorage so it survives page reloads
-// within the same browser tab but not across restarts (unlike localStorage).
-// Used when the HttpOnly cookie can't be sent (e.g. file-store restart on Render).
+// Session token: fallback when no API key is present (e.g. password login on Postgres backend)
 let _sessionToken = sessionStorage.getItem("aps_session_token") || "";
 
 // Module-level so onclick="resetTenantDataClick()" works regardless of render state
@@ -282,9 +281,9 @@ async function renderSetupScreen(type, message = "") {
           })
         });
 
-        tenantApiKey = result.apiKey;
-        localStorage.setItem("acp_api_key", tenantApiKey);
-        await initializeApp();
+        localStorage.setItem("acp_api_key", result.apiKey);
+        sessionStorage.removeItem("aps_demo_key");
+        window.location.href = "/";
       } catch (error) {
         renderSetupScreen("bootstrap", error.message);
       }
@@ -382,14 +381,19 @@ async function renderSetupScreen(type, message = "") {
       btn.textContent = "Setting up demo…";
       try {
         const result = await request("/api/auth/demo-login", { method: "POST" });
+        // Primary: use the returned API key — reliable across restarts.
+        // Fallback: session token for Postgres-backed deployments.
         localStorage.removeItem("acp_api_key");
-        // Store token in sessionStorage as fallback for environments where
-        // the HttpOnly cookie is dropped (e.g. file-store restart on Render).
+        if (result?.apiKey) {
+          sessionStorage.setItem("aps_demo_key", result.apiKey);
+        }
         if (result?.sessionToken) {
           sessionStorage.setItem("aps_session_token", result.sessionToken);
         }
         window.location.href = "/";
       } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Sign in as demo user →";
         renderSetupScreen("login", err.message);
       }
     });
@@ -428,15 +432,19 @@ function attachApiKeySetupForms(screenType) {
   document.querySelector("#api-key-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    tenantApiKey = String(form.get("apiKey") || "");
-    localStorage.setItem("acp_api_key", tenantApiKey);
-    await initializeApp();
+    const key = String(form.get("apiKey") || "");
+    if (!key) return;
+    localStorage.setItem("acp_api_key", key);
+    sessionStorage.removeItem("aps_demo_key");
+    window.location.href = "/";
   });
 
   document.querySelector("#generate-api-key-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const adminSecret = String(form.get("adminSecret") || "");
+    const btn = event.currentTarget.querySelector("button[type=submit]");
+    if (btn) { btn.disabled = true; btn.textContent = "Generating…"; }
 
     try {
       const result = await fetch("/api/admin/api-keys", {
@@ -455,10 +463,11 @@ function attachApiKeySetupForms(screenType) {
       }
 
       const payload = await result.json();
-      tenantApiKey = payload.apiKey;
-      localStorage.setItem("acp_api_key", tenantApiKey);
-      await initializeApp();
+      localStorage.setItem("acp_api_key", payload.apiKey);
+      sessionStorage.removeItem("aps_demo_key");
+      window.location.href = "/";
     } catch (error) {
+      if (btn) { btn.disabled = false; btn.textContent = "Generate key"; }
       renderSetupScreen(screenType, error.message);
     }
   });
@@ -4172,31 +4181,22 @@ async function initializeApp() {
       return;
     }
 
-    // Always probe /api/me to confirm identity and detect stale API keys.
-    // If the call fails, fall back to session-cookie-only auth:
-    //   - stale API key → clear it, retry via session cookie
-    //   - no session cookie either → show login screen
+    // Verify identity. On 401: clear all stored credentials and show login.
     try {
       const me = await request("/api/me");
       currentUser = me.user;
     } catch (meErr) {
-      if (meErr.status === 401 && tenantApiKey) {
-        // API key is stale/revoked. Clear it and retry with session cookie.
+      if (meErr.status === 401) {
+        // Wipe every stored credential so the next page load starts clean.
         tenantApiKey = "";
+        _sessionToken = "";
         localStorage.removeItem("acp_api_key");
-        try {
-          const me2 = await request("/api/me");
-          currentUser = me2.user;
-        } catch {
-          const ssoError = new URLSearchParams(window.location.search).get("sso_error");
-          renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
-          return;
-        }
-      } else {
-        const ssoError = new URLSearchParams(window.location.search).get("sso_error");
-        renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
-        return;
+        sessionStorage.removeItem("aps_demo_key");
+        sessionStorage.removeItem("aps_session_token");
       }
+      const ssoError = new URLSearchParams(window.location.search).get("sso_error");
+      renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
+      return;
     }
 
     // Parallel: tenant info + critical dashboard data — eliminates serial waterfall
@@ -4230,15 +4230,16 @@ async function initializeApp() {
       if (currentView === "admin" || currentView === "advisor") renderCurrentView();
     });
   } catch (error) {
-    if (error.status === 401) {
-      tenantApiKey = "";
-      localStorage.removeItem("acp_api_key");
-      currentUser = null;
-      renderSetupScreen("login", "");
-      return;
-    }
-
-    document.body.innerHTML = `<pre>${error.message}</pre>`;
+    // Any unhandled error (401 from dashboard calls, or JS error in render)
+    // → wipe credentials and show login so user can start fresh.
+    tenantApiKey = "";
+    _sessionToken = "";
+    currentUser = null;
+    localStorage.removeItem("acp_api_key");
+    sessionStorage.removeItem("aps_demo_key");
+    sessionStorage.removeItem("aps_session_token");
+    const msg = error.status === 401 ? "" : (error.message || "");
+    renderSetupScreen("login", msg);
   }
 }
 
@@ -4253,6 +4254,7 @@ document.querySelector("#logout").addEventListener("click", async () => {
   currentUser = null;
   _sessionToken = "";
   localStorage.removeItem("acp_api_key");
+  sessionStorage.removeItem("aps_demo_key");
   sessionStorage.removeItem("aps_session_token");
   renderSetupScreen("login");
 });
