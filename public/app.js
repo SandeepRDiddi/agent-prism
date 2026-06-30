@@ -9,6 +9,10 @@ let adminActionMessage = "";
 let currentView = "overview";
 let tenantApiKey = localStorage.getItem("acp_api_key") || "";
 let certificationData = null; // lazy-loaded when Governance tab opens
+// Session token fallback: stored in sessionStorage so it survives page reloads
+// within the same browser tab but not across restarts (unlike localStorage).
+// Used when the HttpOnly cookie can't be sent (e.g. file-store restart on Render).
+let _sessionToken = sessionStorage.getItem("aps_session_token") || "";
 
 // Module-level so onclick="resetTenantDataClick()" works regardless of render state
 async function resetTenantDataClick() {
@@ -186,7 +190,8 @@ async function request(path, options) {
     credentials: "same-origin",
     headers: {
       ...(options?.headers || {}),
-      ...(tenantApiKey ? { "x-api-key": tenantApiKey } : {})
+      ...(tenantApiKey ? { "x-api-key": tenantApiKey } : {}),
+      ...(_sessionToken ? { "x-session-token": _sessionToken } : {})
     }
   });
 
@@ -346,7 +351,7 @@ async function renderSetupScreen(type, message = "") {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
         try {
-          await request("/api/auth/login", {
+          const result = await request("/api/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -355,6 +360,9 @@ async function renderSetupScreen(type, message = "") {
             })
           });
           localStorage.removeItem("acp_api_key");
+          if (result?.sessionToken) {
+            sessionStorage.setItem("aps_session_token", result.sessionToken);
+          }
           window.location.href = "/";
         } catch (error) {
           renderSetupScreen("login", error.message);
@@ -373,10 +381,13 @@ async function renderSetupScreen(type, message = "") {
       btn.disabled = true;
       btn.textContent = "Setting up demo…";
       try {
-        await request("/api/auth/demo-login", { method: "POST" });
+        const result = await request("/api/auth/demo-login", { method: "POST" });
         localStorage.removeItem("acp_api_key");
-        // Hard reload: browser sends fresh request with the just-set session cookie.
-        // Avoids stale in-memory state from the current page load.
+        // Store token in sessionStorage as fallback for environments where
+        // the HttpOnly cookie is dropped (e.g. file-store restart on Render).
+        if (result?.sessionToken) {
+          sessionStorage.setItem("aps_session_token", result.sessionToken);
+        }
         window.location.href = "/";
       } catch (err) {
         renderSetupScreen("login", err.message);
@@ -4240,7 +4251,9 @@ document.querySelector("#logout").addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
   tenantApiKey = "";
   currentUser = null;
+  _sessionToken = "";
   localStorage.removeItem("acp_api_key");
+  sessionStorage.removeItem("aps_session_token");
   renderSetupScreen("login");
 });
 

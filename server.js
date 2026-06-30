@@ -389,7 +389,11 @@ async function requireTenant(req, res, setTenantId) {
   }
 
   if (!auth) {
-    const sessionToken = parseCookies(req)[SESSION_COOKIE];
+    // Try cookie first, then X-Session-Token header (fallback for environments
+    // where Set-Cookie is dropped — e.g. file-store restarts on Render).
+    const sessionToken =
+      parseCookies(req)[SESSION_COOKIE] ||
+      req.headers["x-session-token"];
     const sessionAuth = await authenticateDashboardSession(sessionToken);
     if (sessionAuth?.tenant) {
       auth = {
@@ -1123,7 +1127,8 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, {
         tenant: auth.tenant,
         user: auth.user,
-        session: { id: session.session.id, expiresAt: session.session.expiresAt }
+        session: { id: session.session.id, expiresAt: session.session.expiresAt },
+        sessionToken: session.token
       });
     }
 
@@ -1170,7 +1175,8 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, {
         tenant: auth.tenant,
         user: auth.user,
-        session: { id: session.session.id, expiresAt: session.session.expiresAt }
+        session: { id: session.session.id, expiresAt: session.session.expiresAt },
+        sessionToken: session.token
       });
     }
 
