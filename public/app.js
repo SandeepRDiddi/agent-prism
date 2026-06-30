@@ -308,7 +308,11 @@ async function renderSetupScreen(type, message = "") {
     let loginCfg = { ssoEnabled: false, ssoOnly: false };
     try { loginCfg = await (await fetch("/api/login-config")).json(); } catch (_) {}
     const { ssoEnabled, ssoOnly } = loginCfg;
+    const hasDemo = !!loginCfg.demoEmail;
 
+    // Layout decision: if demo is configured, show it as the primary CTA.
+    // Password form is secondary (collapsed behind a link). This matches
+    // what most users need: one click to explore, no friction.
     workspace.innerHTML = `
       <section class="login-hero">
         <div class="login-orbs">
@@ -321,86 +325,79 @@ async function renderSetupScreen(type, message = "") {
         <article class="login-card-glass">
           <div class="login-logo-mark">AP</div>
           <div class="badge-glow"><span class="pulse-dot"></span>Enterprise AI Governance</div>
-          <h1 class="login-headline">${ssoOnly ? "Enterprise" : "Command your"}<br><span class="login-gradient">${ssoOnly ? "Access Portal" : "AI fleet"}</span></h1>
+          <h1 class="login-headline">Command your<br><span class="login-gradient">AI fleet</span></h1>
           <p class="login-sub">AI governance &middot; Real-time control &middot; Zero surprises</p>
           <div class="login-form-wrap">
             ${ssoEnabled ? `
-            <a href="/auth/sso/login" class="btn-sso" style="margin-bottom:1rem">
+            <a href="/auth/sso/login" class="btn-sso">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
               Continue with SSO
             </a>` : ""}
+            ${hasDemo ? `
+            <button type="button" id="demo-login-btn" class="login-submit-btn" style="margin-bottom:0.5rem">
+              Try the demo &rarr;
+            </button>` : ""}
             ${!ssoOnly ? `
-            ${ssoEnabled ? `<div class="sso-divider"><span>or sign in with password</span></div>` : ""}
-            <form id="login-form">
-              <div class="login-field"><input name="email" type="email" placeholder="Work email" autocomplete="email" required /></div>
-              <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
-              <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
-            </form>` : ""}
-            ${loginCfg.demoEmail ? `
-            <div class="demo-credentials-box">
-              <div class="demo-cred-label">Demo account</div>
-              <div class="demo-cred-row"><span>Email</span><code>${escapeHtml(loginCfg.demoEmail)}</code></div>
-              <div class="demo-cred-row"><span>Password</span><code>${escapeHtml(loginCfg.demoPassword || "")}</code></div>
-              <button type="button" id="demo-login-btn" class="demo-login-btn">Sign in as demo user &rarr;</button>
-            </div>` : ""}
-            ${message ? `<p class="login-error">${escapeHtml(message)}</p>` : ""}
-            <div class="login-error-help">
-              <button class="login-link-btn" id="use-api-key-btn">Sign in with API key / admin secret &rarr;</button>
+            <div id="password-form-wrap" ${hasDemo ? 'style="display:none"' : ""}>
+              <form id="login-form">
+                <div class="login-field"><input name="email" type="email" placeholder="Work email" autocomplete="email" required /></div>
+                <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
+                <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
+              </form>
             </div>
+            ${hasDemo ? `<p style="text-align:center;margin-top:0.75rem"><button class="login-link-btn" id="show-password-btn">Sign in with your account</button></p>` : ""}
+            ` : ""}
+            ${message ? `<p class="login-error" style="margin-top:0.75rem">${escapeHtml(message)}</p>` : ""}
+            <p style="text-align:center;margin-top:1rem;font-size:0.75rem;opacity:0.4">
+              <a href="/setup" style="color:inherit;text-decoration:none">Admin setup</a>
+            </p>
           </div>
         </article>
       </section>
     `;
 
+    // Password form toggle
+    document.querySelector("#show-password-btn")?.addEventListener("click", () => {
+      document.querySelector("#password-form-wrap").style.display = "";
+      document.querySelector("#show-password-btn").closest("p").style.display = "none";
+    });
+
     if (!ssoOnly) {
-      document.querySelector("#login-form").addEventListener("submit", async (event) => {
+      document.querySelector("#login-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();
+        const btn = event.currentTarget.querySelector("button[type=submit]");
+        btn.disabled = true; btn.textContent = "Signing in…";
         const form = new FormData(event.currentTarget);
         try {
           const result = await request("/api/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: form.get("email"),
-              password: form.get("password")
-            })
+            body: JSON.stringify({ email: form.get("email"), password: form.get("password") })
           });
           localStorage.removeItem("acp_api_key");
-          if (result?.sessionToken) {
-            sessionStorage.setItem("aps_session_token", result.sessionToken);
-          }
+          if (result?.apiKey) sessionStorage.setItem("aps_demo_key", result.apiKey);
+          if (result?.sessionToken) sessionStorage.setItem("aps_session_token", result.sessionToken);
           window.location.href = "/";
         } catch (error) {
+          btn.disabled = false; btn.textContent = "Sign in →";
           renderSetupScreen("login", error.message);
         }
       });
     }
 
-    // "Use API key instead" fallback shown when login fails
-    document.querySelector("#use-api-key-btn")?.addEventListener("click", () => {
-      renderSetupScreen("api-key");
-    });
-
-    // Demo one-click login
     document.querySelector("#demo-login-btn")?.addEventListener("click", async () => {
       const btn = document.querySelector("#demo-login-btn");
       btn.disabled = true;
-      btn.textContent = "Setting up demo…";
+      btn.textContent = "Loading…";
       try {
         const result = await request("/api/auth/demo-login", { method: "POST" });
-        // Primary: use the returned API key — reliable across restarts.
-        // Fallback: session token for Postgres-backed deployments.
         localStorage.removeItem("acp_api_key");
-        if (result?.apiKey) {
-          sessionStorage.setItem("aps_demo_key", result.apiKey);
-        }
-        if (result?.sessionToken) {
-          sessionStorage.setItem("aps_session_token", result.sessionToken);
-        }
+        if (result?.apiKey) sessionStorage.setItem("aps_demo_key", result.apiKey);
+        if (result?.sessionToken) sessionStorage.setItem("aps_session_token", result.sessionToken);
         window.location.href = "/";
       } catch (err) {
         btn.disabled = false;
-        btn.textContent = "Sign in as demo user →";
+        btn.textContent = "Try the demo →";
         renderSetupScreen("login", err.message);
       }
     });
@@ -408,26 +405,27 @@ async function renderSetupScreen(type, message = "") {
     return;
   }
 
+  // /setup — admin-only. Linked from the tiny "Admin setup" footer link on login.
+  // Not shown to end users. Used to paste an API key or generate one with admin secret.
   workspace.innerHTML = `
     <section class="setup-screen">
       <article class="panel setup-card">
-        <p class="eyebrow">Tenant Access</p>
-        <h2>Connect to a tenant workspace</h2>
-        <p class="usp-summary">Paste the tenant API key that was created during bootstrap or later from your tenant admin settings.</p>
-        <form id="api-key-form" class="field-stack">
-          <input name="apiKey" placeholder="acp_..." required />
-          <div class="setup-actions">
-            <button type="submit">Connect tenant</button>
-          </div>
+        <p class="eyebrow">Admin Setup</p>
+        <h2>Connect workspace</h2>
+        <p class="usp-summary">Paste an existing API key, or use your admin secret to generate a new one.</p>
+        <form id="api-key-form" class="field-stack" style="margin-bottom:1.5rem">
+          <label style="font-size:0.8rem;opacity:0.6;margin-bottom:4px">Paste API key</label>
+          <input name="apiKey" placeholder="acp_…" required autocomplete="off" />
+          <div class="setup-actions"><button type="submit">Connect</button></div>
         </form>
+        <hr style="border:none;border-top:1px solid var(--border);margin:0 0 1.5rem" />
         <form id="generate-api-key-form" class="field-stack">
-          <p class="usp-summary">Lost the tenant key? Enter the admin secret to generate and save a fresh browser dashboard key.</p>
-          <input name="adminSecret" type="password" placeholder="Admin secret" required />
-          <div class="setup-actions">
-            <button type="submit">Generate key</button>
-          </div>
+          <label style="font-size:0.8rem;opacity:0.6;margin-bottom:4px">Generate with admin secret</label>
+          <input name="adminSecret" type="password" placeholder="Admin secret" required autocomplete="off" />
+          <div class="setup-actions"><button type="submit">Generate key</button></div>
         </form>
-        ${message ? `<p class="usp-summary">${message}</p>` : ""}
+        ${message ? `<p class="login-error" style="margin-top:1rem">${escapeHtml(message)}</p>` : ""}
+        <p style="margin-top:1.5rem;font-size:0.8rem"><a href="/" class="login-link-btn">&larr; Back to sign in</a></p>
       </article>
     </section>
   `;
@@ -4179,6 +4177,12 @@ function renderSplash() {
 }
 
 async function initializeApp() {
+  // /setup is the admin-only escape hatch — render it immediately without auth.
+  if (window.location.pathname === "/setup") {
+    renderSetupScreen("api-key");
+    return;
+  }
+
   renderSplash();
   try {
     const bootstrap = await request("/api/bootstrap/status");
