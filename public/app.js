@@ -7,8 +7,8 @@ let aiAdvisorState = null;
 let currentUser = null;
 let adminActionMessage = "";
 let currentView = "overview";
-// API key precedence: localStorage (persists restarts) → sessionStorage demo key (tab-only)
-let tenantApiKey = localStorage.getItem("acp_api_key") || sessionStorage.getItem("aps_demo_key") || "";
+// API key precedence: localStorage persistent key → localStorage demo key (both survive browser restart)
+let tenantApiKey = localStorage.getItem("acp_api_key") || localStorage.getItem("aps_demo_key") || "";
 let certificationData = null; // lazy-loaded when Governance tab opens
 // Session token: fallback when no API key is present (e.g. password login on Postgres backend)
 let _sessionToken = sessionStorage.getItem("aps_session_token") || "";
@@ -282,7 +282,7 @@ async function renderSetupScreen(type, message = "") {
         });
 
         localStorage.setItem("acp_api_key", result.apiKey);
-        sessionStorage.removeItem("aps_demo_key");
+        localStorage.removeItem("aps_demo_key");
         window.location.href = "/";
       } catch (error) {
         renderSetupScreen("bootstrap", error.message);
@@ -363,7 +363,7 @@ async function renderSetupScreen(type, message = "") {
             body: JSON.stringify({ email: form.get("email"), password: form.get("password") })
           });
           localStorage.removeItem("acp_api_key");
-          if (result?.apiKey) sessionStorage.setItem("aps_demo_key", result.apiKey);
+          if (result?.apiKey) localStorage.setItem("aps_demo_key", result.apiKey);
           if (result?.sessionToken) sessionStorage.setItem("aps_session_token", result.sessionToken);
           window.location.href = "/";
         } catch (error) {
@@ -380,7 +380,7 @@ async function renderSetupScreen(type, message = "") {
       try {
         const result = await request("/api/auth/demo-login", { method: "POST" });
         localStorage.removeItem("acp_api_key");
-        if (result?.apiKey) sessionStorage.setItem("aps_demo_key", result.apiKey);
+        if (result?.apiKey) localStorage.setItem("aps_demo_key", result.apiKey);
         if (result?.sessionToken) sessionStorage.setItem("aps_session_token", result.sessionToken);
         window.location.href = "/";
       } catch (err) {
@@ -428,7 +428,7 @@ function attachApiKeySetupForms(screenType) {
     const key = String(form.get("apiKey") || "");
     if (!key) return;
     localStorage.setItem("acp_api_key", key);
-    sessionStorage.removeItem("aps_demo_key");
+    localStorage.removeItem("aps_demo_key");
     window.location.href = "/";
   });
 
@@ -457,7 +457,7 @@ function attachApiKeySetupForms(screenType) {
 
       const payload = await result.json();
       localStorage.setItem("acp_api_key", payload.apiKey);
-      sessionStorage.removeItem("aps_demo_key");
+      localStorage.removeItem("aps_demo_key");
       window.location.href = "/";
     } catch (error) {
       if (btn) { btn.disabled = false; btn.textContent = "Generate key"; }
@@ -4196,7 +4196,7 @@ async function initializeApp() {
         tenantApiKey = "";
         _sessionToken = "";
         localStorage.removeItem("acp_api_key");
-        sessionStorage.removeItem("aps_demo_key");
+        localStorage.removeItem("aps_demo_key");
         sessionStorage.removeItem("aps_session_token");
       }
       const ssoError = new URLSearchParams(window.location.search).get("sso_error");
@@ -4241,7 +4241,7 @@ async function initializeApp() {
     _sessionToken = "";
     currentUser = null;
     localStorage.removeItem("acp_api_key");
-    sessionStorage.removeItem("aps_demo_key");
+    localStorage.removeItem("aps_demo_key");
     sessionStorage.removeItem("aps_session_token");
     renderSetupScreen("login", "");
   }
@@ -4258,7 +4258,7 @@ document.querySelector("#logout").addEventListener("click", async () => {
   currentUser = null;
   _sessionToken = "";
   localStorage.removeItem("acp_api_key");
-  sessionStorage.removeItem("aps_demo_key");
+  localStorage.removeItem("aps_demo_key");
   sessionStorage.removeItem("aps_session_token");
   renderSetupScreen("login");
 });
