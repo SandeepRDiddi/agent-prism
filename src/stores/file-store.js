@@ -661,7 +661,7 @@ export async function ensureDemoUser({ email, password }) {
       id: tenantId,
       name: "Demo Workspace",
       slug: "demo",
-      plan: "free",
+      plan: "enterprise-trial",
       status: "active",
       createdAt: now()
     };

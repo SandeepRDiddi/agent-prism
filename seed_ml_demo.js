@@ -13,8 +13,9 @@
  * Get your PRISM_KEY: Admin tab → Workspace Credentials section.
  */
 
-const ENDPOINT = process.env.PRISM_URL || "http://localhost:3000";
-const API_KEY  = process.env.PRISM_KEY  || "";
+const ENDPOINT     = process.env.PRISM_URL    || "http://localhost:3000";
+const API_KEY      = process.env.PRISM_KEY    || "";
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "";
 
 if (!API_KEY) {
   console.error(`
@@ -264,21 +265,60 @@ const runs = [
 
 async function post(run, i) {
   const label = `[${String(i + 1).padStart(2)}/${runs.length}]  ${run.agentName.padEnd(22)} ${run.workflow.padEnd(14)} $${run.costUsd.toFixed(4)}  ${run.status}`;
-  try {
-    const res = await fetch(`${ENDPOINT}/api/ingest`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
-      body: JSON.stringify({ source: "generic", payload: { ...run, environment: "staging" } })
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      console.error(`  FAIL ${label} → ${res.status} ${text}`);
+  let attempts = 0;
+  while (attempts < 5) {
+    try {
+      const res = await fetch(`${ENDPOINT}/api/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
+        body: JSON.stringify({ source: "generic", payload: { ...run, environment: "staging" } })
+      });
+      if (res.status === 429) {
+        let retryAfter = 35;
+        try { retryAfter = (await res.json()).message?.match(/(\d+) seconds/)?.[1] ?? 35; } catch (_) {}
+        retryAfter = parseInt(retryAfter, 10) + 2;
+        process.stdout.write(`  ⏳ rate-limited, waiting ${retryAfter}s…\r`);
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        attempts++;
+        continue;
+      }
+      const text = await res.text();
+      if (!res.ok) {
+        console.error(`  FAIL ${label} → ${res.status} ${text}`);
+        return false;
+      }
+      console.log(`  ✓  ${label}`);
+      return true;
+    } catch (err) {
+      console.error(`  ERR ${label} → ${err.message}`);
       return false;
     }
-    console.log(`  ✓  ${label}`);
-    return true;
-  } catch (err) {
-    console.error(`  ERR ${label} → ${err.message}`);
+  }
+  console.error(`  FAIL ${label} → max retries exceeded`);
+  return false;
+}
+
+// ── Upgrade tenant plan to enterprise-trial via admin ─────────────────────────
+async function upgradePlan() {
+  if (!ADMIN_SECRET) return false;
+  try {
+    // Get tenant ID from /api/me
+    const me = await fetch(`${ENDPOINT}/api/me`, {
+      headers: { "x-api-key": API_KEY }
+    }).then(r => r.json()).catch(() => null);
+    if (!me?.tenant?.id) return false;
+
+    const r = await fetch(`${ENDPOINT}/api/admin/tenant/plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-secret": ADMIN_SECRET },
+      body: JSON.stringify({ tenantId: me.tenant.id, plan: "enterprise-trial" })
+    });
+    if (r.ok) { console.log(`  ✓ plan upgraded → enterprise-trial (no rate limit)\n`); return true; }
+    const err = await r.json().catch(() => ({}));
+    console.log(`  ~ plan upgrade failed: ${err.message || r.status} (continuing anyway)\n`);
+    return false;
+  } catch (e) {
+    console.log(`  ~ plan upgrade error: ${e.message} (continuing anyway)\n`);
     return false;
   }
 }
@@ -287,11 +327,20 @@ console.log(`\nAgent Prism ML Seed  →  ${ENDPOINT}`);
 console.log(`Sending ${runs.length} runs across 8 agents, 4 providers\n`);
 
 (async () => {
+  // Try to upgrade plan so rate limit doesn't block seeding.
+  // Set ADMIN_SECRET env var to enable: ADMIN_SECRET=xxx PRISM_KEY=acp_... node seed_ml_demo.js
+  if (ADMIN_SECRET) {
+    process.stdout.write(`Upgrading tenant plan to enterprise-trial...\n`);
+    await upgradePlan();
+  } else {
+    console.log(`Tip: set ADMIN_SECRET=xxx to auto-upgrade plan and skip rate limiting.\n`);
+  }
+
   let ok = 0;
   for (let i = 0; i < runs.length; i++) {
     const success = await post(runs[i], i);
     if (success) ok++;
-    await new Promise(r => setTimeout(r, 60));
+    await new Promise(r => setTimeout(r, 120)); // 120ms ≈ 500 req/min well under enterprise limits
   }
 
   console.log(`\n${"─".repeat(60)}`);
