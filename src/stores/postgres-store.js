@@ -741,14 +741,21 @@ export async function revokeDashboardSession(tokenValue) {
 export async function setUserPassword({ tenantId, email, password }) {
   const pool = await getPool();
   const normalized = String(email || "").trim().toLowerCase();
-  const result = await pool.query(
-    `update users
-     set password_hash = $1
-     where lower(email) = $2 and ($3::text is null or tenant_id = $3)
-     returning id, tenant_id, email, name, role, created_at`,
-    [hashPassword(password), normalized, tenantId || null]
+  // Find the user's actual tenant to satisfy RLS
+  const found = await pool.query(
+    `select id, tenant_id, email, name, role, created_at from users
+     where lower(email) = $1 and ($2::text is null or tenant_id = $2) limit 1`,
+    [normalized, tenantId || null]
   );
-  return sanitizeUser(result.rows[0]);
+  const user = found.rows[0];
+  if (!user) return null;
+  await withTenant(user.tenant_id, async (client) => {
+    await client.query(
+      `update users set password_hash = $1 where id = $2`,
+      [hashPassword(password), user.id]
+    );
+  });
+  return sanitizeUser(user);
 }
 
 export async function ensureDemoUser({ email, password }) {
@@ -760,23 +767,33 @@ export async function ensureDemoUser({ email, password }) {
   // Hash once — reuse for both update and insert
   const hash = hashPassword(password);
 
-  // Try update first (user already exists)
-  let upd;
+  // Try update first — need tenant context for RLS, so find the user's tenant first
+  let existingUser;
   try {
-    upd = await pool.query(
-      `update users set password_hash = $1
-       where lower(email) = $2
-       returning id, tenant_id, email, name, role, created_at`,
-      [hash, normalized]
+    const found = await pool.query(
+      `select id, tenant_id, email, name, role, created_at from users where lower(email) = $1 limit 1`,
+      [normalized]
     );
+    existingUser = found.rows[0] || null;
   } catch (e) {
-    process.stderr.write(`[demo] UPDATE failed: ${e.message}\n`);
+    process.stderr.write(`[demo] user lookup failed: ${e.message}\n`);
     throw e;
   }
 
-  if (upd.rows[0]) {
+  if (existingUser) {
+    try {
+      await withTenant(existingUser.tenant_id, async (client) => {
+        await client.query(
+          `update users set password_hash = $1 where lower(email) = $2 and tenant_id = $3`,
+          [hash, normalized, existingUser.tenant_id]
+        );
+      });
+    } catch (e) {
+      process.stderr.write(`[demo] UPDATE failed: ${e.message}\n`);
+      throw e;
+    }
     process.stderr.write(`[demo] Updated password for existing user: ${normalized}\n`);
-    return sanitizeUser(upd.rows[0]);
+    return sanitizeUser(existingUser);
   }
 
   process.stderr.write(`[demo] User not found, creating in first active tenant...\n`);
@@ -803,22 +820,26 @@ export async function ensureDemoUser({ email, password }) {
 
   process.stderr.write(`[demo] Inserting into tenant ${tenantId}...\n`);
 
-  let ins;
+  // Must use withTenant to satisfy RLS policy on users table
+  let result;
   try {
-    ins = await pool.query(
-      `insert into users (id, tenant_id, email, name, role, password_hash, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       on conflict (tenant_id, lower(email)) do update set password_hash = excluded.password_hash
-       returning id, tenant_id, email, name, role, created_at`,
-      [userId, tenantId, normalized, "Demo User", "owner", hash, now]
-    );
+    result = await withTenant(tenantId, async (client) => {
+      const ins = await client.query(
+        `insert into users (id, tenant_id, email, name, role, password_hash, created_at)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (tenant_id, lower(email)) do update set password_hash = excluded.password_hash
+         returning id, tenant_id, email, name, role, created_at`,
+        [userId, tenantId, normalized, "Demo User", "owner", hash, now]
+      );
+      return ins.rows[0];
+    });
   } catch (e) {
     process.stderr.write(`[demo] INSERT failed: ${e.message}\n`);
     throw e;
   }
 
   process.stderr.write(`[demo] Created demo user: ${normalized} in tenant ${tenantId}\n`);
-  return sanitizeUser(ins.rows[0]);
+  return sanitizeUser(result);
 }
 
 function createSessionTokenHash(token) {
