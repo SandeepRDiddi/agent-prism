@@ -802,6 +802,11 @@ export async function ensureDemoUser({ email, password }) {
           `update users set password_hash = $1 where lower(email) = $2 and tenant_id = $3`,
           [hash, normalized, existingUser.tenant_id]
         );
+        // Ensure demo tenant is on enterprise-trial so no plan limits apply.
+        await client.query(
+          `update tenants set plan = 'enterprise-trial' where id = $1 and plan in ('free','starter')`,
+          [existingUser.tenant_id]
+        );
       });
     } catch (e) {
       process.stderr.write(`[demo] UPDATE failed: ${e.message}\n`);
@@ -832,6 +837,12 @@ export async function ensureDemoUser({ email, password }) {
   const tenantId = tenantRow.rows[0].id;
   const userId   = createId("usr");
   const now      = new Date().toISOString();
+
+  // Bump to enterprise-trial so no plan limits (agents, RPM, runs/month) block demo.
+  await pool.query(
+    `update tenants set plan = 'enterprise-trial' where id = $1 and plan in ('free','starter')`,
+    [tenantId]
+  ).catch(() => {});
 
   process.stderr.write(`[demo] Inserting into tenant ${tenantId}...\n`);
 
