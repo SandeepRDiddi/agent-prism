@@ -293,9 +293,9 @@ async function renderSetupScreen(type, message = "") {
   }
 
   if (type === "login") {
-    let loginCfg = { ssoEnabled: false, ssoOnly: false, demoEmail: "" };
-    try { loginCfg = await (await fetch("/api/login-config")).json(); } catch (_) {}
-    const { ssoEnabled, ssoOnly, demoEmail } = loginCfg;
+    let loginCfg = { ssoEnabled: false, ssoOnly: false, demoEmail: "", demoPassword: "" };
+    try { loginCfg = await (await fetch("/api/login-config")).then(r => r.json()); } catch (_) {}
+    const { ssoEnabled, ssoOnly, demoEmail, demoPassword } = loginCfg;
 
     workspace.innerHTML = `
       <section class="login-hero">
@@ -320,8 +320,8 @@ async function renderSetupScreen(type, message = "") {
             ${!ssoOnly ? `
             <form id="login-form">
               <div class="login-field"><input name="email" type="email" placeholder="Email" autocomplete="email" required value="${escapeHtml(demoEmail || "")}" /></div>
-              <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required /></div>
-              <button type="submit" class="login-submit-btn">Sign in &rarr;</button>
+              <div class="login-field"><input name="password" type="password" placeholder="Password" autocomplete="current-password" minlength="8" required value="${escapeHtml(demoPassword || "")}" /></div>
+              <button type="submit" class="login-submit-btn" id="login-submit-btn">Sign in &rarr;</button>
             </form>
             ` : ""}
             ${message ? `<p class="login-error" style="margin-top:0.75rem">${escapeHtml(message)}</p>` : ""}
@@ -333,27 +333,38 @@ async function renderSetupScreen(type, message = "") {
       </section>
     `;
 
+    const doLogin = async (email, password, btn) => {
+      if (btn) { btn.disabled = true; btn.textContent = "Signing in…"; }
+      try {
+        const result = await request("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+        localStorage.removeItem("acp_api_key");
+        if (result?.apiKey) localStorage.setItem("aps_demo_key", result.apiKey);
+        if (result?.sessionToken) sessionStorage.setItem("aps_session_token", result.sessionToken);
+        window.location.href = "/";
+      } catch (error) {
+        if (btn) { btn.disabled = false; btn.textContent = "Sign in →"; }
+        renderSetupScreen("login", error.message);
+      }
+    };
+
     if (!ssoOnly) {
       document.querySelector("#login-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();
         const btn = event.currentTarget.querySelector("button[type=submit]");
-        btn.disabled = true; btn.textContent = "Signing in…";
         const form = new FormData(event.currentTarget);
-        try {
-          const result = await request("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: form.get("email"), password: form.get("password") })
-          });
-          localStorage.removeItem("acp_api_key");
-          if (result?.apiKey) localStorage.setItem("aps_demo_key", result.apiKey);
-          if (result?.sessionToken) sessionStorage.setItem("aps_session_token", result.sessionToken);
-          window.location.href = "/";
-        } catch (error) {
-          btn.disabled = false; btn.textContent = "Sign in →";
-          renderSetupScreen("login", error.message);
-        }
+        await doLogin(form.get("email"), form.get("password"), btn);
       });
+
+      // Auto-submit when both fields are pre-filled (demo config) and no error shown.
+      if (demoEmail && demoPassword && !message) {
+        const btn = document.querySelector("#login-submit-btn");
+        if (btn) { btn.disabled = true; btn.textContent = "Signing in…"; }
+        await doLogin(demoEmail, demoPassword, null);
+      }
     }
 
     return;
@@ -4152,22 +4163,53 @@ async function initializeApp() {
       return;
     }
 
-    // Verify identity. On 401: clear all stored credentials and show login.
+    // Verify identity. On 401: try silent demo auto-login before showing login screen.
     try {
       const me = await request("/api/me");
       currentUser = me.user;
     } catch (meErr) {
       if (meErr.status === 401) {
-        // Wipe every stored credential so the next page load starts clean.
+        // Clear stale creds, then attempt silent re-login with demo credentials.
         tenantApiKey = "";
         _sessionToken = "";
         localStorage.removeItem("acp_api_key");
         localStorage.removeItem("aps_demo_key");
         sessionStorage.removeItem("aps_session_token");
+
+        let silentLoginOk = false;
+        try {
+          const cfg = await fetch("/api/login-config").then(r => r.json()).catch(() => ({}));
+          if (cfg.demoEmail && cfg.demoPassword) {
+            const lr = await fetch("/api/auth/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: cfg.demoEmail, password: cfg.demoPassword })
+            }).then(r => r.ok ? r.json() : null).catch(() => null);
+            if (lr?.apiKey) {
+              localStorage.setItem("aps_demo_key", lr.apiKey);
+              tenantApiKey = lr.apiKey;
+            }
+            if (lr?.sessionToken) {
+              sessionStorage.setItem("aps_session_token", lr.sessionToken);
+              _sessionToken = lr.sessionToken;
+            }
+            if (lr?.apiKey || lr?.sessionToken) {
+              const me2 = await request("/api/me").catch(() => null);
+              if (me2) { currentUser = me2.user; silentLoginOk = true; }
+            }
+          }
+        } catch (_) {}
+
+        if (!silentLoginOk) {
+          const ssoError = new URLSearchParams(window.location.search).get("sso_error");
+          renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
+          return;
+        }
+      } else {
+        const ssoError = new URLSearchParams(window.location.search).get("sso_error");
+        renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
+        return;
       }
-      const ssoError = new URLSearchParams(window.location.search).get("sso_error");
-      renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
-      return;
     }
 
     // Parallel: tenant info + critical dashboard data — eliminates serial waterfall
