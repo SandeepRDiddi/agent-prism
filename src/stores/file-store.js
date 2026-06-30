@@ -636,3 +636,60 @@ export async function getModelFitnessStats(tenantId) {
 
   return { fitnessBreakdown, topTaskModelPairs };
 }
+
+// Auto-bootstraps a demo tenant + user when no tenant exists (file-store only).
+// Mirrors the postgres-store version so demo login works on ephemeral deployments.
+export async function ensureDemoUser({ email, password }) {
+  const state = await readState();
+  const normalized = String(email || "").trim().toLowerCase();
+  const hash = hashPassword(password);
+
+  // Find existing user
+  const existing = state.users.find((u) => u.email.toLowerCase() === normalized);
+  if (existing) {
+    existing.passwordHash = hash;
+    await writeState(state);
+    return { id: existing.id, tenantId: existing.tenantId, email: existing.email, name: existing.name, role: existing.role };
+  }
+
+  // No tenant yet → auto-bootstrap a demo tenant so demo login always works
+  let tenant = state.tenants.find((t) => t.status === "active");
+  if (!tenant) {
+    const tenantId = createId("tenant");
+    const apiKey = createApiKey();
+    tenant = {
+      id: tenantId,
+      name: "Demo Workspace",
+      slug: "demo",
+      plan: "free",
+      status: "active",
+      createdAt: now()
+    };
+    state.tenants.push(tenant);
+    state.apiKeys.push({
+      id: createId("key"),
+      tenantId,
+      name: "Demo key",
+      prefix: apiKey.prefix,
+      hash: apiKey.hash,
+      status: "active",
+      scopes: ["*"],
+      createdAt: now(),
+      lastUsedAt: null
+    });
+  }
+
+  const userId = createId("user");
+  const user = {
+    id: userId,
+    tenantId: tenant.id,
+    email: normalized,
+    name: "Demo User",
+    role: "admin",
+    passwordHash: hash,
+    createdAt: now()
+  };
+  state.users.push(user);
+  await writeState(state);
+  return { id: userId, tenantId: tenant.id, email: normalized, name: "Demo User", role: "admin" };
+}

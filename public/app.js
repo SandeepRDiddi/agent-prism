@@ -198,6 +198,18 @@ async function request(path, options) {
     const payload = await response.json().catch(() => ({}));
     const error = new Error(payload.message || `Request failed for ${path}`);
     error.status = response.status;
+    // Global 401 handler: if auth expired mid-session, wipe creds and return to login.
+    // Skip paths that are part of the login flow itself to avoid infinite loops.
+    const isAuthPath = path.startsWith("/api/auth/") || path === "/api/me" || path === "/api/bootstrap/status";
+    if (response.status === 401 && !isAuthPath && currentUser !== undefined) {
+      tenantApiKey = "";
+      _sessionToken = "";
+      currentUser = null;
+      localStorage.removeItem("acp_api_key");
+      sessionStorage.removeItem("aps_demo_key");
+      sessionStorage.removeItem("aps_session_token");
+      renderSetupScreen("login", "Session expired — please sign in again.");
+    }
     throw error;
   }
 
@@ -331,15 +343,10 @@ async function renderSetupScreen(type, message = "") {
               <div class="demo-cred-row"><span>Password</span><code>${escapeHtml(loginCfg.demoPassword || "")}</code></div>
               <button type="button" id="demo-login-btn" class="demo-login-btn">Sign in as demo user &rarr;</button>
             </div>` : ""}
-            ${message ? `
-              <p class="login-error">${escapeHtml(message)}</p>
-              <div class="login-error-help">
-                <p>Can't log in? Two options:</p>
-                <ol>
-                  <li>Go to <strong>Admin tab → Set login password</strong> to reset your password using the admin secret.</li>
-                  <li>Or <button class="login-link-btn" id="use-api-key-btn">sign in with API key instead</button></li>
-                </ol>
-              </div>` : ""}
+            ${message ? `<p class="login-error">${escapeHtml(message)}</p>` : ""}
+            <div class="login-error-help">
+              <button class="login-link-btn" id="use-api-key-btn">Sign in with API key / admin secret &rarr;</button>
+            </div>
           </div>
         </article>
       </section>
