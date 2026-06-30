@@ -3085,16 +3085,9 @@ if (process.env.RUN_MIGRATIONS_ON_STARTUP === "true" && process.env.DATABASE_URL
   });
 }
 
-// ── Demo user seed (DEMO_EMAIL + DEMO_PASSWORD env vars) ─────────────────────
-// Upserts a demo user on every startup. Creates if not found (in first tenant).
-if (process.env.DEMO_EMAIL && process.env.DEMO_PASSWORD) {
-  ensureDemoUser({ email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD })
-    .then((u) => {
-      if (u) process.stderr.write(`[demo] Demo user ready: ${u.email} (tenant ${u.tenantId})\n`);
-      else    process.stderr.write(`[demo] Demo user skipped — no active tenant found yet\n`);
-    })
-    .catch((err) => process.stderr.write(`[demo] Demo user seed FAILED: ${err.stack || err.message}\n`));
-}
+// ── Demo user — managed via POST /api/admin/ensure-demo-user, not auto-seeded ──
+// Running ensureDemoUser on every startup caused password churn on Render restarts.
+// The user persists in Postgres; call the endpoint once to create/reset it.
 
 // ── Data retention (DATA_RETENTION_DAYS=90 deletes runs/captures older than N days) ──
 const RETENTION_DAYS = Number(process.env.DATA_RETENTION_DAYS || 0);
