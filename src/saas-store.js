@@ -321,3 +321,36 @@ export async function createPromotion(tenantId, agentName, opts) {
   const backend = await getBackend();
   return backend.createPromotion ? backend.createPromotion(tenantId, agentName, opts) : null;
 }
+
+
+// ── ML Analytics ─────────────────────────────────────────────────────────────
+
+export async function recordRunFeedback(tenantId, runId, outcome) {
+  const backend = await getBackend();
+  return backend.recordRunFeedback ? backend.recordRunFeedback(tenantId, runId, outcome) : { ok: false, error: "unsupported" };
+}
+
+export async function getLabeledRuns(tenantId) {
+  const backend = await getBackend();
+  return backend.getLabeledRuns ? backend.getLabeledRuns(tenantId) : [];
+}
+
+export async function saveModelWeights(tenantId, modelName, weightsJson, sampleCount) {
+  const backend = await getBackend();
+  return backend.saveModelWeights ? backend.saveModelWeights(tenantId, modelName, weightsJson, sampleCount) : null;
+}
+
+export async function loadModelWeights(tenantId, modelName) {
+  const backend = await getBackend();
+  return backend.loadModelWeights ? backend.loadModelWeights(tenantId, modelName) : null;
+}
+
+export async function updateRunTaskType(tenantId, runId, taskType) {
+  const backend = await getBackend();
+  return backend.updateRunTaskType ? backend.updateRunTaskType(tenantId, runId, taskType) : null;
+}
+
+export async function getRecentRunsForML(tenantId, limit) {
+  const backend = await getBackend();
+  return backend.getRecentRunsForML ? backend.getRecentRunsForML(tenantId, limit) : [];
+}

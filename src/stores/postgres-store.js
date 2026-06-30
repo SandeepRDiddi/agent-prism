@@ -260,6 +260,21 @@ export async function ensureSchemaPatches() {
 
     -- migration 009: password_hash column on users (added with login feature)
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+    -- migration 010: ML analytics — user outcome labels + model weight storage
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS user_outcome SMALLINT;
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS anomaly_score NUMERIC(6,4);
+
+    CREATE TABLE IF NOT EXISTS ml_model_weights (
+      model_name  TEXT        NOT NULL,
+      tenant_id   TEXT        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      weights     JSONB       NOT NULL DEFAULT '{}'::jsonb,
+      sample_count INTEGER    NOT NULL DEFAULT 0,
+      trained_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (model_name, tenant_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ml_weights_tenant ON ml_model_weights (tenant_id);
   `);
   process.stderr.write("[schema] Startup patches verified\n");
 }
@@ -1695,4 +1710,126 @@ export async function markFailedIngestAttempt(id, { succeeded, error } = {}) {
      WHERE id = $5`,
     [status, attempts, backoffMinutes, String(error || "").slice(0, 2000), id]
   );
+}
+
+// ─── ML Analytics ────────────────────────────────────────────────────────────
+
+/**
+ * Record user feedback (valuable / not valuable) on a run.
+ * outcome: 1 = valuable, 0 = not valuable
+ */
+export async function recordRunFeedback(tenantId, runId, outcome) {
+  return withTenant(tenantId, async (client) => {
+    const result = await client.query(
+      `UPDATE agent_runs SET user_outcome = $1 WHERE id = $2 AND tenant_id = $3 RETURNING id`,
+      [outcome, runId, tenantId]
+    );
+    if (result.rowCount === 0) throw new Error(`run ${runId} not found`);
+    return { ok: true, runId, outcome };
+  });
+}
+
+/**
+ * Returns all runs with user_outcome labels for a tenant.
+ * Used to retrain the logistic regression model.
+ */
+export async function getLabeledRuns(tenantId) {
+  const pool = await getPool();
+  const result = await pool.query(
+    `SELECT id, status, cost_usd, budget_usd, latency_ms, autonomy_level,
+            policy_violations, retry_count, user_outcome
+     FROM agent_runs
+     WHERE tenant_id = $1 AND user_outcome IS NOT NULL
+     ORDER BY start_time DESC
+     LIMIT 5000`,
+    [tenantId]
+  );
+  return result.rows.map(r => ({
+    id: r.id,
+    status: r.status,
+    costUsd: parseFloat(r.cost_usd) || 0,
+    budgetUsd: parseFloat(r.budget_usd) || 0,
+    latencyMs: parseInt(r.latency_ms) || 0,
+    autonomyLevel: parseInt(r.autonomy_level) || 0,
+    policyViolations: parseInt(r.policy_violations) || 0,
+    retryCount: parseInt(r.retry_count) || 0,
+    userOutcome: parseInt(r.user_outcome)
+  }));
+}
+
+/**
+ * Save (upsert) serialized ML model weights for a tenant.
+ * modelName: "control_score_lr" | "isolation_forest" | etc.
+ */
+export async function saveModelWeights(tenantId, modelName, weightsJson, sampleCount) {
+  const pool = await getPool();
+  await pool.query(
+    `INSERT INTO ml_model_weights (model_name, tenant_id, weights, sample_count, trained_at, updated_at)
+     VALUES ($1, $2, $3::jsonb, $4, NOW(), NOW())
+     ON CONFLICT (model_name, tenant_id) DO UPDATE
+       SET weights = EXCLUDED.weights,
+           sample_count = EXCLUDED.sample_count,
+           trained_at = EXCLUDED.trained_at,
+           updated_at = NOW()`,
+    [modelName, tenantId, JSON.stringify(weightsJson), sampleCount]
+  );
+}
+
+/**
+ * Load serialized model weights for a tenant. Returns null if not found.
+ */
+export async function loadModelWeights(tenantId, modelName) {
+  const pool = await getPool();
+  const result = await pool.query(
+    `SELECT weights, sample_count, trained_at
+     FROM ml_model_weights WHERE model_name = $1 AND tenant_id = $2`,
+    [modelName, tenantId]
+  );
+  if (!result.rows[0]) return null;
+  const row = result.rows[0];
+  return {
+    weights: row.weights,
+    sampleCount: row.sample_count,
+    trainedAt: row.trained_at?.toISOString?.() || null
+  };
+}
+
+/**
+ * Update the LLM-classified task_type for a run (async enrichment).
+ */
+export async function updateRunTaskType(tenantId, runId, taskType) {
+  return withTenant(tenantId, async (client) => {
+    await client.query(
+      `UPDATE agent_runs SET task_type = $1 WHERE id = $2 AND tenant_id = $3`,
+      [taskType, runId, tenantId]
+    );
+  });
+}
+
+/**
+ * Fetch recent runs (last 7 days or up to limit) for IsolationForest training.
+ */
+export async function getRecentRunsForML(tenantId, limit = 2000) {
+  const pool = await getPool();
+  const result = await pool.query(
+    `SELECT tokens_in, tokens_out, cost_usd, latency_ms, retry_count,
+            status, budget_usd, autonomy_level, policy_violations
+     FROM agent_runs
+     WHERE tenant_id = $1
+       AND start_time > NOW() - INTERVAL '30 days'
+     ORDER BY start_time DESC
+     LIMIT $2`,
+    [tenantId, limit]
+  );
+  return result.rows.map(r => ({
+    tokensIn: parseInt(r.tokens_in) || 0,
+    tokensOut: parseInt(r.tokens_out) || 0,
+    costUsd: parseFloat(r.cost_usd) || 0,
+    latencyMs: parseInt(r.latency_ms) || 0,
+    retryCount: parseInt(r.retry_count) || 0,
+    status: r.status,
+    budgetUsd: parseFloat(r.budget_usd) || 0,
+    autonomyLevel: parseInt(r.autonomy_level) || 0,
+    policyViolations: parseInt(r.policy_violations) || 0
+  }));
 }

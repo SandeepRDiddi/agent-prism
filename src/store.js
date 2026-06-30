@@ -2,6 +2,20 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { computeControlScore, classifyHealth, summarizeStatus, average, isSuccess } from "./scoring.js";
 import { scoreFitness, getModelRecommendation } from "./model-classifier.js";
+import { IsolationForest } from "./ml/isolation-forest.js";
+import { LogisticRegression } from "./ml/logistic-regression.js";
+
+// Tenant-keyed ML model registries — populated at runtime via initTenantML()
+const _lrModels  = new Map(); // tenantId → LogisticRegression
+const _isoForests = new Map(); // tenantId → IsolationForest
+
+/** Call after loading LR weights from DB or after retraining. */
+export function setLrModel(tenantId, model) { _lrModels.set(tenantId, model); }
+export function getLrModel(tenantId) { return _lrModels.get(tenantId) || null; }
+
+/** Call after fitting IsoForest. */
+export function setIsoForest(tenantId, forest) { _isoForests.set(tenantId, forest); }
+export function getIsoForest(tenantId) { return _isoForests.get(tenantId) || null; }
 
 const samplePath = join(process.cwd(), "data", "sample-runs.json");
 
@@ -26,8 +40,10 @@ export function upsertRuns(existingRuns, incomingRuns) {
 const _leakSeen = new Map();
 const LEAK_SUPPRESS_MS = Number(process.env.LEAK_SUPPRESS_MS || 3600000); // 1 hour default
 
-export function detectCostLeaks(runs) {
+export function detectCostLeaks(runs, { tenantId } = {}) {
   const now = Date.now();
+  const isoForest = tenantId ? getIsoForest(tenantId) : null;
+
   // Evict stale suppression entries
   for (const [id, ts] of _leakSeen) {
     if (now - ts > LEAK_SUPPRESS_MS) _leakSeen.delete(id);
@@ -38,33 +54,47 @@ export function detectCostLeaks(runs) {
       const overBudget = run.costUsd > run.budgetUsd;
       const retryHeavy = run.retryCount >= 3 && run.costUsd > 1;
       const lowOutcome = run.userSatisfaction <= 2 && run.costUsd > 1.5;
-      if (!(overBudget || retryHeavy || lowOutcome)) return false;
+      // IsolationForest: flag statistical anomalies even if they don't hit hard thresholds
+      const mlAnomaly = isoForest?.isAnomaly(run) ?? false;
+      if (!(overBudget || retryHeavy || lowOutcome || mlAnomaly)) return false;
       if (_leakSeen.has(run.id)) return false;
       _leakSeen.set(run.id, now);
       return true;
     })
-    .map((run) => ({
-      id: run.id,
-      agentName: run.agentName,
-      workflow: run.workflow,
-      provider: run.provider,
-      costUsd: run.costUsd,
-      budgetUsd: run.budgetUsd,
-      retryCount: run.retryCount,
-      userSatisfaction: run.userSatisfaction,
-      leakType:
-        run.costUsd > run.budgetUsd
-          ? "Budget breach"
-          : run.retryCount >= 3
-            ? "Retry spiral"
-            : "Low-value spend",
-      recommendation:
-        run.retryCount >= 3
-          ? "Tighten tool permissions and add intermediate checkpoints."
-          : run.costUsd > run.budgetUsd
-            ? "Add budget guardrails and early stopping."
-            : "Review prompt quality and handoff logic."
-    }))
+    .map((run) => {
+      const anomalyScore = isoForest?.score(run) ?? null;
+      const mlFlagged = anomalyScore !== null && anomalyScore > 0.62;
+      return {
+        id: run.id,
+        agentName: run.agentName,
+        workflow: run.workflow,
+        provider: run.provider,
+        costUsd: run.costUsd,
+        budgetUsd: run.budgetUsd,
+        retryCount: run.retryCount,
+        userSatisfaction: run.userSatisfaction,
+        anomalyScore: anomalyScore !== null ? Number(anomalyScore.toFixed(4)) : null,
+        detectionMethod: mlFlagged && !(run.costUsd > run.budgetUsd || run.retryCount >= 3 || (run.userSatisfaction <= 2 && run.costUsd > 1.5))
+          ? "isolation_forest"
+          : "threshold",
+        leakType:
+          run.costUsd > run.budgetUsd
+            ? "Budget breach"
+            : run.retryCount >= 3
+              ? "Retry spiral"
+              : mlFlagged
+                ? "Statistical anomaly"
+                : "Low-value spend",
+        recommendation:
+          run.retryCount >= 3
+            ? "Tighten tool permissions and add intermediate checkpoints."
+            : run.costUsd > run.budgetUsd
+              ? "Add budget guardrails and early stopping."
+              : mlFlagged
+                ? "Unusual token/cost/latency pattern detected by Isolation Forest. Inspect run telemetry."
+                : "Review prompt quality and handoff logic."
+      };
+    })
     .sort((left, right) => right.costUsd - left.costUsd);
 }
 
@@ -462,13 +492,15 @@ function groupBy(items, getKey) {
   }, {});
 }
 
-export function buildDashboardSnapshot(runs) {
+export function buildDashboardSnapshot(runs, { tenantId } = {}) {
+  const lrModel = tenantId ? getLrModel(tenantId) : null;
   const enrichedRuns = runs.map((run) => {
-    const controlScore = computeControlScore(run);
+    const controlScore = computeControlScore(run, lrModel);
     return {
       ...run,
       controlScore,
-      health: classifyHealth(controlScore)
+      health: classifyHealth(controlScore),
+      scoringMode: lrModel?.ready ? "ml" : "fixed"
     };
   });
 

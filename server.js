@@ -73,8 +73,19 @@ import {
   getCertification,
   listCertifications,
   revokeCertification,
-  createPromotion
+  createPromotion,
+  recordRunFeedback,
+  getLabeledRuns,
+  saveModelWeights,
+  loadModelWeights,
+  getRecentRunsForML,
+  updateRunTaskType
 } from "./src/saas-store.js";
+import { LogisticRegression, extractFeatures, MIN_SAMPLES } from "./src/ml/logistic-regression.js";
+import { IsolationForest } from "./src/ml/isolation-forest.js";
+import { setLlmCaller, getLlmClassifierStatus, classifyTaskWithLLM } from "./src/ml/llm-classifier.js";
+import { setLrModel, getLrModel, setIsoForest, getIsoForest } from "./src/store.js";
+import { explainScore } from "./src/scoring.js";
 import { evaluateAgent } from "./src/certification/certifier.js";
 import { pricing, isPricingStale } from "./src/pricing.js";
 import { computeClaudeCost } from "./src/cost/claude.js";
@@ -2129,7 +2140,7 @@ const server = createServer(async (req, res) => {
         return;
       }
       const context = await listTenantContext(auth.tenant.id);
-      const snapshot = buildDashboardSnapshot(context.runs);
+      const snapshot = buildDashboardSnapshot(context.runs, { tenantId: auth.tenant.id });
       const modelMismatches = detectModelMismatches(context.runs);
       return sendJson(res, 200, {
         ...snapshot,
@@ -2161,6 +2172,65 @@ const server = createServer(async (req, res) => {
       }
       const context = await listTenantContext(auth.tenant.id);
       return sendJson(res, 200, { runs: context.runs });
+    }
+
+    // ── Run feedback (thumbs up/down) ─────────────────────────────────────────
+    const feedbackMatch = req.method === "POST" && req.url.match(/^\/api\/runs\/([^/]+)\/feedback$/);
+    if (feedbackMatch) {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const runId = feedbackMatch[1];
+      const body = await parseBody(req, res);
+      if (body === null) return;
+      const { outcome } = body;
+      if (outcome !== 0 && outcome !== 1) {
+        return sendJson(res, 400, { error: "outcome must be 0 (not valuable) or 1 (valuable)" });
+      }
+      try {
+        await recordRunFeedback(auth.tenant.id, runId, outcome);
+
+        // Retrain LR model with all labeled runs
+        const labeled = await getLabeledRuns(auth.tenant.id);
+        if (labeled.length >= MIN_SAMPLES) {
+          const samples = labeled.map(r => ({ features: extractFeatures(r), label: r.userOutcome }));
+          const model = getLrModel(auth.tenant.id) || new LogisticRegression();
+          const { loss, converged } = model.train(samples);
+          setLrModel(auth.tenant.id, model);
+          // Persist weights to DB
+          await saveModelWeights(auth.tenant.id, "control_score_lr", model.toJSON(), model.sampleCount).catch(() => {});
+          process.stderr.write(`[ml] LR retrained for ${auth.tenant.id}: ${labeled.length} samples, loss=${loss?.toFixed(4)}, converged=${converged}\n`);
+          return sendJson(res, 200, { ok: true, modelReady: true, sampleCount: labeled.length, loss });
+        }
+        return sendJson(res, 200, { ok: true, modelReady: false, sampleCount: labeled.length, samplesNeeded: MIN_SAMPLES - labeled.length });
+      } catch (err) {
+        return sendJson(res, err.message.includes("not found") ? 404 : 500, { error: err.message });
+      }
+    }
+
+    // ── ML status endpoint ────────────────────────────────────────────────────
+    if (req.method === "GET" && req.url === "/api/ml/status") {
+      const auth = await requireTenant(req, res, (id) => { tenantId = id; });
+      if (!auth) return;
+      const tid = auth.tenant.id;
+      const lrModel = getLrModel(tid);
+      const isoForest = getIsoForest(tid);
+      const labeled = await getLabeledRuns(tid).catch(() => []);
+      return sendJson(res, 200, {
+        logisticRegression: {
+          ready: lrModel?.ready ?? false,
+          sampleCount: lrModel?.sampleCount ?? 0,
+          samplesNeeded: Math.max(0, MIN_SAMPLES - (lrModel?.sampleCount ?? 0)),
+          trainedAt: lrModel?.trainedAt ?? null,
+          finalLoss: lrModel?.finalLoss ?? null,
+          labeledRunsInDb: labeled.length,
+          featureWeights: lrModel?.ready ? Object.fromEntries(
+            ["success","budgetEfficiency","latencyScore","autonomyScore","guardrailScore","retryScore"]
+            .map((n, i) => [n, Number(lrModel.w[i].toFixed(4))])
+          ) : null
+        },
+        isolationForest: isoForest?.toJSON() ?? { ready: false, nSamples: 0, nTrees: 0, trainedAt: null },
+        llmClassifier: getLlmClassifierStatus()
+      });
     }
 
     if (req.method === "POST" && req.url === "/api/advisor") {
@@ -2241,7 +2311,7 @@ ${prompt}`;
         return;
       }
       const context = await listTenantContext(auth.tenant.id);
-      return sendJson(res, 200, { leaks: detectCostLeaks(context.runs) });
+      return sendJson(res, 200, { leaks: detectCostLeaks(context.runs, { tenantId: auth.tenant.id }) });
     }
 
     if (req.method === "GET" && req.url.startsWith("/api/captures")) {
@@ -2794,6 +2864,12 @@ ${prompt}`;
       if (!await enforceProductionCertGate(auth.tenant.id, run.agentName, run.environment, res)) return;
       await upsertTenantRuns(auth.tenant.id, [run]);
       await checkAutoRevoke(auth.tenant.id, run, req.socket?.remoteAddress || "unknown");
+      // Fire-and-forget LLM task classification enrichment
+      if (body.messages?.length) {
+        classifyTaskWithLLM(body.messages, { toolCount: run.toolCalls })
+          .then(taskType => updateRunTaskType(auth.tenant.id, run.id, taskType).catch(() => {}))
+          .catch(() => {});
+      }
       return sendJson(res, 201, { status: "ingested", source: "claude" });
     }
 
@@ -2838,6 +2914,15 @@ ${prompt}`;
       if (!await enforceProductionCertGate(auth.tenant.id, run.agentName, run.environment, res)) return;
       await upsertTenantRuns(auth.tenant.id, [run]);
       await checkAutoRevoke(auth.tenant.id, run, req.socket?.remoteAddress || "unknown");
+      // Fire-and-forget LLM task classification
+      const genericMessages = (body.payload || body).messages || (body.payload || body).prompt
+        ? [{ role: "user", content: String((body.payload || body).prompt || "") }]
+        : null;
+      if (genericMessages?.length) {
+        classifyTaskWithLLM(genericMessages, { toolCount: run.toolCalls })
+          .then(taskType => updateRunTaskType(auth.tenant.id, run.id, taskType).catch(() => {}))
+          .catch(() => {});
+      }
       return sendJson(res, 201, { status: "ingested", source: "generic" });
     }
 
@@ -3119,6 +3204,93 @@ if (process.env.RUN_MIGRATIONS_ON_STARTUP === "true" && process.env.DATABASE_URL
 // ── Demo user — managed via POST /api/admin/ensure-demo-user, not auto-seeded ──
 // Running ensureDemoUser on every startup caused password churn on Render restarts.
 // The user persists in Postgres; call the endpoint once to create/reset it.
+
+// ── ML: wire up LLM task classifier ─────────────────────────────────────────
+if (process.env.ANTHROPIC_API_KEY) {
+  // Provide a thin Anthropic-compatible caller for the LLM classifier
+  setLlmCaller(async ({ model, max_tokens, system, messages }) => {
+    const { default: https } = await import("node:https");
+    return new Promise((resolve, reject) => {
+      const body = JSON.stringify({ model, max_tokens, system, messages });
+      const req = https.request({
+        hostname: "api.anthropic.com",
+        path: "/v1/messages",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Length": Buffer.byteLength(body)
+        }
+      }, (resp) => {
+        let data = "";
+        resp.on("data", d => { data += d; });
+        resp.on("end", () => {
+          try {
+            const parsed = JSON.parse(data);
+            resolve(parsed?.content?.[0]?.text || "");
+          } catch { resolve(""); }
+        });
+      });
+      req.on("error", reject);
+      req.setTimeout(4500, () => { req.destroy(new Error("timeout")); });
+      req.write(body);
+      req.end();
+    });
+  });
+  process.stderr.write("[ml] LLM task classifier enabled (claude-haiku-4-5-20251001)\n");
+}
+
+// ── ML: load LR models + schedule IsoForest rebuild per tenant ───────────────
+if (config.storageBackend === "postgres") {
+  const initTenantML = async () => {
+    try {
+      const tenants = await listTenants().catch(() => []);
+      for (const tenant of tenants) {
+        const tid = tenant.id;
+
+        // Load persisted LR weights
+        const saved = await loadModelWeights(tid, "control_score_lr").catch(() => null);
+        if (saved?.weights) {
+          const model = LogisticRegression.fromJSON(saved.weights);
+          setLrModel(tid, model);
+          process.stderr.write(`[ml] LR model loaded for ${tid}: ${model.sampleCount} samples\n`);
+        }
+
+        // Fit IsoForest from recent runs
+        const runs = await getRecentRunsForML(tid).catch(() => []);
+        if (runs.length >= 30) {
+          const forest = new IsolationForest();
+          const result = forest.fit(runs);
+          setIsoForest(tid, forest);
+          process.stderr.write(`[ml] IsoForest fitted for ${tid}: ${JSON.stringify(result)}\n`);
+        }
+      }
+    } catch (err) {
+      process.stderr.write(`[ml] init error: ${err.message}\n`);
+    }
+  };
+
+  // Initial load after a short delay to let schema patches complete
+  setTimeout(initTenantML, 5000);
+
+  // Rebuild IsoForest hourly
+  setInterval(async () => {
+    try {
+      const tenants = await listTenants().catch(() => []);
+      for (const tenant of tenants) {
+        const runs = await getRecentRunsForML(tenant.id).catch(() => []);
+        if (runs.length >= 30) {
+          const forest = new IsolationForest();
+          forest.fit(runs);
+          setIsoForest(tenant.id, forest);
+        }
+      }
+    } catch (err) {
+      process.stderr.write(`[ml] IsoForest hourly rebuild error: ${err.message}\n`);
+    }
+  }, 60 * 60 * 1000).unref();
+}
 
 // ── Data retention (DATA_RETENTION_DAYS=90 deletes runs/captures older than N days) ──
 const RETENTION_DAYS = Number(process.env.DATA_RETENTION_DAYS || 0);

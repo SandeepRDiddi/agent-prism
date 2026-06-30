@@ -1124,6 +1124,13 @@ function renderActivityView() {
                 <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Latency</div><div style="color:#e0e4ff;font-weight:500;">${item.latencyMs ? item.latencyMs + "ms" : "—"}</div></div>
                 <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Cost</div><div style="color:#4ec;">${"$" + (item.costUsd || 0).toFixed(4)}</div></div>
                 <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Workflow</div><div style="color:#e0e4ff;font-weight:500;">${item.workflow || "—"}</div></div>
+                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Score method</div><div style="color:#e0e4ff;font-weight:500;">${item.scoringMode === "ml" ? "🤖 ML" : "fixed"}</div></div>
+              </div>
+              <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
+                <span style="font-size:0.7rem;opacity:0.5;text-transform:uppercase;letter-spacing:0.05em;">Was this run valuable?</span>
+                <button class="feedback-btn" data-run-id="${item.id}" data-outcome="1" title="Valuable — trains ML model">👍</button>
+                <button class="feedback-btn" data-run-id="${item.id}" data-outcome="0" title="Not valuable — trains ML model">👎</button>
+                <span class="feedback-status" id="feedback-status-${item.id}" style="font-size:0.72rem;color:#4ec;display:none;"></span>
               </div>
             </div>
           `).join("") : `<p class="muted">No activity yet.</p>`}
@@ -1140,6 +1147,30 @@ function renderActivityView() {
       const open = panel.style.display !== "none";
       panel.style.display = open ? "none" : "block";
       if (chevron) chevron.textContent = open ? "▼" : "▲";
+    });
+  });
+
+  document.querySelectorAll(".feedback-btn").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const runId = btn.dataset.runId;
+      const outcome = Number(btn.dataset.outcome);
+      const statusEl = document.getElementById(`feedback-status-${runId}`);
+      btn.disabled = true;
+      try {
+        const result = await request(`/api/runs/${encodeURIComponent(runId)}/feedback`, {
+          method: "POST", body: JSON.stringify({ outcome })
+        });
+        if (statusEl) {
+          statusEl.style.display = "inline";
+          statusEl.textContent = result.modelReady
+            ? `✓ Saved. ML model active (${result.sampleCount} labels)`
+            : `✓ Saved. ${result.samplesNeeded} more labels needed to activate ML scoring`;
+        }
+      } catch (err) {
+        if (statusEl) { statusEl.style.display = "inline"; statusEl.style.color = "#f87171"; statusEl.textContent = "Failed to save"; }
+        btn.disabled = false;
+      }
     });
   });
 }
@@ -3399,6 +3430,16 @@ const response = await fetch("${window.location.origin}/v1/messages", {
         </form>
       </article>
 
+      <article class="panel wide-panel" id="ml-status-panel">
+        <div class="panel-title">
+          <p class="eyebrow">ML Analytics</p>
+          <h2>Machine learning model status</h2>
+          <p class="panel-subtitle">Use 👍/👎 on any run in the Activity tab to label outcomes. After 20 labels the Logistic Regression model activates and replaces fixed-weight scoring.</p>
+        </div>
+        <div id="ml-status-content" style="color:#aab;font-size:0.85rem;padding:8px 0;">Loading ML status…</div>
+        <button class="admin-action-btn" style="margin-top:12px;" onclick="loadMlStatus()">Refresh ML status</button>
+      </article>
+
       <article class="panel wide-panel danger-zone-panel">
         <div class="panel-title">
           <p class="eyebrow" style="color:var(--red)">Danger Zone</p>
@@ -3448,6 +3489,7 @@ const response = await fetch("${window.location.origin}/v1/messages", {
     document.querySelector("#delete-all-keys-button").addEventListener("click", deleteAllTenantKeys);
   }
   loadAuditLogTable();
+  loadMlStatus();
   document.querySelectorAll(".connector-form").forEach((form) => {
     form.addEventListener("submit", connectCatalogSource);
   });
@@ -3956,6 +3998,81 @@ async function deleteAllTenantKeys() {
     adminActionMessage = `Delete failed: ${error.message}`;
     if (btn) { btn.disabled = false; btn.textContent = "🗑 Delete all keys"; }
     renderCurrentView();
+  }
+}
+
+async function loadMlStatus() {
+  const el = document.getElementById("ml-status-content");
+  if (!el) return;
+  try {
+    const s = await request("/api/ml/status");
+    const lr = s.logisticRegression;
+    const iso = s.isolationForest;
+    const llm = s.llmClassifier;
+    const pct = n => `${Math.round(n * 100)}%`;
+
+    const lrWeightsHtml = lr.featureWeights
+      ? Object.entries(lr.featureWeights).map(([k, v]) =>
+          `<div style="display:flex;justify-content:space-between;gap:12px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+            <span style="opacity:0.7">${k}</span>
+            <strong style="color:${v > 0 ? "#10b981" : "#f87171"}">${v > 0 ? "+" : ""}${v.toFixed(4)}</strong>
+          </div>`
+        ).join("")
+      : `<p style="opacity:0.5;font-style:italic">Not yet trained. Label ${lr.samplesNeeded} more runs with 👍/👎.</p>`;
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:8px;">
+
+        <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:14px 16px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-size:1.2em">${lr.ready ? "🟢" : "🟡"}</span>
+            <strong style="font-size:0.9rem">Logistic Regression</strong>
+            <span style="margin-left:auto;font-size:0.72rem;padding:2px 8px;border-radius:20px;background:${lr.ready ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)"};color:${lr.ready ? "#10b981" : "#f59e0b"}">
+              ${lr.ready ? "ACTIVE" : `${lr.labeledRunsInDb}/${lr.labeledRunsInDb + lr.samplesNeeded} labels`}
+            </span>
+          </div>
+          <div style="font-size:0.78rem;opacity:0.6;margin-bottom:8px;">
+            ${lr.ready ? `Trained on ${lr.sampleCount} samples · loss ${lr.finalLoss?.toFixed(4) ?? "—"} · ${new Date(lr.trainedAt).toLocaleDateString()}` : `Need ${lr.samplesNeeded} more labeled runs`}
+          </div>
+          <div style="font-size:0.78rem;">${lrWeightsHtml}</div>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:14px 16px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-size:1.2em">${iso.ready ? "🟢" : "🟡"}</span>
+            <strong style="font-size:0.9rem">Isolation Forest</strong>
+            <span style="margin-left:auto;font-size:0.72rem;padding:2px 8px;border-radius:20px;background:${iso.ready ? "rgba(16,185,129,0.15)" : "rgba(100,100,100,0.15)"};color:${iso.ready ? "#10b981" : "#aaa"}">
+              ${iso.ready ? "ACTIVE" : "WAITING"}
+            </span>
+          </div>
+          <div style="font-size:0.78rem;opacity:0.6;">
+            ${iso.ready
+              ? `${iso.nTrees} trees · ${iso.nSamples} training samples · rebuilt ${iso.trainedAt ? new Date(iso.trainedAt).toLocaleDateString() : "—"}`
+              : "Needs 30+ runs. Rebuilt hourly. Detects token/cost/latency anomalies without labels."
+            }
+          </div>
+          ${iso.ready ? `<div style="margin-top:8px;font-size:0.78rem;opacity:0.8;">Features: tokensIn, tokensOut, costUsd, latencyMs, retryCount<br>Threshold: 0.62 (≈5% false-positive rate)</div>` : ""}
+        </div>
+
+        <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:14px 16px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-size:1.2em">${llm.enabled ? "🟢" : "⚫"}</span>
+            <strong style="font-size:0.9rem">LLM Task Classifier</strong>
+            <span style="margin-left:auto;font-size:0.72rem;padding:2px 8px;border-radius:20px;background:${llm.enabled ? "rgba(16,185,129,0.15)" : "rgba(100,100,100,0.15)"};color:${llm.enabled ? "#10b981" : "#aaa"}">
+              ${llm.enabled ? "ACTIVE" : "DISABLED"}
+            </span>
+          </div>
+          <div style="font-size:0.78rem;opacity:0.6;">
+            ${llm.enabled
+              ? `Model: ${llm.model} · Cache: ${llm.cacheSize}/${llm.cacheMax} entries · Classifies task type on ingest (async, non-blocking)`
+              : "Set ANTHROPIC_API_KEY to enable. Falls back to regex classifier."
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    if (el) el.textContent = `Error loading ML status: ${err.message}`;
   }
 }
 
