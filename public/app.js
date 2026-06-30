@@ -1086,82 +1086,108 @@ async function renderAdvisorView() {
 }
 
 function renderActivityView() {
-  const feed = dashboardState.activityFeed.slice(0, 12);
-  document.querySelector("#view-content").innerHTML = `
+  const wrap = document.querySelector("#view-content");
+  wrap.innerHTML = `
     <section class="tab-stage">
       <article class="panel wide-panel">
         <div class="panel-title">
           <p class="eyebrow">Activity</p>
           <h2>Latest execution trail</h2>
+          <p class="panel-subtitle" style="margin-top:4px;font-size:0.8rem;opacity:0.6;">Click any row to expand · 👍/👎 to label runs for ML training (need 20 labels)</p>
         </div>
-        <div class="clean-feed">
-          ${feed.length ? feed.map((item, i) => `
-            <div class="clean-feed-row expandable-row" data-idx="${i}" style="cursor:pointer;">
-              <span>${new Date(item.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-              <strong>${item.agentName}</strong>
-              <em class="feed-level ${levelClass(item.level)}">${item.level.toUpperCase()}</em>
-              <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-                <p style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${item.message}</p>
-                <span class="row-chevron" style="flex-shrink:0;opacity:0.5;font-size:0.7rem;">▼</span>
-              </div>
-            </div>
-            <div class="feed-detail-panel" id="feed-detail-${i}" style="display:none;padding:10px 16px 14px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.07);font-size:0.8rem;color:#aab;margin-top:-4px;">
-              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 20px;">
-                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Model</div><div style="color:#e0e4ff;font-weight:500;">${item.model || "—"}</div></div>
-                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Provider</div><div style="color:#e0e4ff;font-weight:500;">${item.provider || "—"}</div></div>
-                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Tokens in</div><div style="color:#7af;font-weight:600;">${(item.tokensIn || 0).toLocaleString()}</div></div>
-                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Tokens out</div><div style="color:#7af;font-weight:600;">${(item.tokensOut || 0).toLocaleString()}</div></div>
-                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Latency</div><div style="color:#e0e4ff;font-weight:500;">${item.latencyMs ? item.latencyMs + "ms" : "—"}</div></div>
-                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Cost</div><div style="color:#4ec;">${"$" + (item.costUsd || 0).toFixed(4)}</div></div>
-                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Workflow</div><div style="color:#e0e4ff;font-weight:500;">${item.workflow || "—"}</div></div>
-                <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Score method</div><div style="color:#e0e4ff;font-weight:500;">${item.scoringMode === "ml" ? "🤖 ML" : "fixed"}</div></div>
-              </div>
-              <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
-                <span style="font-size:0.7rem;opacity:0.5;text-transform:uppercase;letter-spacing:0.05em;">Was this run valuable?</span>
-                <button class="feedback-btn" data-run-id="${item.id}" data-outcome="1" title="Valuable — trains ML model">👍</button>
-                <button class="feedback-btn" data-run-id="${item.id}" data-outcome="0" title="Not valuable — trains ML model">👎</button>
-                <span class="feedback-status" id="feedback-status-${item.id}" style="font-size:0.72rem;color:#4ec;display:none;"></span>
-              </div>
-            </div>
-          `).join("") : `<p class="muted">No activity yet.</p>`}
-        </div>
+        <div id="activity-feed-body"><p class="muted" style="padding:16px">Loading runs…</p></div>
       </article>
     </section>
   `;
 
-  document.querySelectorAll(".expandable-row").forEach(row => {
-    row.addEventListener("click", () => {
-      const idx = row.dataset.idx;
-      const panel = document.getElementById(`feed-detail-${idx}`);
-      const chevron = row.querySelector(".row-chevron");
-      const open = panel.style.display !== "none";
-      panel.style.display = open ? "none" : "block";
-      if (chevron) chevron.textContent = open ? "▼" : "▲";
-    });
-  });
+  request("/api/runs").then(r => {
+    const runs = r.runs || [];
+    const body = document.getElementById("activity-feed-body");
+    if (!body) return;
+    if (!runs.length) { body.innerHTML = `<p class="muted" style="padding:16px">No runs yet.</p>`; return; }
 
-  document.querySelectorAll(".feedback-btn").forEach(btn => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const runId = btn.dataset.runId;
-      const outcome = Number(btn.dataset.outcome);
-      const statusEl = document.getElementById(`feedback-status-${runId}`);
-      btn.disabled = true;
-      try {
-        const result = await request(`/api/runs/${encodeURIComponent(runId)}/feedback`, {
-          method: "POST", body: JSON.stringify({ outcome })
-        });
-        if (statusEl) {
-          statusEl.style.display = "inline";
-          statusEl.textContent = result.modelReady
-            ? `✓ Saved. ML model active (${result.sampleCount} labels)`
-            : `✓ Saved. ${result.samplesNeeded} more labels needed to activate ML scoring`;
-        }
-      } catch (err) {
-        if (statusEl) { statusEl.style.display = "inline"; statusEl.style.color = "#f87171"; statusEl.textContent = "Failed to save"; }
-        btn.disabled = false;
-      }
+    body.innerHTML = `<div class="clean-feed">${runs.map((item, i) => {
+      const t = item.startTime || item.time;
+      const ts = t ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+      const status = item.status || "unknown";
+      const statusColor = status === "success" ? "#4ec" : status === "failed" ? "#f87171" : "#aab";
+      return `
+        <div class="clean-feed-row expandable-row" data-idx="${i}" style="cursor:pointer;">
+          <span style="font-size:0.75rem;opacity:0.6;min-width:110px;flex-shrink:0">${ts}</span>
+          <strong style="min-width:160px;flex-shrink:0">${escapeHtml(item.agentName || "—")}</strong>
+          <em style="color:${statusColor};font-style:normal;font-size:0.72rem;font-weight:600;min-width:60px;flex-shrink:0">${status.toUpperCase()}</em>
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+            <span style="opacity:0.5;font-size:0.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escapeHtml(item.workflow || item.provider || "")}</span>
+            <span style="color:#4ec;font-size:0.78rem;flex-shrink:0">$${(item.costUsd || 0).toFixed(4)}</span>
+            <span class="row-chevron" style="flex-shrink:0;opacity:0.5;font-size:0.7rem">▼</span>
+          </div>
+        </div>
+        <div class="feed-detail-panel" id="feed-detail-${i}" style="display:none;padding:10px 16px 14px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.07);font-size:0.8rem;color:#aab;margin-top:-4px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 20px;">
+            <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Model</div><div style="color:#e0e4ff;font-weight:500;">${escapeHtml(item.model || "—")}</div></div>
+            <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Provider</div><div style="color:#e0e4ff;font-weight:500;">${escapeHtml(item.provider || "—")}</div></div>
+            <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Tokens in</div><div style="color:#7af;font-weight:600;">${(item.tokensIn || 0).toLocaleString()}</div></div>
+            <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Tokens out</div><div style="color:#7af;font-weight:600;">${(item.tokensOut || 0).toLocaleString()}</div></div>
+            <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Latency</div><div style="color:#e0e4ff;font-weight:500;">${item.latencyMs ? item.latencyMs.toLocaleString() + "ms" : "—"}</div></div>
+            <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Cost</div><div style="color:#4ec;">$${(item.costUsd || 0).toFixed(4)}</div></div>
+            <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Budget</div><div style="color:#e0e4ff;font-weight:500;">$${(item.budgetUsd || 0).toFixed(4)}</div></div>
+            <div><div style="font-size:0.68rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.05em;">Retries</div><div style="color:${(item.retryCount||0)>0?"#f87171":"#e0e4ff"};font-weight:500;">${item.retryCount || 0}</div></div>
+          </div>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:10px;">
+            <span style="font-size:0.7rem;opacity:0.5;text-transform:uppercase;letter-spacing:0.05em;">ML label:</span>
+            <button class="feedback-btn" data-run-id="${item.id}" data-outcome="1" title="Valuable — trains ML model" style="font-size:1.1rem;background:none;border:1px solid rgba(78,204,163,0.3);border-radius:6px;padding:2px 8px;cursor:pointer;">👍</button>
+            <button class="feedback-btn" data-run-id="${item.id}" data-outcome="0" title="Not valuable — trains ML model" style="font-size:1.1rem;background:none;border:1px solid rgba(248,113,113,0.3);border-radius:6px;padding:2px 8px;cursor:pointer;">👎</button>
+            <span class="feedback-status" id="feedback-status-${item.id}" style="font-size:0.78rem;color:#4ec;display:none;"></span>
+          </div>
+        </div>`;
+    }).join("")}</div>`;
+
+    body.querySelectorAll(".expandable-row").forEach(row => {
+      row.addEventListener("click", () => {
+        const idx = row.dataset.idx;
+        const panel = document.getElementById(`feed-detail-${idx}`);
+        const chevron = row.querySelector(".row-chevron");
+        const open = panel.style.display !== "none";
+        panel.style.display = open ? "none" : "block";
+        if (chevron) chevron.textContent = open ? "▼" : "▲";
+      });
     });
+
+    body.querySelectorAll(".feedback-btn").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const runId = btn.dataset.runId;
+        const outcome = Number(btn.dataset.outcome);
+        const statusEl = document.getElementById(`feedback-status-${runId}`);
+        btn.disabled = true;
+        try {
+          const result = await request(`/api/runs/${encodeURIComponent(runId)}/feedback`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ outcome })
+          });
+          if (statusEl) {
+            statusEl.style.display = "inline";
+            statusEl.style.color = "#4ec";
+            statusEl.textContent = result.modelReady
+              ? `✓ Saved · ML model ACTIVE (${result.sampleCount} labels)`
+              : `✓ Saved · ${result.samplesNeeded} more labels to activate ML`;
+          }
+          // Visually mark the labeled button
+          btn.style.opacity = "1";
+          btn.style.borderColor = outcome === 1 ? "#4ec" : "#f87171";
+          const otherOutcome = outcome === 1 ? "0" : "1";
+          const otherBtn = btn.closest(".feed-detail-panel")?.querySelector(`[data-outcome="${otherOutcome}"]`);
+          if (otherBtn) { otherBtn.disabled = true; otherBtn.style.opacity = "0.3"; }
+        } catch (err) {
+          if (statusEl) { statusEl.style.display = "inline"; statusEl.style.color = "#f87171"; statusEl.textContent = `Failed: ${err.message}`; }
+          btn.disabled = false;
+        }
+      });
+    });
+  }).catch(err => {
+    const body = document.getElementById("activity-feed-body");
+    if (body) body.innerHTML = `<p style="color:#f87;padding:16px">Failed to load: ${escapeHtml(err.message)}</p>`;
   });
 }
 
