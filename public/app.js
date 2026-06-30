@@ -3378,6 +3378,12 @@ const response = await fetch("${window.location.origin}/v1/messages", {
           <p class="eyebrow">Access Keys</p>
           <h2>Workspace credentials</h2>
         </div>
+        ${tenantApiKey ? `
+        <div class="secret-output" style="margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem">
+          <span style="opacity:0.6;font-size:0.78rem">Current session key:</span>
+          <code id="session-key-display" style="font-size:0.78rem;word-break:break-all">${escapeHtml(tenantApiKey)}</code>
+          <button class="ghost" style="font-size:0.75rem;padding:2px 8px;white-space:nowrap" onclick="navigator.clipboard.writeText('${escapeHtml(tenantApiKey)}').then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
+        </div>` : ""}
         <div class="inline-admin-form-row">
           <form id="create-key-form" class="inline-admin-form">
             <input name="name" placeholder="Key name — e.g. Production agent" value="Demo agent key" />
