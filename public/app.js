@@ -4001,7 +4001,25 @@ async function loadMlStatus() {
   const el = document.getElementById("ml-status-content");
   if (!el) return;
   try {
-    const s = await request("/api/ml/status");
+    let s;
+    try {
+      s = await request("/api/ml/status");
+    } catch (authErr) {
+      if (authErr.status === 401) {
+        // Session expired — silently re-auth with demo creds then retry once.
+        const cfg = await fetch("/api/login-config").then(r => r.json()).catch(() => ({}));
+        if (cfg.demoEmail && cfg.demoPassword) {
+          const lr = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: cfg.demoEmail, password: cfg.demoPassword })
+          }).then(r => r.ok ? r.json() : null).catch(() => null);
+          if (lr?.apiKey) { localStorage.setItem("aps_demo_key", lr.apiKey); tenantApiKey = lr.apiKey; }
+          if (lr?.sessionToken) { sessionStorage.setItem("aps_session_token", lr.sessionToken); _sessionToken = lr.sessionToken; }
+        }
+        s = await request("/api/ml/status"); // retry after re-auth
+      } else { throw authErr; }
+    }
     const lr = s.logisticRegression;
     const iso = s.isolationForest;
     const llm = s.llmClassifier;

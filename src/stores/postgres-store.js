@@ -797,17 +797,18 @@ export async function ensureDemoUser({ email, password }) {
 
   if (existingUser) {
     try {
+      // Update password via withTenant (RLS requires tenant context for users table).
       await withTenant(existingUser.tenant_id, async (client) => {
         await client.query(
           `update users set password_hash = $1 where lower(email) = $2 and tenant_id = $3`,
           [hash, normalized, existingUser.tenant_id]
         );
-        // Ensure demo tenant is on enterprise-trial so no plan limits apply.
-        await client.query(
-          `update tenants set plan = 'enterprise-trial' where id = $1 and plan in ('free','starter')`,
-          [existingUser.tenant_id]
-        );
       });
+      // Update plan via pool (superuser context — tenants table RLS blocks tenant-scoped client).
+      await pool.query(
+        `update tenants set plan = 'enterprise-trial' where id = $1 and plan in ('free','starter')`,
+        [existingUser.tenant_id]
+      );
     } catch (e) {
       process.stderr.write(`[demo] UPDATE failed: ${e.message}\n`);
       throw e;
