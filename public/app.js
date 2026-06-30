@@ -354,9 +354,8 @@ async function renderSetupScreen(type, message = "") {
               password: form.get("password")
             })
           });
-          tenantApiKey = "";
           localStorage.removeItem("acp_api_key");
-          await initializeApp();
+          window.location.href = "/";
         } catch (error) {
           renderSetupScreen("login", error.message);
         }
@@ -375,9 +374,10 @@ async function renderSetupScreen(type, message = "") {
       btn.textContent = "Setting up demo…";
       try {
         await request("/api/auth/demo-login", { method: "POST" });
-        tenantApiKey = "";
         localStorage.removeItem("acp_api_key");
-        await initializeApp();
+        // Hard reload: browser sends fresh request with the just-set session cookie.
+        // Avoids stale in-memory state from the current page load.
+        window.location.href = "/";
       } catch (err) {
         renderSetupScreen("login", err.message);
       }
@@ -4161,14 +4161,29 @@ async function initializeApp() {
       return;
     }
 
-    if (!tenantApiKey) {
-      try {
-        const me = await request("/api/me");
-        currentUser = me.user;
-      } catch {
+    // Always probe /api/me to confirm identity and detect stale API keys.
+    // If the call fails, fall back to session-cookie-only auth:
+    //   - stale API key → clear it, retry via session cookie
+    //   - no session cookie either → show login screen
+    try {
+      const me = await request("/api/me");
+      currentUser = me.user;
+    } catch (meErr) {
+      if (meErr.status === 401 && tenantApiKey) {
+        // API key is stale/revoked. Clear it and retry with session cookie.
+        tenantApiKey = "";
+        localStorage.removeItem("acp_api_key");
+        try {
+          const me2 = await request("/api/me");
+          currentUser = me2.user;
+        } catch {
+          const ssoError = new URLSearchParams(window.location.search).get("sso_error");
+          renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
+          return;
+        }
+      } else {
         const ssoError = new URLSearchParams(window.location.search).get("sso_error");
-        const msg = ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "";
-        renderSetupScreen("login", msg);
+        renderSetupScreen("login", ssoError ? `SSO error: ${decodeURIComponent(ssoError)}` : "");
         return;
       }
     }
@@ -4208,7 +4223,7 @@ async function initializeApp() {
       tenantApiKey = "";
       localStorage.removeItem("acp_api_key");
       currentUser = null;
-      renderSetupScreen("login", error.message);
+      renderSetupScreen("login", "");
       return;
     }
 
